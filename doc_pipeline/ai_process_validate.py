@@ -11,8 +11,8 @@ from prompter import prepare_prompt, Configuration
 
 class DocumentProcessor:
     def __init__(self, config: Configuration):
-        
-        
+        self.client = None
+        self.model = "gemini-2.0-flash"
         self.validator = None
         self.page_data = []
 
@@ -20,9 +20,11 @@ class DocumentProcessor:
         self.prompt = prepare_prompt(config)
 
         self.doc_config = config
-        self.api_key = "REDACTED-GOOGLE-API-KEY",
+        self.api_key = "REDACTED-GOOGLE-API-KEY"
+    
+        self.init_ai_clientel()
 
-    def inti_ai_clientel(self):
+    def init_ai_clientel(self):
         self.model = "gemini-2.0-flash"
         self.client = genai.Client(api_key=self.api_key)
 
@@ -63,11 +65,12 @@ class DocumentProcessor:
                 print("Warning: Aggregated totals do not match the summary from LLM.")
    
         # Append the summary verification to the output
-        self.page_data = [
+        
+        self.page_data.insert(0, 
             {
                 "transaction_summary": summary_response,
                 "aggregated_totals": aggregated
-            }].append(self.page_data)
+            })
 
     def process_document(self, file_bytes: bytes, mime_type: str = "application/pdf") -> Any:
         try:
@@ -104,6 +107,7 @@ class DocumentProcessor:
             )
 
             raw = ""
+            print("stream_response :: ", stream_response)
             for resp in stream_response:
                 raw += resp.text
 

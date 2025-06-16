@@ -66,6 +66,8 @@ def process_all_pdfs_in_folder(folder_path: Path):
                 config=config
             )
             process_single_file(file, doc_processor)
+            # cleanup old processor
+            del(doc_processor)
 
 
 if __name__ == "__main__":
