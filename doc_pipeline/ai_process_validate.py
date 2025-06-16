@@ -1,24 +1,33 @@
 import json
 import re
 import unicodedata
-from typing import Any, List
+from typing import Any
 
 from google import genai
 from google.genai import types
 
 import importlib
-
+from prompter import prepare_prompt, Configuration
 
 class DocumentProcessor:
-    def __init__(self, key: str, prompt: str, doc_type: str = "bank_statement"):
-        self.prompt = prompt
-        self.doc_type = doc_type
-        self.client = genai.Client(api_key=key)
-        self.model = "gemini-2.0-flash"
+    def __init__(self, config: Configuration):
+        
+        
         self.validator = None
         self.page_data = []
 
-    def get_validator_class(self):
+        self.doc_type: str = config.doc_type # "bank_statement"
+        self.prompt = prepare_prompt(config)
+
+        self.doc_config = config
+        self.api_key = "REDACTED-GOOGLE-API-KEY",
+
+    def inti_ai_clientel(self):
+        self.model = "gemini-2.0-flash"
+        self.client = genai.Client(api_key=self.api_key)
+
+
+    def __prepare_validator__(self):
         """
         Dynamically imports the validator module and retrieves the validator class
         based on the document type. For example, for doc_type "bank_statement", it
@@ -54,17 +63,18 @@ class DocumentProcessor:
                 print("Warning: Aggregated totals do not match the summary from LLM.")
    
         # Append the summary verification to the output
-        self.page_data.append({
-            "transaction_summary": summary_response,
-            "aggregated_totals": aggregated
-        })
+        self.page_data = [
+            {
+                "transaction_summary": summary_response,
+                "aggregated_totals": aggregated
+            }].append(self.page_data)
 
     def process_document(self, file_bytes: bytes, mime_type: str = "application/pdf") -> Any:
         try:
             self.process_pages(file_bytes, mime_type)
 
             # Dynamically determine and initialize the validator based on doc_type
-            validator_cls = self.get_validator_class()
+            validator_cls = self.__prepare_validator__()
             if validator_cls:
                 self.validator = validator_cls(self.client, self.model)
                 self._validate_data(file_bytes)
@@ -85,7 +95,7 @@ class DocumentProcessor:
                     data=page_bytes,
                     mime_type=mime_type,
                 ),
-                f"{self.prompt}\nPrevious page context: {previous_page_context}\nExtract data from current page only."
+                f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
             ]
 
             stream_response = self.client.models.generate_content_stream(
@@ -132,7 +142,7 @@ class DocumentProcessor:
         #     raise ValueError("Missing 'data' field in Gemini output")
 
         # Add extra info
-        data["extra_info"] = "Processed by DocOCR API"
+        data["extra_info"] = "Processed by LLM"
 
         meta = data.get("meta", {})
         if isinstance(meta, dict) and isinstance(meta.get("pages"), (int, float)):
