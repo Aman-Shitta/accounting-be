@@ -7,6 +7,7 @@ class DimAICDocument(models.Model):
     Django model for the dim_AIC_Doc table, representing document information.
     """
     doc_id = models.CharField(
+        max_length=72,
         verbose_name="UUID",
         help_text="Unique identifier for each document"
     )

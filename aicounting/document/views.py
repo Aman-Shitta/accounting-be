@@ -5,7 +5,7 @@ from rest_framework import status
 from django.conf import settings
 from pathlib import Path
 from document.models.dim_aic_doc_model import DimAICDocument
-from tasks import process_uploaded_document
+from document.tasks import process_uploaded_document
 from aicounting.response import create_api_response
 import os
 import uuid
@@ -20,9 +20,8 @@ class DocumentUploadView(APIView):
         if not uploaded_file:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-
+                message="No file provided",
             )
-        # ({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Create destination path
         file_ext = Path(uploaded_file.name).suffix
@@ -37,7 +36,7 @@ class DocumentUploadView(APIView):
                 f.write(chunk)
 
         # Save doc meta
-        doc = DimAICDocument.objects.create(
+        DimAICDocument.objects.create(
             doc_id=doc_id,
             doc_typ=doc_type,
             file_format=file_ext.strip('.'),
@@ -47,6 +46,13 @@ class DocumentUploadView(APIView):
         )
 
         # Trigger celery job
-        process_uploaded_document.delay(str(saved_path), doc_id)
+        process_uploaded_document.run(str(saved_path), doc_id)
 
-        return Response({"message": "File uploaded", "doc_id": doc_id}, status=status.HTTP_202_ACCEPTED)
+        return create_api_response(
+            status_code=status.HTTP_202_ACCEPTED,
+            message="File uploaded",
+            data={
+                "doc_id": doc_id,
+                "status": "processing"
+            }
+        )

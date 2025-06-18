@@ -8,8 +8,8 @@ from document.models.dim_aic_doc_model import (
     FactAICDocLine,
     FactAICDocLineItem
 )
-from pipeline.processor.ai_process import DocumentProcessor
-from pipeline.prompter import Configuration
+from document.pipeline.processor.ai_process import DocumentProcessor
+from document.pipeline.prompter import Configuration
 
 @shared_task
 def process_uploaded_document(file_path: str, doc_id: int):
@@ -21,11 +21,17 @@ def process_uploaded_document(file_path: str, doc_id: int):
         doc = DimAICDocument.objects.get(doc_id=doc_id)
 
         config = Configuration(
-            doc_type=doc.doc_typ,
-            extract_key_items=True,
+            # TODO: make it come from confguration
+            doc_type="bank_statement",
+            extract_key_items=False,
             key_items=[],
             extract_line_items=True,
-            line_items=[],
+            line_items=[
+                "date: The date of the transaction.", 
+                "description: A description of the transaction.",
+                "debit amount: The debit amount of the transaction.",
+                "credit amount: The credit amount of the transaction.",
+            ],
             excluded_fields=[]
         )
         processor = DocumentProcessor(config=config)
@@ -39,29 +45,32 @@ def process_uploaded_document(file_path: str, doc_id: int):
         out_path = file.parent / "extracted_output.json"
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
-
+        
         # Insert Key Items
-        for item in result.get("key_items", []):
-            FactAICDocKeyItem.objects.create(
-                doc=doc,
-                key=item["key"],
-                value=item["value"],
-                page_number=item.get("page", 1)
+        for idx, item in enumerate(result):
+            page_key = f"page_{idx}"
+            page_data = item.get(page_key, {})
+            for key, val in page_data.get("key_items", {}):
+                FactAICDocKeyItem.objects.create(
+                    doc=doc,
+                    key=key,
+                    value=val,
+                    page_number=idx
             )
 
-        # Insert Line Items
-        for line in result.get("line_items", []):
-            line_obj = FactAICDocLine.objects.create(
-                doc=doc,
-                line_number=line.get("line_number", 0),
-                page_number=line.get("page", 1)
-            )
-            for k, v in line["columns"].items():
-                FactAICDocLineValue.objects.create(
-                    line=line_obj,
-                    key=k,
-                    value=v
+            # Insert Line Items
+            for line_idx, line_item in enumerate(page_data.get("line_items", [])):
+                line_obj = FactAICDocLine.objects.create(
+                    doc=doc,
+                    line_number=line_idx,
+                    page_number=idx
                 )
+                for k, v in line_item.items():
+                    FactAICDocLineItem.objects.create(
+                        line=line_obj,
+                        key=k,
+                        value=v
+                    )
 
         # Update doc status
         doc.upload_stat = "processed"
@@ -69,6 +78,11 @@ def process_uploaded_document(file_path: str, doc_id: int):
 
     except Exception as e:
         if doc:
-            doc.upload_stat = f"error: {str(e)}"
+            doc.upload_stat = f"failed"
             doc.save()
+            print("Error: ",  {str(e)})
+            import os, sys
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
         raise

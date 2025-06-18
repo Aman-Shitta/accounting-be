@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 
 import importlib
-from pipeline.prompter import (
+from document.pipeline.prompter import (
     Configuration,
     prepare_prompt,
     
@@ -91,7 +91,7 @@ class DocumentProcessor:
             raise RuntimeError(f"Failed to process document: {str(e)}")
 
     def process_pages(self, file_bytes: bytes, mime_type: str):
-        from utils import split_pdf_to_pages
+        from document.pipeline.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
         previous_page_context = ""
