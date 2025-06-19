@@ -64,6 +64,10 @@ class FactAICDocKeyItem(models.Model):
         on_delete=models.CASCADE,
         related_name="key_items"
     )
+    line_number = models.IntegerField(
+        verbose_name="Line Number",
+        help_text="Line number where the key-value was extracted from"
+    )
     page_number = models.IntegerField(
         verbose_name="Page Number",
         help_text="Page number where the key-value was extracted from"
@@ -76,6 +80,7 @@ class FactAICDocKeyItem(models.Model):
     value = models.CharField(
         max_length=1000,
         verbose_name="Value",
+        null=True,
         help_text="Value corresponding to the extracted key"
     )
     created_at = models.DateTimeField(
@@ -102,6 +107,10 @@ class FactAICDocLine(models.Model):
         on_delete=models.CASCADE,
         related_name="line_rows"
     )
+    page_number = models.IntegerField(
+        verbose_name="Page Number",
+        help_text="Page number where this line item appears"
+    )
     line_number = models.IntegerField(
         verbose_name="Line Number",
         help_text="Sequential line item number"
@@ -123,16 +132,13 @@ class FactAICDocLineItem(models.Model):
         on_delete=models.CASCADE,
         related_name="values"
     )
-    page_number = models.IntegerField(
-        verbose_name="Page Number",
-        help_text="Page number where this line item appears"
-    )
     key = models.CharField(
         max_length=100,
         verbose_name="Column Name"
     )
     value = models.TextField(
-        verbose_name="Value"
+        verbose_name="Value",
+        null=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
