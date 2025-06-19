@@ -39,7 +39,8 @@ def process_uploaded_document(file_path: str, doc_id: int):
         with open(file, "rb") as f:
             pdf_bytes = f.read()
 
-        result = processor.process_document(pdf_bytes, mime_type)
+        result, control_totals = processor.process_document(pdf_bytes, mime_type)
+        # TODO: save control totals in DB
 
         # Save JSON output
         out_path = file.parent / "extracted_output.json"
@@ -48,7 +49,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
         
         # Insert Key Items
         for idx, item in enumerate(result):
-            page_key = f"page_{idx}"
+            page_key = f"page_{idx+1}"
             page_data = item.get(page_key, {})
             for key, val in page_data.get("key_items", {}):
                 FactAICDocKeyItem.objects.create(

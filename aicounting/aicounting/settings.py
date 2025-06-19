@@ -131,3 +131,6 @@ import os
 
 MEDIA_ROOT = os.path.join(BASE_DIR, "uploads")
 MEDIA_URL = "/media/"
+
+# DEFAULT_FILE_STORAGE = "storages.backends.azure_storage.AzureStorage"
+# MEDIA_URL = f"https://<your-account>.blob.core.windows.net/<container>/"
