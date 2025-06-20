@@ -30,11 +30,13 @@ class DocumentListSerializer(serializers.ModelSerializer):
 class DocumentDataSerializer(serializers.ModelSerializer):
     extracted_data = serializers.SerializerMethodField()
     document_url = serializers.SerializerMethodField()
-
+    control_total = serializers.SerializerMethodField()
     class Meta:
         model = DimAICDocument
-        fields = ["doc_id", "doc_typ", "created_at", "input_user", "extracted_data", "document_url"]
+        fields = ["doc_id", "doc_typ", "created_at", "input_user", "extracted_data", "document_url", "control_total"]
 
+    def get_control_total(self, obj):
+        return obj.control_item
 
     def get_document_url(self, obj):
         return default_storage.url(obj.file_loc)
