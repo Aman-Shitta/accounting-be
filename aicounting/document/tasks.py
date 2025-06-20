@@ -42,6 +42,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
         result, control_totals = processor.process_document(pdf_bytes, mime_type)
         # TODO: save control totals in DB
 
+        doc.control_item = control_totals
         # Save JSON output
         out_path = file.parent / "extracted_output.json"
         with open(out_path, "w", encoding="utf-8") as f:

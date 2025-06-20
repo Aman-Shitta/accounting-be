@@ -42,6 +42,7 @@ class DimAICDocument(models.Model):
         verbose_name="File Location",
         help_text="Hard location of file"
     )
+    control_item = models.JSONField(null=True, blank=True)
 
     class Meta:
         # Define the table name in the database
