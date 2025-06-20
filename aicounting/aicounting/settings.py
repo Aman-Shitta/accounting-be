@@ -134,3 +134,7 @@ MEDIA_URL = "/media/"
 
 # DEFAULT_FILE_STORAGE = "storages.backends.azure_storage.AzureStorage"
 # MEDIA_URL = f"https://<your-account>.blob.core.windows.net/<container>/"
+
+# Celery Configuration
+CELERY_BROKER_URL = "redis://localhost:6379/0"       # Redis as broker
+CELERY_RESULT_BACKEND = "redis://localhost:6379/1"    # Redis as backend
