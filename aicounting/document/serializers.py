@@ -16,7 +16,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DimAICDocument
-        fields = ['doc_id', 'upload_stat', 'doc_typ', 'created_at']
+        fields = ['doc_id', 'upload_stat', 'doc_type', 'created_at']
 
 
     def get_created_at(self, instance):
