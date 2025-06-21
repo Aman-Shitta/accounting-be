@@ -23,14 +23,12 @@ jobs:
 
       - name: Deploy via jump host to target
         run: |
-          ssh -o ProxyJump=${{ secrets.DEPLOY_USER }}@${{ secrets.JUMP_HOST }} \
-              ${{ secrets.DEPLOY_USER }}@${{ secrets.TARGET_HOST }} << 'EOF'
+           ssh -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
+              ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }} << 'EOF'
 
             cd ${{ secrets.PROJECT_PATH }}
 
-            # Use token-authenticated pull
-            git config --global credential.helper ""
-            git pull https://${{ secrets.GH_USERNAME }}:${{ secrets.GH_DEPLOY_TOKEN }}@github.com/<your-org-or-username>/<repo-name>.git main
+            git pull origin main
 
             source ../venv/bin/activate
             pip install -r requirements.txt
@@ -40,4 +38,4 @@ jobs:
             sudo systemctl restart doc-api
             sudo systemctl restart celery
 
-          EOF
+            EOF
