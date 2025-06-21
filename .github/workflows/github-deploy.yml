@@ -11,21 +11,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Debug variables
-        run: |
-          echo "JUMP_HOST: ${{ secrets.JUMP_HOST }}"
-          echo "TARGET_HOST: ${{ secrets.TARGET_HOST }}"
-          echo "JUMP_USER: ${{ secrets.JUMP_USER }}"
-          echo "TARGET_USER: ${{ secrets.TARGET_USER }}"
-          echo "PROJECT_PATH: ${{ secrets.PROJECT_PATH }}"
+
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add Jump Host to known hosts
-        run: |
-          ssh-keyscan -H ${{ secrets.JUMP_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy via jump host to target
         run: |
