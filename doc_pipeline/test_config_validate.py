@@ -43,7 +43,10 @@ def process_single_file(file_path: Path, processor: DocumentProcessor):
             mime_type
             raise ValueError(f"Document type {file_path.suffix} not supported")
 
-        result = processor.process_document(pdf_bytes, mime_type)
+        result = processor.process_document(
+            pdf_bytes,
+            mime_type
+        )
 
         output_folder = file_path.stem
         output_path = file_path.parent / output_folder
@@ -54,10 +57,17 @@ def process_single_file(file_path: Path, processor: DocumentProcessor):
         traceback.print_exc()
 
 
-def process_all_pdfs_in_folder(folder_path: Path, processor: DocumentProcessor):
+def process_all_pdfs_in_folder(folder_path: Path):
     for file in folder_path.iterdir():
         if file.is_file() and file.suffix.lower() in [".pdf"]:
-            process_single_file(file, processor)
+            
+            # seperate processor for each file
+            doc_processor = DocumentProcessor(
+                config=config
+            )
+            process_single_file(file, doc_processor)
+            # cleanup old processor
+            del(doc_processor)
 
 
 if __name__ == "__main__":
@@ -95,10 +105,4 @@ if __name__ == "__main__":
     #     excluded_fields=["account_number"],
     # )
 
-    prompt = prepare_prompt(config)
-    processor = DocumentProcessor(
-        key="REDACTED-GOOGLE-API-KEY",
-        prompt=prompt
-    )
-
-    process_all_pdfs_in_folder(folder_path, processor)
+    process_all_pdfs_in_folder(folder_path)

@@ -7,7 +7,11 @@ from google import genai
 from google.genai import types
 
 import importlib
-from prompter import prepare_prompt, Configuration
+from document.pipeline.prompter import (
+    Configuration,
+    prepare_prompt,
+    
+)
 
 class DocumentProcessor:
     def __init__(self, config: Configuration):
@@ -23,6 +27,7 @@ class DocumentProcessor:
         self.api_key = "REDACTED-GOOGLE-API-KEY"
     
         self.init_ai_clientel()
+        self.control_totals = {}
 
     def init_ai_clientel(self):
         self.model = "gemini-2.0-flash"
@@ -37,7 +42,7 @@ class DocumentProcessor:
         """
         try:
             # Build the module name: e.g. "validator.bank_statement_validator"
-            module_name = f"validator.{self.doc_type}"
+            module_name = f"document.pipeline.validator.{self.doc_type}"
             mod = importlib.import_module(module_name)
             # Build the expected class name based on naming convention
             class_name = "".join(word.capitalize() for word in self.doc_type.split("_")) + "Validator"
@@ -66,11 +71,11 @@ class DocumentProcessor:
    
         # Append the summary verification to the output
         
-        self.page_data.insert(0, 
-            {
-                "transaction_summary": summary_response,
-                "aggregated_totals": aggregated
-            })
+        
+        self.control_totals = {
+            "transaction_summary": summary_response,
+            "aggregated_totals": aggregated
+        }
 
     def process_document(self, file_bytes: bytes, mime_type: str = "application/pdf") -> Any:
         try:
@@ -82,12 +87,12 @@ class DocumentProcessor:
                 self.validator = validator_cls(self.client, self.model)
                 self._validate_data(file_bytes)
 
-            return self.page_data
+            return self.page_data, self.control_totals
         except Exception as e:
             raise RuntimeError(f"Failed to process document: {str(e)}")
 
     def process_pages(self, file_bytes: bytes, mime_type: str):
-        from utils import split_pdf_to_pages
+        from document.pipeline.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
         previous_page_context = ""
