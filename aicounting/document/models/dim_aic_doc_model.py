@@ -46,7 +46,7 @@ class DimAICDocument(models.Model):
 
     class Meta:
         # Define the table name in the database
-        db_table = 'dim_AIC_Doc'
+        db_table = 'dim_ai_doc'
         # Set the verbose name for the model, used in the Django admin interface
         verbose_name = "AIC Document"
         verbose_name_plural = "AIC Documents"
