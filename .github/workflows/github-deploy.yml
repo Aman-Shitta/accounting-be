@@ -11,7 +11,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      - name: Debug variables
+        run: |
+          echo "JUMP_HOST: ${{ secrets.JUMP_HOST }}"
+          echo "TARGET_HOST: ${{ secrets.TARGET_HOST }}"
+          echo "JUMP_USER: ${{ secrets.JUMP_USER }}"
+          echo "TARGET_USER: ${{ secrets.TARGET_USER }}"
+          echo "PROJECT_PATH: ${{ secrets.PROJECT_PATH }}"
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
