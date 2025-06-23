@@ -32,7 +32,14 @@ class DocumentUploadView(APIView):
         file_ext = Path(uploaded_file.name).suffix
 
         
-        upload_dir = Path(settings.MEDIA_ROOT) / str(doc_id)
+        doc = DimAICDocument(
+            doc_typ=doc_type,
+            file_format=file_ext.strip('.'),
+            upload_stat="uploaded",
+            input_user=1 if request.user else 0,
+        )
+
+        upload_dir = Path(settings.MEDIA_ROOT) / str(doc.doc_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
         saved_path = upload_dir / uploaded_file.name
 
@@ -40,15 +47,8 @@ class DocumentUploadView(APIView):
             for chunk in uploaded_file.chunks():
                 f.write(chunk)
 
-        # Save doc meta
-        doc = DimAICDocument.objects.create(
-            doc_typ=doc_type,
-            file_format=file_ext.strip('.'),
-            upload_stat="uploaded",
-            input_user=1,
-            file_loc=str(uploaded_file.name),
-        )
-
+        doc.file_loc=f"{doc.doc_id}/{str(uploaded_file.name)}"
+        doc.save()
         # Trigger celery job
         process_uploaded_document.delay(str(saved_path), doc.doc_id)
 
