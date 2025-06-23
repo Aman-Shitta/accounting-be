@@ -12,44 +12,37 @@ class DimAICDocument(models.Model):
         max_length=72,
         default=uuid.uuid4,
         verbose_name="UUID",
-        help_text="Unique identifier for each document"
-    )
+	)
     doc_typ = models.CharField(
         max_length=50,
         verbose_name="Document Type",
-        help_text="Type of document (template, JE, sales sheet etc.)"
-    )
+	)
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At",
-        help_text="Creation date"
-    )
+	)
     file_format = models.CharField(
         max_length=8,
         verbose_name="File Format",
-        help_text="Format of file"
-    )
+	)
     upload_stat = models.CharField(
         max_length=25,
         verbose_name="Upload Status",
-        help_text="Status of upload (success, error, etc.)"
-    )
+	)
 
     input_user = models.IntegerField(
         # FK with the user table
         verbose_name="Input User",
-        help_text="User ID of the user that uploaded the document."
-    )
+	)
     file_loc = models.CharField(
         max_length=1000,
         verbose_name="File Location",
-        help_text="Hard location of file"
-    )
+	)
     control_item = models.JSONField(null=True, blank=True)
 
     class Meta:
         # Define the table name in the database
-        db_table = 'dim_ai_doc'
+        db_table = 'dim_aic_doc'
         # Set the verbose name for the model, used in the Django admin interface
         verbose_name = "AIC Document"
         verbose_name_plural = "AIC Documents"
@@ -70,23 +63,19 @@ class FactAICDocKeyItem(models.Model):
     )
     line_number = models.IntegerField(
         verbose_name="Line Number",
-        help_text="Line number where the key-value was extracted from"
-    )
+	)
     page_number = models.IntegerField(
         verbose_name="Page Number",
-        help_text="Page number where the key-value was extracted from"
-    )
+	)
     key = models.CharField(
         max_length=100,
         verbose_name="Key",
-        help_text="Extracted key from the document"
-    )
+	)
     value = models.CharField(
         max_length=1000,
         verbose_name="Value",
         null=True,
-        help_text="Value corresponding to the extracted key"
-    )
+	)
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At"
@@ -113,12 +102,10 @@ class FactAICDocLine(models.Model):
     )
     page_number = models.IntegerField(
         verbose_name="Page Number",
-        help_text="Page number where this line item appears"
-    )
+	)
     line_number = models.IntegerField(
         verbose_name="Line Number",
-        help_text="Sequential line item number"
-    )
+	)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

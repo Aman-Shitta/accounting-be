@@ -51,7 +51,9 @@ class DocumentUploadView(APIView):
         doc.save()
         # Trigger celery job
         process_uploaded_document.delay(str(saved_path), doc.doc_id)
-
+        
+        doc.upload_stat = "processing"
+        doc.save()
         return create_api_response(
             status_code=status.HTTP_202_ACCEPTED,
             message="File uploaded",
