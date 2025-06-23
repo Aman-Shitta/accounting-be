@@ -9,8 +9,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Authenticate to Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
 
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -26,7 +31,6 @@ jobs:
           ssh ${{ secrets.SSH_USER }}@${{ secrets.TAILSCALE_SERVER_IP }} << 'EOF'
 
             cd /home/aicounting/aicounting-backend/aicount-ocr
-
             git pull origin main
 
             source ../venv/bin/activate
