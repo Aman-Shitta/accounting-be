@@ -30,7 +30,7 @@ jobs:
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.TAILSCALE_SERVER_IP }} << 'EOF'
 
-            cd ${{ secrets.DJ_PROJECT_PATH }}
+            cd /home/aicounting/aicounting-backend/aicount-ocr/aicounting
             git pull origin main
 
             source ../../venv/bin/activate
