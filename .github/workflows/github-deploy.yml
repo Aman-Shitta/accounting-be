@@ -38,7 +38,7 @@ jobs:
             python manage.py migrate --noinput
             python manage.py collectstatic --noinput
 
-            sudo systemctl restart doc-api
-            sudo systemctl restart celery
+            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart doc-api
+            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart celery
 
           EOF
