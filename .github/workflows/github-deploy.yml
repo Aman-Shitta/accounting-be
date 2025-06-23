@@ -35,8 +35,8 @@ jobs:
 
             source ../../venv/bin/activate
             pip install -r requirements.txt
-            python manage.py migrate --noinput
-            python manage.py collectstatic --noinput
+            python3 manage.py migrate --noinput
+            python3 manage.py collectstatic --noinput
 
             echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart doc-api
             echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart celery
