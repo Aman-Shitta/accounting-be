@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 # Create your models here.
@@ -8,6 +10,7 @@ class DimAICDocument(models.Model):
     """
     doc_id = models.CharField(
         max_length=72,
+        default=uuid.uuid4,
         verbose_name="UUID",
         help_text="Unique identifier for each document"
     )
