@@ -1,0 +1,66 @@
+from django.db import models
+import random # Added for potential future use or if custom ID generation is needed again
+import string # Added for potential future use or if custom ID generation is needed again
+
+
+class DimAICGLAcct(models.Model):
+    """
+    Django model for the dim_AIC_GL_Acct table, representing General Ledger Account information.
+    """
+    gl_acct_id = models.AutoField(
+        primary_key=True,
+        verbose_name="GL Account ID",
+	)
+    cust_id = models.ForeignKey(
+        'user.DimAICCustomer',
+        on_delete=models.CASCADE,
+        verbose_name="Customer ID",
+	)
+
+    client_id = models.ForeignKey(
+        'user.DimAICClient',
+        on_delete=models.CASCADE,
+        verbose_name="Client ID",
+	)
+    gl_acct_nbr = models.CharField(
+        max_length=15,
+        verbose_name="GL Account Number",
+	)
+    gl_acct_name = models.CharField(
+        max_length=255,
+        verbose_name="GL Account Name",
+	)
+    gl_acct_desc = models.TextField(
+        verbose_name="GL Account Description",
+	)
+    account_type_id = models.ForeignKey(
+        'DimAICAcctType',
+        on_delete=models.CASCADE,
+        verbose_name="Account Type ID",
+	)
+    # TODO: discuss if embedding needs to be saved as assistant have embedding saved directly
+    # embedding = models.TextField(
+    #     verbose_name="Embedding",
+    #         # )
+    input_user_id = models.ForeignKey(
+        "user.DimAICUser",
+        on_delete=models.SET_NULL,
+        null=True,
+	)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Created At",
+	)
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Updated At",
+	)
+
+    class Meta:
+        db_table = 'dim_aic_gl_acct'
+        verbose_name = "AIC GL Account"
+        verbose_name_plural = "AIC GL Accounts"
+
+    def __str__(self):
+        return f"{self.gl_acct_name} ({self.gl_acct_nbr})"
+

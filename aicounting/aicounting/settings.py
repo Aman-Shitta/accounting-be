@@ -41,6 +41,7 @@ INSTALLED_APPS = [
 
     'document',
     'user',
+    'account',
 ]
 
 MIDDLEWARE = [
