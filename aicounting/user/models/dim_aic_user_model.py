@@ -30,9 +30,6 @@ class DimAICUser(models.Model):
         auto_now_add=True,
         verbose_name="Created At",
 	)
-    input_user = models.IntegerField(
-        verbose_name="Input User",
-	)
 
     class Meta:
         # Define the table name in the database
