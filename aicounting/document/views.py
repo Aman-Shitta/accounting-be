@@ -8,8 +8,6 @@ from document.models.dim_aic_doc_model import DimAICDocument
 from document.tasks import process_uploaded_document
 from aicounting.response import create_api_response
 
-import uuid
-
 from document.serializers import (
     DocumentListSerializer,
     DocumentDataSerializer
@@ -21,7 +19,8 @@ class DocumentUploadView(APIView):
 
     def post(self, request, *args, **kwargs):
         uploaded_file = request.FILES.get("file")
-        doc_type = request.data.get("doc_type", "generic")
+        # doc_type = request.data.get("doc_type", "generic")
+        doc_type = "bank_statement"
 
         if not uploaded_file:
             return create_api_response(
@@ -31,7 +30,7 @@ class DocumentUploadView(APIView):
 
         # Create destination path
         file_ext = Path(uploaded_file.name).suffix
-        doc_id = uuid.uuid4().int >> 64
+
         
         upload_dir = Path(settings.MEDIA_ROOT) / str(doc_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -42,23 +41,22 @@ class DocumentUploadView(APIView):
                 f.write(chunk)
 
         # Save doc meta
-        DimAICDocument.objects.create(
-            doc_id=doc_id,
+        doc = DimAICDocument.objects.create(
             doc_typ=doc_type,
             file_format=file_ext.strip('.'),
             upload_stat="uploaded",
             input_user=1,
-            file_loc=str(saved_path),
+            file_loc=str(uploaded_file.name),
         )
 
         # Trigger celery job
-        process_uploaded_document.delay(str(saved_path), doc_id)
+        process_uploaded_document.delay(str(saved_path), doc.doc_id)
 
         return create_api_response(
             status_code=status.HTTP_202_ACCEPTED,
             message="File uploaded",
             data={
-                "doc_id": doc_id,
+                "doc_id": doc.doc_id,
                 "status": "processing"
             }
         )
