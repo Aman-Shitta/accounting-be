@@ -44,7 +44,7 @@ class DimAICJETemplateHeader(models.Model):
 
 
     class Meta:
-        db_table = 'dim_AIC_JE_Template_Header'
+        db_table = 'dim_aic_je_template_header'
         verbose_name = "AIC JE Template Header"
         verbose_name_plural = "AIC JE Template Headers"
 
