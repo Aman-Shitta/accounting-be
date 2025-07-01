@@ -33,8 +33,8 @@ class DimAICContactAdmin(admin.ModelAdmin):
 @admin.register(DimAICCustomer)
 class DimAICCustomerAdmin(admin.ModelAdmin):
     list_display = (
-        'customer_id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state', 'zip_code', 'input_user', 'created_at', 'updated_at'
+        'customer_id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state_abrevation', 'zip_code', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('customer_name', 'city', 'customer_secure_id')
-    list_filter = ('state',)
+    list_filter = ('state_abrevation',)
     ordering = ('customer_id',)
