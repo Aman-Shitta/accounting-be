@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 
 
-def create_api_response(status_code, message, data=None):
+def create_api_response(status_code, message, data=None, **kwargs):
     """
     Creates a consistent API response.
 
@@ -28,6 +28,9 @@ def create_api_response(status_code, message, data=None):
 
     if data is not None:
         response["data"] = data
+    
+    for k, v in  kwargs.items():
+        response[k] = v
 
     return Response(response, status=status_code)
 

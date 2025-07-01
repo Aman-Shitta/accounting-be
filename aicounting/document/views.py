@@ -36,7 +36,7 @@ class DocumentUploadView(APIView):
             doc_typ=doc_type,
             file_format=file_ext.strip('.'),
             upload_stat="uploaded",
-            input_user=1 if request.user else 0,
+            input_user=self.request.user,
         )
 
         upload_dir = Path(settings.MEDIA_ROOT) / str(doc.doc_id)
