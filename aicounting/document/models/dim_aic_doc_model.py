@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import models
-
+from django.contrib.auth import get_user_model
 # Create your models here.
 
 class DimAICDocument(models.Model):
@@ -30,10 +30,14 @@ class DimAICDocument(models.Model):
         verbose_name="Upload Status",
 	)
 
-    input_user = models.IntegerField(
-        # FK with the user table
-        verbose_name="Input User",
-	)
+    input_user = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Input User"
+    )
+
     file_loc = models.CharField(
         max_length=1000,
         verbose_name="File Location",
