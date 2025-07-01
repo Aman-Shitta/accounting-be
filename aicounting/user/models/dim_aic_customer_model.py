@@ -1,21 +1,28 @@
 import random
 import string
 from django.db import models
-
+from django.contrib.auth import get_user_model
 class DimAICCustomer(models.Model):
     """
     Django model for the dim_AIC_Customer table, representing customer information.
     """
-    cust_id = models.AutoField(
+    user = models.OneToOneField(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="customer_profile",
+        verbose_name="Linked Django User",
+        help_text="Link to Django user for authentication and permissions"
+    )
+    customer_id = models.AutoField(
         primary_key=True,
         verbose_name="Customer ID",
 	)
-    cust_secure_id = models.CharField(
+    customer_secure_id = models.CharField(
         max_length=9,
         editable=False,
         verbose_name="Customer Secure ID",
 	)
-    cust_name = models.CharField(
+    customer_name = models.CharField(
         max_length=255,
         verbose_name="Customer Name",
 	)
@@ -27,9 +34,9 @@ class DimAICCustomer(models.Model):
         max_length=100,
         verbose_name="City",
 	)
-    st_abrv = models.CharField(
+    state = models.CharField(
         max_length=2,
-        verbose_name="State Abbreviation",
+        verbose_name="State",
 	)
 
     zip_code = models.IntegerField(
@@ -37,13 +44,24 @@ class DimAICCustomer(models.Model):
 	)
 
     input_user = models.ForeignKey(
-        "DimAICUser",
+        get_user_model(),
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name="Input User",
-	)
-    
+        verbose_name="Input User"
+    )
+    registration_complete = models.BooleanField(
+        default=False,
+        help_text="Becomes True after first SSO login"
+    )
+
+    invite_token = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Invite token for registration"
+    )
+    # TODO : possible limit for token life
     created_at = models.DateTimeField(
         auto_now_add=True, # Automatically sets the field to the current datetime when the object is first created.
         verbose_name="Created At",
@@ -70,17 +88,17 @@ class DimAICCustomer(models.Model):
             part2 = ''.join(random.choices(string.digits, k=4))
             new_id = f"{part1}-{part2}"
             # Check if an object with this ID already exists in the database
-            if not DimAICCustomer.objects.filter(cust_id=new_id).exists():
+            if not DimAICCustomer.objects.filter(customer_id=new_id).exists():
                 return new_id
 
     def save(self, *args, **kwargs):
         """
         Overrides the save method to generate a unique cust_id if it's not already set.
         """
-        if not self.cust_id:  # Only generate ID for new objects
-            self.cust_id = self.generate_unique_cust_id()
+        if not self.customer_id:  # Only generate ID for new objects
+            self.customer_id = self.generate_unique_cust_id()
         super().save(*args, **kwargs)
 
     def __str__(self):
         # String representation of the object, useful for the Django admin
-        return f"{self.cust_name} (ID: {self.cust_id})"
+        return f"{self.customer_name} (ID: {self.customer_id})"

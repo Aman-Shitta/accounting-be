@@ -30,6 +30,8 @@ class DimAICUser(models.Model):
         auto_now_add=True,
         verbose_name="Created At",
 	)
+    email = models.EmailField(verbose_name="User Email")
+    # Addd permissions for accountant and supervisor
 
     class Meta:
         # Define the table name in the database

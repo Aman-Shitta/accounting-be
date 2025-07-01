@@ -15,26 +15,26 @@ class DimAICUserAdmin(admin.ModelAdmin):
 @admin.register(DimAICClient)
 class DimAICClientAdmin(admin.ModelAdmin):
     list_display = (
-        'client_id', 'client_name', 'cust_id', 'street', 'city', 'st_abrv', 'zip_code', 'input_user', 'created_at', 'updated_at'
+        'client_id', 'client_name', 'customer', 'street', 'city', 'state', 'zip_code', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('client_name', 'street', 'city')
-    list_filter = ('cust_id', 'st_abrv')
+    list_filter = ('customer', 'street')
     ordering = ('client_id',)
 
 @admin.register(DimAICContact)
 class DimAICContactAdmin(admin.ModelAdmin):
     list_display = (
-        'user_id', 'cust_id', 'contact_typ', 'contact', 'reg_flg', 'input_user', 'created_at', 'updated_at'
+        'client_id', 'contact_type', 'contact', 'reg_flg', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('contact',)
-    list_filter = ('contact_typ', 'reg_flg', 'cust_id')
-    ordering = ('cust_id', 'user_id')
+    list_filter = ('contact_type', 'reg_flg', 'client_id')
+    ordering = ('client_id', )
 
 @admin.register(DimAICCustomer)
 class DimAICCustomerAdmin(admin.ModelAdmin):
     list_display = (
-        'cust_id', 'cust_secure_id', 'cust_name', 'street', 'city', 'st_abrv', 'zip_code', 'input_user', 'created_at', 'updated_at'
+        'customer_id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state', 'zip_code', 'input_user', 'created_at', 'updated_at'
     )
-    search_fields = ('cust_name', 'city', 'cust_secure_id')
-    list_filter = ('st_abrv',)
-    ordering = ('cust_id',)
+    search_fields = ('customer_name', 'city', 'customer_secure_id')
+    list_filter = ('state',)
+    ordering = ('customer_id',)
