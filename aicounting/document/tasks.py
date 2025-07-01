@@ -11,6 +11,8 @@ from document.models.dim_aic_doc_model import (
 from document.pipeline.processor.ai_process import DocumentProcessor
 from document.pipeline.prompter import Configuration
 
+from document.pipeline.classification import GLClassifier
+
 @shared_task
 def process_uploaded_document(file_path: str, doc_id: int):
     file = Path(file_path)
@@ -88,3 +90,26 @@ def process_uploaded_document(file_path: str, doc_id: int):
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
         raise
+
+
+
+# @shared_task
+def classify_document(doc_id: str):
+
+    try:
+        classifier_assistant = GLClassifier(
+            api_key="sk-", 
+            assistant_id="asst_9SbHYIoj1MnurVtE9UkoAWke",
+            vector_store_ids=["vs_6862ae7e625c81918ece89a316d1861b"]
+        )
+
+        # document_id = "a2ac600b-5d1b-42cd-a34e-077a6b29a2d3"
+
+        classifier_assistant.classify(doc_id)
+
+    except Exception as e:
+        print("Error: ",  {str(e)})
+        import os, sys
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        print(exc_type, fname, exc_tb.tb_lineno)
