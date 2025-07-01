@@ -31,12 +31,12 @@ class DocumentUploadView(APIView):
         # Create destination path
         file_ext = Path(uploaded_file.name).suffix
 
-        
+        from django.contrib.auth import get_user_model
         doc = DimAICDocument(
             doc_typ=doc_type,
             file_format=file_ext.strip('.'),
             upload_stat="uploaded",
-            input_user=self.request.user,
+            input_user=get_user_model().objects.filter().first(),
         )
 
         upload_dir = Path(settings.MEDIA_ROOT) / str(doc.doc_id)

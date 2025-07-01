@@ -34,9 +34,9 @@ class DimAICCustomer(models.Model):
         max_length=100,
         verbose_name="City",
 	)
-    state = models.CharField(
+    state_abrevation = models.CharField(
         max_length=2,
-        verbose_name="State",
+        verbose_name="State Abbrevation",
 	)
 
     zip_code = models.IntegerField(
