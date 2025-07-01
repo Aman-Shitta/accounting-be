@@ -1,61 +1,101 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+
 
 class DimAICClient(models.Model):
     """
-    Django model for the dim_AIC_Client table, representing client information.
+    Represents a client entity associated with a customer and assigned user.
     """
-    client_id = models.AutoField(
-        primary_key=True,
-        verbose_name="Client ID",
-	)
-    # Foreign key to DimAICCustomer, assuming Cust_Id in DimAICClient links to Cust_Id in DimAICCustomer
-    cust_id = models.ForeignKey(
+
+    client_id = models.AutoField(primary_key=True, verbose_name="Client ID")
+
+    customer = models.ForeignKey(
         'DimAICCustomer',
         on_delete=models.CASCADE,
-        verbose_name="Customer ID",
-	)
-    client_name = models.CharField(
-        max_length=255,
-        verbose_name="Client Name",
-	)
-    street = models.CharField(
-        max_length=255,
-        verbose_name="Street",
-	)
-    city = models.CharField(
-        max_length=100,
-        verbose_name="City",
-	)
-    st_abrv = models.CharField(
-        max_length=2,
-        verbose_name="State Abbreviation",
-	)
-    zip_code = models.IntegerField(
-        verbose_name="Zip Code",
-	)
-    input_user = models.ForeignKey(
+        related_name="clients",
+        verbose_name="Customer",
+    )
+
+    client_name = models.CharField(max_length=255, verbose_name="Client Name")
+    street = models.CharField(max_length=255, verbose_name="Street")
+    city = models.CharField(max_length=100, verbose_name="City")
+    state = models.CharField(max_length=2, verbose_name="State Abbreviation")
+    zip_code = models.IntegerField(verbose_name="Zip Code")
+
+    assigned_user = models.ForeignKey(
         "DimAICUser",
+        on_delete=models.SET_NULL,
+        related_name="assigend_clients",
+        null=True,
+        blank=True,
+        verbose_name="Assigned User",
+    )
+
+    input_user = models.ForeignKey(
+        get_user_model(),
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-	)
-    created_at = models.DateTimeField(
-        auto_now_add=True, 
-        verbose_name="Created At",
-	)
-    updated_at = models.DateTimeField(
-        auto_now=True, 
-        verbose_name="Updated At",
-	)
+        verbose_name="Input User (Admin)",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
     class Meta:
-        # Define the table name in the database
         db_table = 'dim_aic_client'
-        # Set the verbose name for the model, used in the Django admin interface
-        verbose_name = "AIC Client"
-        verbose_name_plural = "AIC Clients"
+        verbose_name = "Client"
+        verbose_name_plural = "Clients"
 
     def __str__(self):
-        # String representation of the object, useful for the Django admin
-        return f"{self.client_name} (ID: {self.client_id})"
+        return f"{self.name} (ID: {self.client_id})"
 
+
+class DimAICClientDocument(models.Model):
+    """
+    Documents associated with a client, such as COA, Vendor List, GL History.
+    """
+
+    DOCUMENT_TYPE_CHOICES = [
+        ("COA", "Chart of Accounts"),
+        ("VENDOR_LIST", "Vendor List"),
+        ("GL_HISTORY", "GL History"),
+    ]
+
+    client = models.ForeignKey(
+        "DimAICClient",
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="Client"
+    )
+
+    document_type = models.CharField(
+        max_length=20,
+        choices=DOCUMENT_TYPE_CHOICES,
+        verbose_name="Document Type"
+    )
+
+    file = models.FileField(
+        upload_to="client_documents/",
+        verbose_name="Document File",
+        help_text="File will be stored in local media folder. Future support for S3/Azure."
+    )
+
+    uploaded_by = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Uploaded By"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
+
+    class Meta:
+        db_table = 'client_documents'
+        verbose_name = "Client Document"
+        verbose_name_plural = "Client Documents"
+
+    def __str__(self):
+        return f"{self.client.name} - {self.get_document_type_display()}"

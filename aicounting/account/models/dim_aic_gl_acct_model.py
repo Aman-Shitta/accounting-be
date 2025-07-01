@@ -1,6 +1,5 @@
 from django.db import models
-import random # Added for potential future use or if custom ID generation is needed again
-import string # Added for potential future use or if custom ID generation is needed again
+from django.contrib.auth import get_user_model
 
 
 class DimAICGLAcct(models.Model):
@@ -42,11 +41,13 @@ class DimAICGLAcct(models.Model):
     # embedding = models.TextField(
     #     verbose_name="Embedding",
     #         # )
-    input_user_id = models.ForeignKey(
-        "user.DimAICUser",
+    input_user = models.ForeignKey(
+        get_user_model(),
         on_delete=models.SET_NULL,
         null=True,
-	)
+        blank=True,
+        verbose_name="Input User"
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At",

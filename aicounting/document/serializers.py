@@ -46,7 +46,7 @@ class DocumentDataSerializer(serializers.ModelSerializer):
 
         # Prepare key items grouped by page
         key_items_by_page = {}
-        for item in obj.key_items.all():
+        for item in obj.key_items.all().order_by('page_number', 'key'):
             page = str(item.page_number)
             if page not in key_items_by_page:
                 key_items_by_page[page] = {}
@@ -54,7 +54,7 @@ class DocumentDataSerializer(serializers.ModelSerializer):
 
         # Prepare line items grouped by page and line
         line_items_by_page = {}
-        for line in obj.line_rows.all():
+        for line in obj.line_rows.all().order_by('page_number', 'line_number'):
             page = str(line.page_number)
             line_num = str(line.line_number)
 

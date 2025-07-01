@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth import get_user_model
 
 class DimAICContact(models.Model):
     """
@@ -6,20 +7,19 @@ class DimAICContact(models.Model):
     Foreign keys have been removed as per request.
     Composite key (unique constraint) added for cust_id and user_id.
     """
-    # Removed primary_key=True from user_id, as unique_together will enforce uniqueness
-    # on the combination of cust_id and user_id, and Django will implicitly add an 'id' primary key.
-    user_id = models.IntegerField(
-        verbose_name="User ID",
-	)
-    # Foreign key to DimAICCustomer, as Cust_Id in DimAICUser links to Cust_Id in DimAICCustomer
-    cust_id = models.ForeignKey(
-        'DimAICCustomer',
+    client_id = models.ForeignKey(
+        'DimAICClient',
         on_delete=models.CASCADE,
-        verbose_name="Customer ID",
+        verbose_name="Client ID",
 	)
-    contact_typ = models.CharField(
+
+    contact_type = models.CharField(
         max_length=5,
         verbose_name="Contact Type",
+        choices=[
+            ('phone', 'phone'),
+            ('email', 'email'),
+        ]
 	)
     contact = models.CharField(
         max_length=100,
@@ -30,12 +30,12 @@ class DimAICContact(models.Model):
 	)
 
     input_user = models.ForeignKey(
-        "DimAICUser",
+        get_user_model(),
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name="Input User",
-	)
+        verbose_name="Input User"
+    )
 
     created_at = models.DateTimeField(
         auto_now_add=True, 
@@ -55,9 +55,5 @@ class DimAICContact(models.Model):
         verbose_name_plural = "AIC Contacts"
         # Enforce uniqueness on the combination of cust_id and user_id to act as a composite key.
         # Django will automatically create an 'id' AutoField as the primary key for the table.
-        unique_together = ('cust_id', 'user_id',)
-
-    def __str__(self):
-        # String representation of the object, useful for the Django admin
-        return f"Contact for User ID: {self.user_id} (Customer: {self.cust_id})"
+        unique_together = ('client_id', 'contact_type',)
 
