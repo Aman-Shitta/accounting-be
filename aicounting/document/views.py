@@ -5,7 +5,7 @@ from rest_framework import status
 from django.conf import settings
 from pathlib import Path
 from document.models.dim_aic_doc_model import DimAICDocument
-from document.tasks import process_uploaded_document
+from document.tasks import process_uploaded_document, classify_document
 from aicounting.response import create_api_response
 
 from document.serializers import (
@@ -89,7 +89,6 @@ class DocumentGetDataView(APIView):
     """
     serializer_class = DocumentDataSerializer
 
-
     def get_object(self, doc_id):
         return DimAICDocument.objects.filter(doc_id=doc_id).first()
     
@@ -98,11 +97,41 @@ class DocumentGetDataView(APIView):
         doc_id = kwargs.get("doc_id")
         document = self.get_object(doc_id)
 
+        if not document:
+            return create_api_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Document Not present",
+            )
         serializer = self.serializer_class(document)
 
         return create_api_response(
                 status_code=status.HTTP_200_OK,
                 message="Document Data Fetched",
                 data=serializer.data
+            )
+     
+
+
+class DocumentClassifyView(APIView):
+
+    def get_object(self, doc_id):
+        return DimAICDocument.objects.filter(doc_id=doc_id, doc_typ="bank_statement").first()
+    
+    def get(self, request, *args, **kwargs):
+
+        doc_id = kwargs.get("doc_id")
+        document = self.get_object(doc_id)
+        
+        if not document:
+            return create_api_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Document Not present",
+            )
+        
+        classify_document(document.doc_id)
+
+        return create_api_response(
+                status_code=status.HTTP_200_OK,
+                message="Document Classified",
             )
      

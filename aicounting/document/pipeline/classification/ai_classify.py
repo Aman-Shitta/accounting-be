@@ -35,7 +35,7 @@ class OpeAIClient:
                     }
             )
             thread_id = thread.id
-            print(f"Created Thread: {self.thread_id}")
+            print(f"Created Thread: {thread_id}")
             return thread_id
         except Exception as e:
             print(f"Error creating thread: {e}")
@@ -113,7 +113,7 @@ class GLClassifier(OpeAIClient):
         super().__init__(api_key)
         self.assistant_id = assistant_id
         self.vector_store_ids = vector_store_ids or []
-        self.thread_id = None
+        self.thread_id = "thread_VA0GNrzQPEMRaywviC3TY1NR"
 
     def format_line_items(self, line_items: dict):
         header = "id|description|transaction_type\n"
@@ -154,7 +154,7 @@ class GLClassifier(OpeAIClient):
             return {}
 
         if not self.thread_id:
-            self.create_thread()
+            self.create_thread(self.vector_store_ids)
 
         results = {}
 
