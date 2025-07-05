@@ -6,6 +6,7 @@ from document.models import (
     FactAICDocLineItem
 )
 
+
 from django.core.files.storage import default_storage
 
 
@@ -47,7 +48,7 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         # Prepare key items grouped by page
         key_items_by_page = {}
         for item in obj.key_items.all():
-            page = str(item.page_number)
+            page = item.page_number
             if page not in key_items_by_page:
                 key_items_by_page[page] = {}
             key_items_by_page[page][item.key] = item.value
@@ -55,8 +56,8 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         # Prepare line items grouped by page and line
         line_items_by_page = {}
         for line in obj.line_rows.all():
-            page = str(line.page_number)
-            line_num = str(line.line_number)
+            page = line.page_number
+            line_num = line.line_number
 
             if page not in line_items_by_page:
                 line_items_by_page[page] = {}
@@ -78,5 +79,15 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         return data
 
 
+class LineItemSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    value = serializers.CharField(allow_null=True)
 
+class LineUpdateSerializer(serializers.Serializer):
+    page = serializers.CharField()
+    line = serializers.CharField()
+    item = serializers.DictField(child=serializers.CharField(allow_null=True))
+
+class VerifiedUpdateSerializer(serializers.Serializer):
+    verified = serializers.BooleanField()
 

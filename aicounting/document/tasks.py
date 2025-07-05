@@ -1,4 +1,4 @@
-import os
+import ast
 import json
 from pathlib import Path
 from celery import shared_task
@@ -19,6 +19,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
     if not file.exists():
         return
 
+    doc = None
     try:
         doc = DimAICDocument.objects.get(doc_id=doc_id)
 
@@ -77,7 +78,38 @@ def process_uploaded_document(file_path: str, doc_id: int):
                     )
 
         # Update doc status
-        doc.upload_stat = "processed"
+        doc.upload_stat = "extracted"
+        doc.save()
+
+        classified_pages_data = classify_document(doc_id)
+
+
+        for page_num, classified_data in classified_pages_data.items():
+            for line_item in classified_data:
+                line_num = line_item.get("id")
+                gl_account = line_item.get("gl_account")
+                gl_account_desc = line_item.get("gl_account_desc")
+
+                line_obj = FactAICDocLine.objects.filter(
+                    doc=doc,
+                    line_number=int(line_num),
+                    page_number=int(page_num)
+                ).first()
+
+                FactAICDocLineItem.objects.create(
+                    line=line_obj,
+                    key="gl_account",
+                    value=gl_account
+                )
+
+                FactAICDocLineItem.objects.create(
+                    line=line_obj,
+                    key="gl_account_desc",
+                    value=gl_account_desc
+                )
+
+        # Update doc status
+        doc.upload_stat = "classiified"
         doc.save()
 
     except Exception as e:
@@ -98,14 +130,12 @@ def classify_document(doc_id: str):
 
     try:
         classifier_assistant = GLClassifier(
-            api_key="sk-", 
-            assistant_id="asst_9SbHYIoj1MnurVtE9UkoAWke",
+            api_key="REDACTED-OPENAI-API-KEY", 
+            assistant_id="asst_kU6Jl2GsjwGUu3Qof5IkxnIh",
             vector_store_ids=["vs_6862ae7e625c81918ece89a316d1861b"]
         )
-
-        # document_id = "a2ac600b-5d1b-42cd-a34e-077a6b29a2d3"
-
-        classifier_assistant.classify(doc_id)
+        classified_data = classifier_assistant.classify(doc_id)
+        return classified_data
 
     except Exception as e:
         print("Error: ",  {str(e)})

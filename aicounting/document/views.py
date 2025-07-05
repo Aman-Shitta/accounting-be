@@ -49,6 +49,7 @@ class DocumentUploadView(APIView):
 
         doc.file_loc=f"{doc.doc_id}/{str(uploaded_file.name)}"
         doc.save()
+
         # Trigger celery job
         process_uploaded_document.delay(str(saved_path), doc.doc_id)
         
@@ -109,29 +110,3 @@ class DocumentGetDataView(APIView):
                 message="Document Data Fetched",
                 data=serializer.data
             )
-     
-
-
-class DocumentClassifyView(APIView):
-
-    def get_object(self, doc_id):
-        return DimAICDocument.objects.filter(doc_id=doc_id, doc_typ="bank_statement").first()
-    
-    def get(self, request, *args, **kwargs):
-
-        doc_id = kwargs.get("doc_id")
-        document = self.get_object(doc_id)
-        
-        if not document:
-            return create_api_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                message="Document Not present",
-            )
-        
-        classify_document(document.doc_id)
-
-        return create_api_response(
-                status_code=status.HTTP_200_OK,
-                message="Document Classified",
-            )
-     
