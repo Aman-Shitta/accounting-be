@@ -77,6 +77,19 @@ def process_uploaded_document(file_path: str, doc_id: int):
                         value=v
                     )
 
+                # create empty key for gl ref
+                FactAICDocLineItem.objects.create(
+                    line=line_obj,
+                    key="gl_account",
+                    value=gl_account
+                )
+
+                FactAICDocLineItem.objects.create(
+                    line=line_obj,
+                    key="gl_account_desc",
+                    value=gl_account_desc
+                )
+
         # Update doc status
         doc.upload_stat = "extracted"
         doc.save()
@@ -96,20 +109,20 @@ def process_uploaded_document(file_path: str, doc_id: int):
                     page_number=int(page_num)
                 ).first()
 
-                FactAICDocLineItem.objects.create(
+                FactAICDocLineItem.objects.update_or_create(
                     line=line_obj,
                     key="gl_account",
-                    value=gl_account
+                    defaults={"value": gl_account}
                 )
 
-                FactAICDocLineItem.objects.create(
+                FactAICDocLineItem.objects.update_or_create(
                     line=line_obj,
                     key="gl_account_desc",
-                    value=gl_account_desc
+                    defaults={"value": gl_account_desc}
                 )
 
         # Update doc status
-        doc.upload_stat = "classiified"
+        doc.upload_stat = "classified"
         doc.save()
 
     except Exception as e:

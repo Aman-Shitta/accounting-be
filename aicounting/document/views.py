@@ -5,12 +5,21 @@ from rest_framework import status
 from django.conf import settings
 from pathlib import Path
 from document.models.dim_aic_doc_model import DimAICDocument
-from document.tasks import process_uploaded_document, classify_document
+from document.tasks import process_uploaded_document
 from aicounting.response import create_api_response
+
+from rest_framework.views import APIView
+\
+from rest_framework import status, permissions
+from django.shortcuts import get_object_or_404
+
+from document.models import FactAICDocLine
 
 from document.serializers import (
     DocumentListSerializer,
-    DocumentDataSerializer
+    DocumentDataSerializer,
+    LineUpdateModelSerializer,
+    LineUpdateModelSerializer
 )
 
 
@@ -110,3 +119,26 @@ class DocumentGetDataView(APIView):
                 message="Document Data Fetched",
                 data=serializer.data
             )
+
+
+
+class LineItemUpdateAPIView(APIView):
+    # permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, line_id):
+        line = get_object_or_404(FactAICDocLine, pk=line_id)
+        serializer = LineUpdateModelSerializer(line, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            result = serializer.save()
+            return create_api_response(
+                status_code=status.HTTP_200_OK,
+                message="Line Item Updated",
+                data=result
+            )
+
+        return create_api_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            message="Something went wrong",
+            data=serializer.errors
+        )
