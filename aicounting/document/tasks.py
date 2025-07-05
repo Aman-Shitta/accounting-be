@@ -81,13 +81,13 @@ def process_uploaded_document(file_path: str, doc_id: int):
                 FactAICDocLineItem.objects.create(
                     line=line_obj,
                     key="gl_account",
-                    value=gl_account
+                    value="N/A"
                 )
 
                 FactAICDocLineItem.objects.create(
                     line=line_obj,
                     key="gl_account_desc",
-                    value=gl_account_desc
+                    value="N/A"
                 )
 
         # Update doc status
