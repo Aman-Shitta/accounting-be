@@ -28,6 +28,29 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
 
 
+class KeyItemSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = FactAICDocKeyItem
+        fields = ["id", "page_number", "key", "value"]
+
+
+class LineValueSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = FactAICDocLineItem
+        fields = ["key", "value"]
+
+
+class LineRowSerializer(serializers.ModelSerializer):
+    # id = serializers.IntegerField(read_only=True)
+    values = LineValueSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactAICDocLine
+        fields = ["id", "page_number", "line_number", "values"]
+
 class DocumentDataSerializer(serializers.ModelSerializer):
     extracted_data = serializers.SerializerMethodField()
     document_url = serializers.SerializerMethodField()
@@ -45,30 +68,29 @@ class DocumentDataSerializer(serializers.ModelSerializer):
     def get_extracted_data(self, obj):
         data = {}
 
-        # Prepare key items grouped by page
+        # Serialize using DRF
+        key_items = KeyItemSerializer(obj.key_items.all(), many=True).data
+        line_rows = LineRowSerializer(obj.line_rows.all(), many=True).data
+
+        # Group key items by page
         key_items_by_page = {}
-        for item in obj.key_items.all():
-            page = item.page_number
-            if page not in key_items_by_page:
-                key_items_by_page[page] = {}
-            key_items_by_page[page][item.key] = item.value
+        for item in key_items:
+            page = item["page_number"]
+            key_items_by_page.setdefault(page, {})[item["key"]] = item["value"]
 
-        # Prepare line items grouped by page and line
+        # Group line items by page and line
         line_items_by_page = {}
-        for line in obj.line_rows.all():
-            page = line.page_number
-            line_num = line.line_number
+        for row in line_rows:
+            page = row["page_number"]
+            line = row["line_number"]
+            line_dict = {"id": row["id"]}
 
-            if page not in line_items_by_page:
-                line_items_by_page[page] = {}
+            for val in row["values"]:
+                line_dict[val["key"]] = val["value"]
 
-            if line_num not in line_items_by_page[page]:
-                line_items_by_page[page][line_num] = {}
+            line_items_by_page.setdefault(page, {})[line] = line_dict
 
-            for val in line.values.all():
-                line_items_by_page[page][line_num][val.key] = val.value
-
-        # Combine key and line items per page
+        # Combine both into the final structure
         all_pages = set(key_items_by_page.keys()) | set(line_items_by_page.keys())
         for page in sorted(all_pages, key=int):
             data[page] = {
@@ -79,15 +101,32 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         return data
 
 
-class LineItemSerializer(serializers.Serializer):
-    key = serializers.CharField()
-    value = serializers.CharField(allow_null=True)
+class LineUpdateModelSerializer(serializers.ModelSerializer):
 
-class LineUpdateSerializer(serializers.Serializer):
-    page = serializers.CharField()
-    line = serializers.CharField()
-    item = serializers.DictField(child=serializers.CharField(allow_null=True))
+    class Meta:
+        model = FactAICDocLine
+        fields = ['id']
 
-class VerifiedUpdateSerializer(serializers.Serializer):
-    verified = serializers.BooleanField()
+    def to_internal_value(self, data):
 
+        return data
+
+    def update(self, instance, validated_data):
+        updated_items = []
+        skipped_keys = []
+
+        existing_items = {item.key: item for item in instance.values.all()}
+
+        for key, new_value in validated_data.items():
+            if key in existing_items:
+                item_obj = existing_items[key]
+                item_obj.value = new_value
+                item_obj.save()
+                updated_items.append(item_obj)
+            else:
+                skipped_keys.append(key)
+
+        return {
+            "updated": LineValueSerializer(updated_items, many=True).data,
+            "skipped_keys": skipped_keys
+        }
