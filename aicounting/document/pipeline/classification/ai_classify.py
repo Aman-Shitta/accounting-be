@@ -1,3 +1,4 @@
+import ast
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -34,9 +35,8 @@ class OpeAIClient:
                         }
                     }
             )
-            thread_id = thread.id
-            print(f"Created Thread: {thread_id}")
-            return thread_id
+            self.thread_id = thread.id
+            print(f"Created Thread: {self.thread_id}")
         except Exception as e:
             print(f"Error creating thread: {e}")
             return None
@@ -74,14 +74,11 @@ class OpeAIClient:
                 thread_id=self.thread_id, assistant_id=self.assistant_id
             )
 
-            with tqdm(desc="Waiting for Run", total=0, bar_format="{l_bar}{bar} | {elapsed}") as pbar:
-                while run.status in ['queued', 'in_progress']:
-                    time.sleep(2)
-                    run = self.client.beta.threads.runs.retrieve(
-                        thread_id=self.thread_id, run_id=run.id
-                    )
-                    pbar.set_description(f"Status: {run.status}")
-                    pbar.update(1)
+            while run.status in ['queued', 'in_progress']:
+                time.sleep(2)
+                run = self.client.beta.threads.runs.retrieve(
+                    thread_id=self.thread_id, run_id=run.id
+                )
 
             if run.status != "completed":
                 print(f"Run failed with status: {run.status}")
@@ -113,18 +110,39 @@ class GLClassifier(OpeAIClient):
         super().__init__(api_key)
         self.assistant_id = assistant_id
         self.vector_store_ids = vector_store_ids or []
-        self.thread_id = "thread_VA0GNrzQPEMRaywviC3TY1NR"
+        self.thread_id = None
 
-    def format_line_items(self, line_items: dict):
-        header = "id|description|transaction_type\n"
+    def format_line_items(self, line_items: dict) -> str:
+        """
+        Formats line items into a clean, pipe-separated table string suitable for LLM input.
+
+        Args:
+            line_items (dict): Dictionary with line numbers as keys.
+                Each value is a dict containing:
+                    - description (str)
+                    - debit_amount (float or None)
+                    - credit_amount (float or None)
+
+        Returns:
+            str: A table-like string representation, e.g.,
+                id | description         | transaction_type
+                -------------------------------------------
+                1  | Office Supplies     | debit
+                2  | Product Sales       | credit
+        """
         lines = []
+        header = f"{'id':<3} | {'description':<20} | transaction_type"
+        separator = "-" * len(header)
+        lines.append(header)
+        lines.append(separator)
 
-        for line_num, line_obj in line_items.items():
-            txn_type = "debit" if line_obj.get('debit_amount') else "credit"
-            line = f"{line_num}|{line_obj.get('description')}|{txn_type}"
-            lines.append(line)
+        for line_id, line in line_items.items():
+            txn_type = "debit" if line.get("debit_amount") else "credit"
+            desc = line.get("description", "").strip()
+            line_str = f"{line_id:<3} | {desc:<20} | {txn_type}"
+            lines.append(line_str)
 
-        return header + "\n".join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def fetch_extracted_data(document_id: str):
@@ -147,14 +165,14 @@ class GLClassifier(OpeAIClient):
             return None
 
     def classify(self, document_id: str):
+
         extracted_data = self.fetch_extracted_data(document_id)
 
         if not extracted_data:
             print("No extracted data found.")
             return {}
 
-        if not self.thread_id:
-            self.create_thread(self.vector_store_ids)
+        self.create_thread(self.vector_store_ids)
 
         results = {}
 
@@ -163,33 +181,19 @@ class GLClassifier(OpeAIClient):
             if not line_items:
                 continue
 
-            print(f"\n Processing Page {page_num} with {len(line_items)} lines...")
-
             payload = self.format_line_items(line_items)
-            token_count = self.count_tokens(payload)
-            print(f"Token count for page {page_num}: {token_count}")
 
-            print("payload :: ", payload)
-            chunk_size = 15
-            max_tokens = 25000
-            page_results = []
+            page_results = self.send_to_thread(payload)
 
-            # if token_count <= max_tokens:
-            #     result = self.send_to_thread(payload)
-            #     page_results.extend(result or [])
-            # else:
-            #     total_chunks = math.ceil(len(line_items) / chunk_size)
-            #     keys = list(line_items.keys())
+            print("paylaod : ", payload)
+            print("page_results :: ", page_num, page_results)
 
-            #     for i in range(total_chunks):
-            #         chunk_keys = keys[i * chunk_size : (i + 1) * chunk_size]
-            #         chunk_items = {k: line_items[k] for k in chunk_keys}
-            #         chunk_payload = self.format_line_items(chunk_items)
+            if page_results and isinstance(page_results, list) and isinstance(ast.literal_eval(page_results[0]), dict):
+                classified_data = ast.literal_eval(page_results[0]).get("schema")
+                results[page_num] = classified_data
+            
+            time.sleep(5)
+            # rest the assistant API to process correectly
 
-            #         print(f"Sending chunk {i + 1}/{total_chunks}...")
-            #         result = self.send_to_thread(chunk_payload)
-            #         page_results.extend(result or [])
-
-            results[page_num] = page_results
-
+        self.delete_thread(self.thread_id)
         return results

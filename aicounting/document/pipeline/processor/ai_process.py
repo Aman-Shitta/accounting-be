@@ -87,9 +87,14 @@ class DocumentProcessor:
                 self.validator = validator_cls(self.client, self.model)
                 self._validate_data(file_bytes)
 
-            return self.page_data, self.control_totals
         except Exception as e:
-            raise RuntimeError(f"Failed to process document: {str(e)}")
+            print(f"Failed to process document: {str(e)}")
+            import os, sys
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+
+        return self.page_data, self.control_totals
 
     def process_pages(self, file_bytes: bytes, mime_type: str):
         from document.pipeline.utils import split_pdf_to_pages
@@ -112,7 +117,6 @@ class DocumentProcessor:
             )
 
             raw = ""
-            print("stream_response :: ", stream_response)
             for resp in stream_response:
                 raw += resp.text
 
@@ -132,17 +136,20 @@ class DocumentProcessor:
             previous_page_context = str(processed_data)
 
     def _clean_json_string(self, raw: str) -> str:
-        # Remove Markdown fences and leading/trailing whitespace
-        raw = re.sub(r'^```(?:json)?', '', raw)
-        raw = raw.strip('` \n')
+        try:
+            # Remove Markdown fences and leading/trailing whitespace
+            raw = re.sub(r'^```(?:json)?', '', raw)
+            raw = raw.strip('` \n')
 
-        # Normalize line endings
-        raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
+            # Normalize line endings
+            raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
 
-        raw = raw.replace("None", "null")
+            raw = raw.replace("None", "null")
 
-        # Remove control characters (except tab and newline)
-        raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
+            # Remove control characters (except tab and newline)
+            raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
+        except Exception as e:
+            print(f"Cleaning JSON: {e}")
 
         return raw
 

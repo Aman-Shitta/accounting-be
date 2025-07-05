@@ -69,7 +69,6 @@ class BankStatementValidator:
 
                 line_items = data.get("line_items", [])
                 for item in line_items:
-                    print("item :: ", item)
                     # Use get() and convert to float if possible; ignore if conversion fails.
                     debit_value = item.get("debit_amount", "0")
                     if debit_value:
