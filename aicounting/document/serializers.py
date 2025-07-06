@@ -93,9 +93,16 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         # Combine both into the final structure
         all_pages = set(key_items_by_page.keys()) | set(line_items_by_page.keys())
         for page in sorted(all_pages, key=int):
+            line_items = line_items_by_page.get(page, {})
+
+            # Sort line numbers by int
+            sorted_line_items = {
+                k: line_items[k] for k in sorted(line_items.keys())
+            }
+
             data[page] = {
                 "key_items": key_items_by_page.get(page, {}),
-                "line_items": line_items_by_page.get(page, {})
+                "line_items": sorted_line_items
             }
 
         return data
@@ -130,3 +137,67 @@ class LineUpdateModelSerializer(serializers.ModelSerializer):
             "updated": LineValueSerializer(updated_items, many=True).data,
             "skipped_keys": skipped_keys
         }
+
+
+from rest_framework import serializers
+from django.db import transaction
+from django.db.models import F
+from document.models import DimAICDocument, FactAICDocLine, FactAICDocLineItem
+
+class LineItemCreateSerializer(serializers.Serializer):
+    page_number = serializers.IntegerField()
+    line_number = serializers.IntegerField()
+    # dynamic keys handled in validate()
+
+    def to_internal_value(self, data):
+        self.page_number = data.get('page_number')
+        self.line_number = data.get('line_number')
+
+        # Extract everything else as dynamic
+        self.dynamic_fields = {
+            k: v for k, v in data.items() if k not in ['page_number', 'line_number']
+        }
+        return data
+
+    def validate(self, data):
+        return data
+
+    @transaction.atomic
+    def save(self, **kwargs):
+        doc = self.context.get('doc')
+        page_number = self.page_number
+        line_number = self.line_number
+        dynamic_fields = self.dynamic_fields
+
+        existing_lines = FactAICDocLine.objects.filter(doc=doc, page_number=page_number)
+
+        if existing_lines.count() < line_number:
+            line_number = existing_lines.count() + 1
+        else:
+            existing_lines.filter(line_number__gte=line_number).update(
+                line_number=F('line_number') + 1
+            )
+
+        # Create line
+        new_line = FactAICDocLine.objects.create(
+            doc=doc,
+            page_number=page_number,
+            line_number=line_number
+        )
+
+        # Create items
+        created_items = []
+        for key, value in dynamic_fields.items():
+            item = FactAICDocLineItem.objects.create(
+                line=new_line,
+                key=key,
+                value=value
+            )
+            created_items.append({
+                "id": item.id,
+                "key": key,
+                "value": value
+            })
+
+        return LineValueSerializer(created_items, many=True).data
+    

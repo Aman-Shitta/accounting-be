@@ -125,8 +125,8 @@ class DocumentGetDataView(APIView):
 class LineItemUpdateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
 
-    def patch(self, request, line_id):
-        line = get_object_or_404(FactAICDocLine, pk=line_id)
+    def patch(self, request, *args, **kwargs):
+        line = get_object_or_404(FactAICDocLine, pk=kwargs.get('line_id'), doc__id=kwargs.get('doc_id'))
         serializer = LineUpdateModelSerializer(line, data=request.data, partial=True)
 
         if serializer.is_valid():
@@ -141,4 +141,31 @@ class LineItemUpdateAPIView(APIView):
             status_code=status.HTTP_400_BAD_REQUEST,
             message="Something went wrong",
             data=serializer.errors
+        )
+
+from rest_framework.views import APIView
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from document.models import DimAICDocument
+from document.serializers import LineItemCreateSerializer
+
+class LineItemCreateAPIView(APIView):
+    # permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, doc_id):
+        doc = get_object_or_404(DimAICDocument, doc_id=doc_id)
+
+        serializer = LineItemCreateSerializer(data=request.data, context={"doc": doc})
+        if serializer.is_valid():
+            result = serializer.save()
+            return create_api_response(
+                message="Line created successfully",
+                data=result,
+                status_code=status.HTTP_201_CREATED
+            )
+
+        return create_api_response(
+            message="Invalid data",
+            data= serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
         )
