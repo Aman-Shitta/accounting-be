@@ -126,7 +126,7 @@ class LineItemUpdateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request, *args, **kwargs):
-        line = get_object_or_404(FactAICDocLine, pk=kwargs.get('line_id'), doc__id=kwargs.get('doc_id'))
+        line = get_object_or_404(FactAICDocLine, pk=kwargs.get('line_id'), doc__doc_id=kwargs.get('doc_id'))
         serializer = LineUpdateModelSerializer(line, data=request.data, partial=True)
 
         if serializer.is_valid():
