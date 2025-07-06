@@ -1,14 +1,16 @@
 from rest_framework import serializers
+
+from django.db import transaction
+from django.db.models import F
+
+from django.core.files.storage import default_storage
+
 from document.models import (
     DimAICDocument,
     FactAICDocKeyItem,
     FactAICDocLine,
     FactAICDocLineItem
 )
-
-
-from django.core.files.storage import default_storage
-
 
 class DocumentListSerializer(serializers.ModelSerializer):
 
@@ -25,7 +27,6 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
     def get_doc_type(self, instance):
         return instance.doc_typ
-
 
 
 class KeyItemSerializer(serializers.ModelSerializer):
@@ -50,6 +51,7 @@ class LineRowSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactAICDocLine
         fields = ["id", "page_number", "line_number", "values"]
+
 
 class DocumentDataSerializer(serializers.ModelSerializer):
     extracted_data = serializers.SerializerMethodField()
@@ -139,11 +141,6 @@ class LineUpdateModelSerializer(serializers.ModelSerializer):
         }
 
 
-from rest_framework import serializers
-from django.db import transaction
-from django.db.models import F
-from document.models import DimAICDocument, FactAICDocLine, FactAICDocLineItem
-
 class LineItemCreateSerializer(serializers.Serializer):
     page_number = serializers.IntegerField()
     line_number = serializers.IntegerField()
@@ -200,4 +197,4 @@ class LineItemCreateSerializer(serializers.Serializer):
             })
 
         return LineValueSerializer(created_items, many=True).data
-    
+ 

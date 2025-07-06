@@ -1,15 +1,9 @@
+from pathlib import Path
+from django.conf import settings
+
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
 
-from rest_framework import status
-from django.conf import settings
-from pathlib import Path
-from document.models.dim_aic_doc_model import DimAICDocument
-from document.tasks import process_uploaded_document
-from aicounting.response import create_api_response
-
-from rest_framework.views import APIView
-\
 from rest_framework import status, permissions
 from django.shortcuts import get_object_or_404
 
@@ -19,8 +13,14 @@ from document.serializers import (
     DocumentListSerializer,
     DocumentDataSerializer,
     LineUpdateModelSerializer,
-    LineUpdateModelSerializer
+    LineUpdateModelSerializer,
+    LineItemCreateSerializer
 )
+
+from document.models.dim_aic_doc_model import DimAICDocument
+from document.tasks import process_uploaded_document
+from aicounting.response import create_api_response
+
 
 
 class DocumentUploadView(APIView):
@@ -121,7 +121,6 @@ class DocumentGetDataView(APIView):
             )
 
 
-
 class LineItemUpdateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
 
@@ -143,11 +142,6 @@ class LineItemUpdateAPIView(APIView):
             data=serializer.errors
         )
 
-from rest_framework.views import APIView
-from rest_framework import status
-from django.shortcuts import get_object_or_404
-from document.models import DimAICDocument
-from document.serializers import LineItemCreateSerializer
 
 class LineItemCreateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
@@ -169,3 +163,4 @@ class LineItemCreateAPIView(APIView):
             data= serializer.errors,
             status_code=status.HTTP_400_BAD_REQUEST
         )
+
