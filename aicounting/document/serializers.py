@@ -93,9 +93,16 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         # Combine both into the final structure
         all_pages = set(key_items_by_page.keys()) | set(line_items_by_page.keys())
         for page in sorted(all_pages, key=int):
+            line_items = line_items_by_page.get(page, {})
+
+            # Sort line numbers by int
+            sorted_line_items = {
+                k: line_items[k] for k in sorted(line_items.keys())
+            }
+
             data[page] = {
                 "key_items": key_items_by_page.get(page, {}),
-                "line_items": line_items_by_page.get(page, {})
+                "line_items": sorted_line_items
             }
 
         return data
