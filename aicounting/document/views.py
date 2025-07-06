@@ -6,6 +6,9 @@ from rest_framework.parsers import MultiPartParser
 
 from rest_framework import status, permissions
 from django.shortcuts import get_object_or_404
+from django.db import transaction
+from django.db.models import F
+
 
 from document.models import FactAICDocLine
 
@@ -164,3 +167,30 @@ class LineItemCreateAPIView(APIView):
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
+
+class LineItemDeleteAPIView(APIView):
+    # permission_classes = [permissions.IsAuthenticated]
+
+    @transaction.atomic
+    def delete(self, request, doc_id, line_id):
+        doc = get_object_or_404(DimAICDocument, doc_id=doc_id)
+        line = get_object_or_404(FactAICDocLine, pk=line_id, doc=doc)
+
+        page_number = line.page_number
+        line_number = line.line_number
+
+        # Delete the line
+        line.delete()
+
+        # Adjust other line_numbers on the same page
+        FactAICDocLine.objects.filter(
+            doc=doc,
+            page_number=page_number,
+            line_number__gt=line_number
+        ).update(line_number=F('line_number') - 1)
+
+        return create_api_response(
+            message="Line deleted",
+            data={"deleted_line_id": line_id},
+            status_code=status.HTTP_200_OK
+        )
