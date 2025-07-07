@@ -1,4 +1,4 @@
-import ast
+from django.conf import settings
 import json
 from pathlib import Path
 from celery import shared_task
@@ -143,7 +143,7 @@ def classify_document(doc_id: str):
 
     try:
         classifier_assistant = GLClassifier(
-            api_key="REDACTED-OPENAI-API-KEY", 
+            api_key=settings.OPENAI_API_KEY, 
             assistant_id="asst_kU6Jl2GsjwGUu3Qof5IkxnIh",
             vector_store_ids=["vs_6862ae7e625c81918ece89a316d1861b"]
         )

@@ -144,3 +144,4 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/1"    # Redis as backend
 
 # Logging
 from .app_logging import LOGGING
+from .env_settings import *

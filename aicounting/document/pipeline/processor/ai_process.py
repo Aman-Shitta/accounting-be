@@ -13,6 +13,8 @@ from document.pipeline.prompter import (
     
 )
 
+from django.conf import settings
+
 class DocumentProcessor:
     def __init__(self, config: Configuration):
         self.client = None
@@ -24,7 +26,7 @@ class DocumentProcessor:
         self.prompt = prepare_prompt(config)
 
         self.doc_config = config
-        self.api_key = "REDACTED-GOOGLE-API-KEY"
+        self.api_key = settings.GEMINI_API_KEY
     
         self.init_ai_clientel()
         self.control_totals = {}
