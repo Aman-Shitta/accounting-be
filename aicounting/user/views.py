@@ -2,6 +2,9 @@ from rest_framework import generics, permissions
 from .models import DimAICClient
 from .serializers import ClientSerializer, ClientRetrieveSerializer
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class ClientCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]

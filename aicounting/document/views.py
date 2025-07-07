@@ -24,6 +24,8 @@ from document.models.dim_aic_doc_model import DimAICDocument
 from document.tasks import process_uploaded_document
 from aicounting.response import create_api_response
 
+import logging
+logger = logging.getLogger(__name__)
 
 
 class DocumentUploadView(APIView):

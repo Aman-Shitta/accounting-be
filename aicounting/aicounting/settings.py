@@ -140,3 +140,7 @@ MEDIA_URL = "/media/"
 # Celery Configuration
 CELERY_BROKER_URL = "redis://localhost:6379/0"       # Redis as broker
 CELERY_RESULT_BACKEND = "redis://localhost:6379/1"    # Redis as backend
+
+
+# Logging
+from .app_logging import LOGGING
