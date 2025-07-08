@@ -65,7 +65,7 @@ class DocumentUploadView(APIView):
         doc.save()
 
         # Trigger celery job
-        process_uploaded_document.run(str(saved_path), doc.doc_id)
+        process_uploaded_document.delay(str(saved_path), doc.doc_id)
         
         doc.upload_stat = "processing"
         doc.save()
