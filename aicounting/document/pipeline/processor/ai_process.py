@@ -14,6 +14,8 @@ from document.pipeline.prompter import (
 )
 
 from django.conf import settings
+import sys
+import logging
 
 class DocumentProcessor:
     def __init__(self, config: Configuration):
@@ -105,39 +107,52 @@ class DocumentProcessor:
         previous_page_context = ""
 
         for i, page_bytes in enumerate(page_bytes_list):
-            content = [
-                types.Part.from_bytes(
-                    data=page_bytes,
-                    mime_type=mime_type,
-                ),
-                f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
-            ]
-
-            stream_response = self.client.models.generate_content_stream(
-                model=self.model,
-                contents=[content],
-            )
-
-            raw = ""
-            for resp in stream_response:
-                raw += resp.text
-
-            clean_json_str = self._clean_json_string(raw)
             try:
+                content = [
+                    types.Part.from_bytes(
+                        data=page_bytes,
+                        mime_type=mime_type,
+                    ),
+                    f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
+                ]
+
+                stream_response = self.client.models.generate_content_stream(
+                    model=self.model,
+                    contents=[content],
+                )
+
+                raw = ""
+                for resp in stream_response:
+                    raw += resp.text
+
+                clean_json_str = self._clean_json_string(raw)
+
                 parsed_data = json.loads(clean_json_str)
             except json.JSONDecodeError as e:
-                print(f"JSONDecodeError: {e}")
-                print(f"Raw response: {raw}")
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
                 parsed_data = {}
 
-            processed_data = self._process_gemini_output(parsed_data)
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Exception: {e}")
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response: {raw}")
+                parsed_data = {}
 
-            # print(f"processed_data for page {i} :: ", processed_data)
+            try:
+                print(f"[DEBUG] Page {i+1}: Parsed data before processing: {parsed_data}")
+                processed_data = self._process_gemini_output(parsed_data)
 
-            self.page_data.append({"page_{}".format(i + 1): processed_data})
+                self.page_data.append({"page_{}".format(i + 1): processed_data})
 
-            # Update previous page context (customize as needed)
-            previous_page_context = str(processed_data)
+                previous_page_context = str(processed_data)
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Exception during processing: {e}")
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response: {raw}")
+                print(f"[ERROR][Line {exc_tb.tb_lineno}] Parsed data: {parsed_data}")
+                parsed_data = {}
 
     def _clean_json_string(self, raw: str) -> str:
         try:
@@ -153,7 +168,9 @@ class DocumentProcessor:
             # Remove control characters (except tab and newline)
             raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
         except Exception as e:
-            print(f"Cleaning JSON: {e}")
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print(f"[ERROR][Line {exc_tb.tb_lineno}] Cleaning JSON: {e}")
+            print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw input: {raw}")
 
         return raw
 
