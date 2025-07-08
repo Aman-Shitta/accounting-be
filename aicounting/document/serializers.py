@@ -51,6 +51,16 @@ class LineRowSerializer(serializers.ModelSerializer):
     class Meta:
         model = FactAICDocLine
         fields = ["id", "page_number", "line_number", "values"]
+    
+    def to_representation(self, instance):
+        serialized_data = super().to_representation(instance)
+        line_items = serialized_data.pop("values", [])
+
+        # Flatten key-value pairs into the top-level dict
+        flattened = {item["key"]: item["value"] for item in line_items}
+        serialized_data.update(flattened)
+
+        return serialized_data
 
 
 class DocumentDataSerializer(serializers.ModelSerializer):
@@ -74,6 +84,7 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         key_items = KeyItemSerializer(obj.key_items.all(), many=True).data
         line_rows = LineRowSerializer(obj.line_rows.all(), many=True).data
 
+
         # Group key items by page
         key_items_by_page = {}
         for item in key_items:
@@ -83,14 +94,10 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         # Group line items by page and line
         line_items_by_page = {}
         for row in line_rows:
-            page = row["page_number"]
-            line = row["line_number"]
-            line_dict = {"id": row["id"]}
+            page = row.pop("page_number")
+            line = row.pop("line_number")
 
-            for val in row["values"]:
-                line_dict[val["key"]] = val["value"]
-
-            line_items_by_page.setdefault(page, {})[line] = line_dict
+            line_items_by_page.setdefault(page, {})[line] = row
 
         # Combine both into the final structure
         all_pages = set(key_items_by_page.keys()) | set(line_items_by_page.keys())
@@ -135,10 +142,7 @@ class LineUpdateModelSerializer(serializers.ModelSerializer):
             else:
                 skipped_keys.append(key)
 
-        return {
-            "updated": LineValueSerializer(updated_items, many=True).data,
-            "skipped_keys": skipped_keys
-        }
+        return LineRowSerializer(instance).data
 
 
 class LineItemCreateSerializer(serializers.Serializer):
@@ -195,6 +199,8 @@ class LineItemCreateSerializer(serializers.Serializer):
                 "key": key,
                 "value": value
             })
-
-        return LineValueSerializer(created_items, many=True).data
+        
+        serialized_data = LineRowSerializer(new_line).data
+        
+        return serialized_data
  

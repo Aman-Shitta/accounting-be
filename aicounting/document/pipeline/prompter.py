@@ -32,6 +32,14 @@ class Configuration:
             - Account summaries or metadata
             - Visual elements such as headers, logos, footers, or notes
 
+            First, classify this page as one of the following:
+            - `transaction_table`: contains a bank transaction table or structured transaction log
+            - `check_images`: contains visual images of handwritten/printed checks
+            - `summary_table`: a summary list of checks by number
+            - `other`: any non-transactional content (account reconciliation, metadata, blank, etc.)
+
+            If the page is NOT `transaction_table`, do not extract any data.
+
             Your task is to extract **only the transactional account activity** — that is, the list of day-to-day transactions that reflect money being credited or debited from the account. This information might be presented in tabular or non-tabular formats. Accurately extract even if the format is varied or inconsistent across pages.
 
             **INCLUDE only these types of entries (per row or record):**
@@ -40,14 +48,6 @@ class Configuration:
             - **Debit** amount (money withdrawn or spent)
             - **Credit** amount (money received)
             - **Balance** (optional, if available)
-
-            **EXCLUDE the following entirely:**
-            - Any cheque-related records (including cheque numbers, scan images, payees)
-            - Deposit slips, scanned receipts, or deposit metadata
-            - Loan or overdraft summaries, account metadata, customer info
-            - Bank logo, footer, headers, and all visual branding elements
-            - Any scanned or handwritten content
-            - Any "non-transactional" block text such as terms, summaries, or notifications
 
             **Additional Instructions:**
             - Do not attempt to OCR scanned cheque or deposit images.
@@ -64,6 +64,15 @@ class Configuration:
 
             Focus strictly on daily account activity that reflects money movement.
             Skip everything else that is not a transactional statement.
+
+            Each page may contain different types of content, such as:
+            - Valid transaction records (structured tabular format with date, description, debit/credit)
+            - Check images, scanned or handwritten text
+            - Tables listing checks by number
+            - Deposit slips, account reconciliation instructions
+            - Duplicate summary information (already recorded earlier)
+            - Metadata like balances, account numbers, headers, footers
+
             """
 
         elif doc_type == "credit_card":

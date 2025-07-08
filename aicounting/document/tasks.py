@@ -51,6 +51,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
         
+        breakpoint()
         # Insert Key Items
         for idx, item in enumerate(result):
             page_key = f"page_{idx+1}"

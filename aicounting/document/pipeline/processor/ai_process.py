@@ -132,6 +132,8 @@ class DocumentProcessor:
 
             processed_data = self._process_gemini_output(parsed_data)
 
+            print(f"processed_data for page {i} :: ", processed_data)
+
             self.page_data.append({"page_{}".format(i + 1): processed_data})
 
             # Update previous page context (customize as needed)
