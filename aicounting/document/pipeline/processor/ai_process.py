@@ -33,12 +33,39 @@ class DocumentProcessor:
         self.init_ai_clientel()
         self.control_totals = {}
 
+        self.response_schema = types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "key_items": {
+                    "type": types.Type.OBJECT,
+                    "properties": {
+                        "key": {"type": types.Type.STRING},
+                        "value": {"type": types.Type.STRING},
+                    }                },
+                "line_items": {
+                    "type": types.Type.ARRAY,
+                    "items": {
+                        "type": types.Type.OBJECT,
+                        "properties": {
+                            "date": {"type": types.Type.STRING},
+                            "description": {"type":types.Type.STRING},
+                            "debit_amount": {"type": types.Type.STRING, "nullable": True},
+                            "credit_amount": {"type": types.Type.STRING, "nullable": True}
+                        },
+                        "required": ["date", "description"]
+                    }
+                }
+            },
+            required=["line_items"]
+        )
+
+
     def init_ai_clientel(self):
         self.model = "gemini-2.0-flash"
         self.client = genai.Client(api_key=self.api_key)
 
 
-    def __prepare_validator__(self):
+    def __prepare_summarizer__(self):
         """
         Dynamically imports the validator module and retrieves the validator class
         based on the document type. For example, for doc_type "bank_statement", it
@@ -46,10 +73,10 @@ class DocumentProcessor:
         """
         try:
             # Build the module name: e.g. "validator.bank_statement_validator"
-            module_name = f"document.pipeline.validator.{self.doc_type}"
+            module_name = f"document.pipeline.summarizer.{self.doc_type}"
             mod = importlib.import_module(module_name)
             # Build the expected class name based on naming convention
-            class_name = "".join(word.capitalize() for word in self.doc_type.split("_")) + "Validator"
+            class_name = "".join(word.capitalize() for word in self.doc_type.split("_")) + "Summarizer"
             validator_cls = getattr(mod, class_name, None)
             if not validator_cls:
                 print(f"Validator class '{class_name}' not found in module '{module_name}'.")
@@ -59,37 +86,16 @@ class DocumentProcessor:
             return None
 
 
-    def _validate_data(self, file_bytes) -> bool:
-
-        summary_response = self.validator.generate_transaction_summary(file_bytes)
-        aggregated = self.validator.aggregate_page_totals(self.page_data)
-        if (
-            summary_response.get("Total Debits") is not None
-            and summary_response.get("Total Credits") is not None
-        ):
-            if (
-                float(summary_response["Total Debits"]) != aggregated.get("Total Debits", 0)
-                or float(summary_response["Total Credits"]) != aggregated.get("Total Credits", 0)
-            ):
-                print("Warning: Aggregated totals do not match the summary from LLM.")
-   
-        # Append the summary verification to the output
-        
-        
-        self.control_totals = {
-            "transaction_summary": summary_response,
-            "aggregated_totals": aggregated
-        }
-
     def process_document(self, file_bytes: bytes, mime_type: str = "application/pdf") -> Any:
         try:
             self.process_pages(file_bytes, mime_type)
 
             # Dynamically determine and initialize the validator based on doc_type
-            validator_cls = self.__prepare_validator__()
-            if validator_cls:
-                self.validator = validator_cls(self.client, self.model)
-                self._validate_data(file_bytes)
+            summary_cls = self.__prepare_summarizer__()
+            if summary_cls:
+                self.summarizer = summary_cls(self.client, self.model)
+            
+            self.control_totals = self.summarizer.generate_statement_summary(file_bytes)
 
         except Exception as e:
             print(f"Failed to process document: {str(e)}")
@@ -116,9 +122,14 @@ class DocumentProcessor:
                     f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
                 ]
 
+                config: types.GenerateContentConfigDict = {
+                    "response_schema": self.response_schema,
+                    "response_mime_type":"application/json"
+                }
                 stream_response = self.client.models.generate_content_stream(
                     model=self.model,
                     contents=[content],
+                    config=config,
                 )
 
                 raw = ""
