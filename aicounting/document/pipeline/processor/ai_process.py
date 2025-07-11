@@ -1,5 +1,6 @@
 import json
 import re
+import time
 import unicodedata
 from typing import Any
 
@@ -10,29 +11,252 @@ import importlib
 from document.pipeline.prompter import (
     Configuration,
     prepare_prompt,
-    
 )
 
 from django.conf import settings
 import sys
 import logging
+import os
+
+
+class JSONCleaner:
+    @staticmethod
+    def clean(raw: str) -> str:
+        try:
+            raw = re.sub(r'^```(?:json)?', '', raw)
+            raw = raw.strip('` \n')
+            raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
+            raw = raw.replace("None", None)
+            raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
+            raw = re.sub(r"(?<!\\)'", '"', raw)
+            raw = re.sub(r',(\s*[}\]])', r'\1', raw)
+            first_brace = raw.find('{')
+            if first_brace > 0:
+                raw = raw[first_brace:]
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Cleaning JSON: {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+        return raw
+
+    @staticmethod
+    def extract_first_json(raw: str) -> str:
+        try:
+            match = re.search(r'(\{[\s\S]*\})', raw)
+            if match:
+                return match.group(1)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Extracting first JSON: {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+        return raw
+
+class AIClient:
+    def __init__(self, api_key: str, model: str):
+        self.model = model
+        self.client = genai.Client(api_key=api_key)
+
+    def generate_content_stream(self, contents, config):
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return self.client.models.generate_content_stream(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                # Check for 503 UNAVAILABLE error
+                if hasattr(e, "args") and e.args and "503" in str(e.args[0]):
+                    print(f"[WARN][{fname}:{exc_tb.tb_lineno}] Gemini model overloaded (503). Retry {attempt+1}/{max_retries} after 5s...")
+                    time.sleep(5)
+                    continue
+                else:
+                    print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] AIClient generate_content_stream error: {e}")
+                    raise
+        # If all retries failed, raise the last exception
+        raise Exception("Gemini model overloaded after multiple retries.")
+        
+
+class PageClassifier:
+    def __init__(self, ai_client: AIClient, schema):
+        self.ai_client = ai_client
+        self.schema = schema
+
+    def classify(self, page_bytes, mime_type):
+        classification_prompt = """
+        Classify this page as one or more of the following types (return a JSON array in 'page_types' key):
+        - transaction_table
+        - check_images
+        - summary_table
+        - other
+        If multiple types are present, include all. Example output: {\"page_types\": [\"transaction_table\", \"check_images\"]}
+        """
+        content = [
+            types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
+            classification_prompt
+        ]
+        config = {
+            "response_schema": self.schema,
+            "response_mime_type": "application/json",
+            "temperature": 0.0,
+            "top_p": 0.8,
+            "top_k": 20,
+        }
+        try:
+            stream_response = self.ai_client.generate_content_stream(content, config)
+            raw = ""
+            for resp in stream_response:
+                raw += resp.text
+            try:
+                clean_json_str = JSONCleaner.clean(raw)
+                try:
+                    parsed = json.loads(clean_json_str)
+                except Exception:
+                    fallback_json = JSONCleaner.extract_first_json(clean_json_str)
+                    parsed = json.loads(fallback_json)
+                return parsed.get("page_types", [])
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification failed: {e} :: for \n -------------------------\n{raw}\n -------------------------\n")
+                return ["other"]
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in classify: {e}")
+            return ["other"]
+
+class TransactionExtractor:
+    def __init__(self, ai_client: AIClient, schema, prompt):
+        self.ai_client = ai_client
+        self.schema = schema
+        self.prompt = prompt
+
+    def extract(self, page_bytes, mime_type, previous_page_context):
+        content = [
+            types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
+            f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
+        ]
+        config = {
+            "response_schema": self.schema,
+            "response_mime_type": "application/json",
+            "temperature": 0.2,
+        }
+        try:
+            stream_response = self.ai_client.generate_content_stream(content, config)
+            raw = ""
+            for resp in stream_response:
+                raw += resp.text
+        except Exception as te:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
+            return {}
+
+        try:
+            clean_json_str = JSONCleaner.clean(raw)
+            parsed_data = json.loads(clean_json_str)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            parsed_data = {}
+
+        for item in parsed_data.get("line_items", []):
+            desc = item.get("description", "").lower()
+            if "check" in desc or "cheque" in desc:
+                item["is_check_transaction"] = True
+                match = re.search(r"check\s*#?\s*(\d+)", desc)
+                if match:
+                    item["check_number"] = match.group(1)
+                else:
+                    item["check_number"] = ""
+            else:
+                item["is_check_transaction"] = False
+                item["check_number"] = ""
+        return parsed_data
+
+class CheckImageExtractor:
+    def __init__(self, ai_client: AIClient, schema):
+        self.ai_client = ai_client
+        self.schema = schema
+
+    def extract(self, page_bytes, mime_type):
+        check_image_prompt = """
+        Extract all check images and for each, return a JSON object with: amount, payee, memo (optional), clearing_date, passing_date, check_number. Output as a list under 'checks'. If not found, return an empty list.
+        Example: {\"checks\": [{\"amount\": "123.45", \"payee\": "John Doe", ...}]}
+
+        Ensure:
+        - All amounts are extracted as float or numeric values (no currency symbols).
+        - The result is a single flat JSON object with the above 4 keys only.
+        - If a field is missing, set its value as `null`.
+        """
+        content = [
+            types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
+            check_image_prompt
+        ]
+        config = {
+            "response_schema": self.schema,
+            "response_mime_type": "application/json",
+            "temperature": 0.1,
+        }
+        try:
+            stream_response = self.ai_client.generate_content_stream(content, config)
+            raw = ""
+                
+            for resp in stream_response:
+                raw += resp.text
+        except Exception as ce:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
+            return {}
+
+        try:
+            clean_json_str = JSONCleaner.clean(raw)
+            parsed_data = json.loads(clean_json_str)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            parsed_data = {"checks": []}
+        return parsed_data
+
+class SummarizerLoader:
+    @staticmethod
+    def load(doc_type, ai_client, model):
+        try:
+            module_name = f"document.pipeline.summarizer.{doc_type}"
+            mod = importlib.import_module(module_name)
+            class_name = "".join(word.capitalize() for word in doc_type.split("_")) + "Summarizer"
+            summarizer_cls = getattr(mod, class_name, None)
+            if not summarizer_cls:
+                print(f"Summarizer class '{class_name}' not found in module '{module_name}'.")
+            return summarizer_cls(ai_client.client, model) if summarizer_cls else None
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Error importing summarizer for doc_type '{doc_type}': {e}")
+            return None
 
 class DocumentProcessor:
     def __init__(self, config: Configuration):
-        self.client = None
-        self.model = "gemini-2.0-flash"
-        self.validator = None
-        self.page_data = []
-
-        self.doc_type: str = config.doc_type # "bank_statement"
+        self.doc_type: str = config.doc_type
         self.prompt = prepare_prompt(config)
-
         self.doc_config = config
         self.api_key = settings.GEMINI_API_KEY
-    
-        self.init_ai_clientel()
+        self.model = "gemini-2.0-flash"
+        self.page_data = []
         self.control_totals = {}
 
+        # Schemas
         self.response_schema = types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -41,7 +265,8 @@ class DocumentProcessor:
                     "properties": {
                         "key": {"type": types.Type.STRING},
                         "value": {"type": types.Type.STRING},
-                    }                },
+                    }
+                },
                 "line_items": {
                     "type": types.Type.ARRAY,
                     "items": {
@@ -59,54 +284,46 @@ class DocumentProcessor:
             required=["line_items"]
         )
 
+        self.page_classification_schema = types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "page_types": {
+                    "type": types.Type.ARRAY,
+                    "items": {"type": types.Type.STRING}
+                }
+            },
+            required=["page_types"]
+        )
 
-    def init_ai_clientel(self):
-        self.model = "gemini-2.0-flash"
-        self.client = genai.Client(api_key=self.api_key)
+        self.check_schema = types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "checks": {
+                    "type": types.Type.ARRAY,
+                    "items": {
+                        "type": types.Type.OBJECT,
+                        "properties": {
+                            "amount": {"type": types.Type.STRING},
+                            "payee": {"type": types.Type.STRING},
+                            "memo": {"type": types.Type.STRING, "nullable": True},
+                            "clearing_date": {"type": types.Type.STRING, "nullable": True},
+                            "passing_date": {"type": types.Type.STRING, "nullable": True},
+                            "check_number": {"type": types.Type.STRING, "nullable": True},
+                        },
+                        "required": ["amount", "payee", "check_number"]
+                    }
+                }
+            },
+            required=["checks"]
+        )
 
+        # AI Client and helpers
+        self.ai_client = AIClient(self.api_key, self.model)
+        self.page_classifier = PageClassifier(self.ai_client, self.page_classification_schema)
+        self.transaction_extractor = TransactionExtractor(self.ai_client, self.response_schema, self.prompt)
+        self.check_image_extractor = CheckImageExtractor(self.ai_client, self.check_schema)
 
-    def __prepare_summarizer__(self):
-        """
-        Dynamically imports the validator module and retrieves the validator class
-        based on the document type. For example, for doc_type "bank_statement", it
-        imports module "validator.bank_statement_validator" and returns "BankStatementValidator".
-        """
-        try:
-            # Build the module name: e.g. "validator.bank_statement_validator"
-            module_name = f"document.pipeline.summarizer.{self.doc_type}"
-            mod = importlib.import_module(module_name)
-            # Build the expected class name based on naming convention
-            class_name = "".join(word.capitalize() for word in self.doc_type.split("_")) + "Summarizer"
-            validator_cls = getattr(mod, class_name, None)
-            if not validator_cls:
-                print(f"Validator class '{class_name}' not found in module '{module_name}'.")
-            return validator_cls
-        except Exception as e:
-            print(f"Error importing validator for doc_type '{self.doc_type}': {e}")
-            return None
-
-
-    def process_document(self, file_bytes: bytes, mime_type: str = "application/pdf") -> Any:
-        try:
-            self.process_pages(file_bytes, mime_type)
-
-            # Dynamically determine and initialize the validator based on doc_type
-            summary_cls = self.__prepare_summarizer__()
-            if summary_cls:
-                self.summarizer = summary_cls(self.client, self.model)
-            
-            self.control_totals = self.summarizer.generate_statement_summary(file_bytes)
-
-        except Exception as e:
-            print(f"Failed to process document: {str(e)}")
-            import os, sys
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-
-        return self.page_data, self.control_totals
-
-    def process_pages(self, file_bytes: bytes, mime_type: str):
+    def process_document(self, file_bytes: bytes, mime_type: str):
         from document.pipeline.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
@@ -114,87 +331,58 @@ class DocumentProcessor:
 
         for i, page_bytes in enumerate(page_bytes_list):
             try:
-                content = [
-                    types.Part.from_bytes(
-                        data=page_bytes,
-                        mime_type=mime_type,
-                    ),
-                    f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
-                ]
+                # 1. Classify the page
+                page_types = self.page_classifier.classify(page_bytes, mime_type)
+                print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
+                page_result = {"page_types": page_types}
 
-                config: types.GenerateContentConfigDict = {
-                    "response_schema": self.response_schema,
-                    "response_mime_type":"application/json"
-                }
-                stream_response = self.client.models.generate_content_stream(
-                    model=self.model,
-                    contents=[content],
-                    config=config,
-                )
+                # 2. Extract data based on classification
+                if "transaction_table" in page_types:
+                    parsed_data = self.transaction_extractor.extract(page_bytes, mime_type, previous_page_context)
+                    page_result["transactions"] = parsed_data
+                    previous_page_context = str(parsed_data)
 
-                raw = ""
-                for resp in stream_response:
-                    raw += resp.text
+                if "check_images" in page_types:
+                    parsed_data = self.check_image_extractor.extract(page_bytes, mime_type)
+                    page_result["check_data"] = parsed_data
 
-                clean_json_str = self._clean_json_string(raw)
+                if "summary_table" in page_types and not self.control_totals:
+                    summarizer = SummarizerLoader.load(self.doc_type, self.ai_client, self.model)
+                    if summarizer:
+                        summary = summarizer.generate_statement_summary(page_bytes)
+                        self.control_totals = summary
 
-                parsed_data = json.loads(clean_json_str)
-            except json.JSONDecodeError as e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
-                parsed_data = {}
+                self.page_data.append({f"page_{i+1}": page_result})
+                print(f"[DEBUG] Page {i+1} data is: {page_result}")
+                time.sleep(3)
 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Exception: {e}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response: {raw}")
-                parsed_data = {}
-
-            try:
-                print(f"[DEBUG] Page {i+1}: Parsed data before processing: {parsed_data}")
-                processed_data = self._process_gemini_output(parsed_data)
-
-                self.page_data.append({"page_{}".format(i + 1): processed_data})
-
-                previous_page_context = str(processed_data)
-            except Exception as e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Exception during processing: {e}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response: {raw}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Parsed data: {parsed_data}")
-                parsed_data = {}
-
-    def _clean_json_string(self, raw: str) -> str:
-        try:
-            # Remove Markdown fences and leading/trailing whitespace
-            raw = re.sub(r'^```(?:json)?', '', raw)
-            raw = raw.strip('` \n')
-
-            # Normalize line endings
-            raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
-
-            raw = raw.replace("None", "null")
-
-            # Remove control characters (except tab and newline)
-            raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            print(f"[ERROR][Line {exc_tb.tb_lineno}] Cleaning JSON: {e}")
-            print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw input: {raw}")
-
-        return raw
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing: {e}")
+                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
+                continue
 
     def _process_gemini_output(self, data: dict) -> dict:
-        # if "data" not in data:
-        #     raise ValueError("Missing 'data' field in Gemini output")
-
-        # Add extra info
         data["extra_info"] = "Processed by LLM"
-
         meta = data.get("meta", {})
         if isinstance(meta, dict) and isinstance(meta.get("pages"), (int, float)):
             if meta["pages"] != 1:
-                print("Warning: Expected 1 page, got", meta["pages"])
-
+                print("Warning: Expected single page output, but got multiple pages in Gemini response.")
+                data["warning"] = "Expected single page output, but got multiple pages in Gemini response."
         return data
+
+    def get_control_totals(self):
+        return self.control_totals
+
+    def get_page_data(self):
+        return self.page_data
+
+    def get_summary(self):
+        if self.control_totals:
+            return {
+                "total_income": self.control_totals.get("total_income", 0),
+                "total_expense": self.control_totals.get("total_expense", 0),
+                "net_income": self.control_totals.get("net_income", 0),
+            }
+        return {}

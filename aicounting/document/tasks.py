@@ -30,6 +30,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
             key_items=[],
             extract_line_items=True,
             line_items=[
+                # use from db
                 "date: The date of the transaction.", 
                 "description: A description of the transaction.",
                 "debit amount: The debit amount of the transaction.",
@@ -42,10 +43,16 @@ def process_uploaded_document(file_path: str, doc_id: int):
         with open(file, "rb") as f:
             pdf_bytes = f.read()
 
-        result, control_totals = processor.process_document(pdf_bytes, mime_type)
+
+        processor.process_document(pdf_bytes, mime_type)
+
+        result = processor.page_data
+        control_totals = processor.control_totals
 
         # TODO: save control totals in DB
         doc.control_item = control_totals
+        doc.save()
+
         # Save JSON output
         out_path = file.parent / "extracted_output.json"
         with open(out_path, "w", encoding="utf-8") as f:
@@ -53,9 +60,15 @@ def process_uploaded_document(file_path: str, doc_id: int):
         
         # Insert Key Items
         for idx, item in enumerate(result):
+
             page_key = f"page_{idx+1}"
             page_data = item.get(page_key, {})
-            for key, val in page_data.get("key_items", {}):
+
+            page_data_transactions = page_data.get("transactions", {})
+            if page_data.get("check_data", None):
+                print(idx, page_data.get("check_data", None))
+
+            for key, val in page_data_transactions.get("key_items", {}):
                 FactAICDocKeyItem.objects.create(
                     doc=doc,
                     key=key,
@@ -64,7 +77,7 @@ def process_uploaded_document(file_path: str, doc_id: int):
             )
 
             # Insert Line Items
-            for line_idx, line_item in enumerate(page_data.get("line_items", [])):
+            for line_idx, line_item in enumerate(page_data_transactions.get("line_items", [])):
                 line_obj = FactAICDocLine.objects.create(
                     doc=doc,
                     line_number=line_idx,

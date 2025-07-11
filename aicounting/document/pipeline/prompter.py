@@ -25,22 +25,9 @@ class Configuration:
             return """
             You are an expert financial document parsing agent.
 
-            You are analyzing a bank statement PDF that may contain multiple sections, such as:
-            - Transactional account activity
-            - Cheque images or details
-            - Deposit receipts or scanned deposits
-            - Account summaries or metadata
-            - Visual elements such as headers, logos, footers, or notes
-
-            First, classify this page as one of the following:
-            - `transaction_table`: contains a bank transaction table or structured transaction log
-            - `check_images`: contains visual images of handwritten/printed checks
-            - `summary_table`: a summary list of checks by number
-            - `other`: any non-transactional content (account reconciliation, metadata, blank, etc.)
-
             If the page is NOT `transaction_table`, do not extract any data.
 
-            Your task is to extract **only the transactional account activity** — that is, the list of day-to-day transactions that reflect money being credited or debited from the account. This information might be presented in tabular or non-tabular formats. Accurately extract even if the format is varied or inconsistent across pages.
+            Your task is to extract **only the transactional account activity** i.e, the list of day-to-day transactions that reflect money being credited or debited from the account. This information might be presented in tabular format. Accurately extract even if the format is varied or inconsistent across pages.
 
             **INCLUDE only these types of entries (per row or record):**
             - **Date** (of transaction)
@@ -64,15 +51,6 @@ class Configuration:
 
             Focus strictly on daily account activity that reflects money movement.
             Skip everything else that is not a transactional statement.
-
-            Each page may contain different types of content, such as:
-            - Valid transaction records (structured tabular format with date, description, debit/credit)
-            - Check images, scanned or handwritten text
-            - Tables listing checks by number
-            - Deposit slips, account reconciliation instructions
-            - Duplicate summary information (already recorded earlier)
-            - Metadata like balances, account numbers, headers, footers
-
             """
 
         elif doc_type == "credit_card":

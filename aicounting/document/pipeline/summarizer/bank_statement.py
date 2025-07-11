@@ -69,7 +69,8 @@ class BankStatementSummarizer:
 
         config: types.GenerateContentConfigDict = {
             "response_schema": self.response_schema,
-            "response_mime_type":"application/json"
+            "response_mime_type":"application/json",
+            "temperature": 0.2,
         }
 
         try:
