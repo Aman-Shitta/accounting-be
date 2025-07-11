@@ -6,7 +6,8 @@ from document.models.dim_aic_doc_model import (
     DimAICDocument,
     FactAICDocKeyItem,
     FactAICDocLine,
-    FactAICDocLineItem
+    FactAICDocLineItem,
+    FactAICDocCheckItem
 )
 from document.pipeline.processor.ai_process import DocumentProcessor
 from document.pipeline.prompter import Configuration
@@ -101,6 +102,19 @@ def process_uploaded_document(file_path: str, doc_id: int):
                     line=line_obj,
                     key="gl_account_desc",
                     value="N/A"
+                )
+            
+            page_data_checks = page_data.get("check_data", {})
+
+            for check in page_data_checks.get("checks", []):
+                 FactAICDocCheckItem.objects.create(
+                    doc=doc,
+                    amount=check.get("amount", ""),
+                    payee=check.get("payee", ""),
+                    memo=check.get("memo", ""),
+                    clearing_date=check.get("clearing_date", ""),
+                    passing_date=check.get("passing_date", ""),
+                    check_number=check.get("check_number", "")
                 )
 
         # Update doc status

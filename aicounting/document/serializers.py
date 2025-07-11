@@ -117,6 +117,39 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         return data
 
 
+class ClassifyDocumentDataSerializer(DocumentDataSerializer):
+    
+    def to_representation(self, instance):
+        ret =  super().to_representation(instance)
+
+        # Get all check items for this document, indexed by check_number
+        check_items = {
+            c.check_number: c
+            for c in instance.check_items.all()
+            if c.check_number
+        }
+
+         # Iterate through each page and line item
+        for page, pdata in ret.get("extracted_data", {}).items():
+            line_items = pdata.get("line_items", {})
+            for line_num, line_data in line_items.items():
+                # Find check_number in this line's items
+
+                check_number = None
+                if line_data.get('is_check_transaction') and line_data.get("check_number"):
+                    check_number = line_data.get("check_number")
+                else:
+                    continue
+
+                # If check_number found and exists in check_items, update description
+                if check_number and check_number in check_items:
+                    check = check_items[check_number]
+                    # Compose extra info string
+                    extra = f" | Payee: {check.payee or ''} | Memo: {check.memo or ''} | Clearing Date: {check.clearing_date or ''} | Passing Date: {check.passing_date or ''}"
+                    line_data.update({"description": f"{line_data.get('description')} : {extra}"})
+
+        return ret
+
 class LineUpdateModelSerializer(serializers.ModelSerializer):
 
     class Meta:

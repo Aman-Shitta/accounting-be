@@ -18,7 +18,6 @@ import sys
 import logging
 import os
 
-
 class JSONCleaner:
     @staticmethod
     def clean(raw: str) -> str:
@@ -26,7 +25,8 @@ class JSONCleaner:
             raw = re.sub(r'^```(?:json)?', '', raw)
             raw = raw.strip('` \n')
             raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
-            raw = raw.replace("None", None)
+            raw = raw.replace('\'', '\\\'')
+            raw = raw.replace("None", "")
             raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
             raw = re.sub(r"(?<!\\)'", '"', raw)
             raw = re.sub(r',(\s*[}\]])', r'\1', raw)
@@ -197,6 +197,7 @@ class CheckImageExtractor:
         - The result is a single flat JSON object with the above 4 keys only.
         - If a field is missing, set its value as `null`.
         """
+
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
             check_image_prompt

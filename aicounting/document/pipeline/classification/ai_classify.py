@@ -147,13 +147,13 @@ class GLClassifier(OpeAIClient):
     @staticmethod
     def fetch_extracted_data(document_id: str):
         """
-        Fetch extracted data using the DocumentDataSerializer logic.
+        Fetch extracted data using the ClassifyDocumentDataSerializer logic.
         """
         from document.models.dim_aic_doc_model import DimAICDocument
-        from document.serializers import DocumentDataSerializer
+        from document.serializers import ClassifyDocumentDataSerializer
         try:
             doc = DimAICDocument.objects.get(doc_id=document_id)
-            serializer = DocumentDataSerializer(doc)
+            serializer = ClassifyDocumentDataSerializer(doc)
             extracted_data = serializer.data.get("extracted_data")
             return extracted_data
 
