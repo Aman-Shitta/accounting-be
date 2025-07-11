@@ -141,3 +141,52 @@ class FactAICDocLineItem(models.Model):
         db_table = 'fact_aic_doc_line_value'
         verbose_name = "AIC Document Line Item Value"
         verbose_name_plural = "AIC Document Line Item Values"
+
+
+class FactAICDocCheckItem(models.Model):
+    """
+    Fact table to store extracted check information from a document.
+    """
+    doc = models.ForeignKey(
+        DimAICDocument,
+        on_delete=models.CASCADE,
+        related_name="check_items"
+    )
+    amount = models.CharField(
+        max_length=100,
+        verbose_name="Amount"
+    )
+    payee = models.TextField(
+        verbose_name="Payee",
+        null=True,
+        blank=True
+    )
+    memo = models.TextField(
+        verbose_name="Memo",
+        null=True,
+        blank=True
+    )
+    clearing_date = models.CharField(
+        max_length=50,
+        verbose_name="Clearing Date",
+        null=True,
+        blank=True
+    )
+    passing_date = models.CharField(
+        max_length=50,
+        verbose_name="Passing Date",
+        null=True,
+        blank=True
+    )
+    check_number = models.CharField(
+        max_length=50,
+        verbose_name="Check Number",
+        null=True,
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'fact_aic_doc_check_items'
+        verbose_name = "AIC Document Check Item"
+        verbose_name_plural = "AIC Document Check Items"

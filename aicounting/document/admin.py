@@ -1,5 +1,5 @@
 from django.contrib import admin
-from document.models import DimAICDocument, FactAICDocKeyItem, FactAICDocLine, FactAICDocLineItem
+from document.models import DimAICDocument, FactAICDocKeyItem, FactAICDocLine, FactAICDocCheckItem
 from django.utils.html import format_html
 
 class FactAICDocKeyItemInline(admin.TabularInline):
@@ -9,7 +9,7 @@ class FactAICDocKeyItemInline(admin.TabularInline):
     readonly_fields = ('page_number', 'line_number', 'key', 'value')
     can_delete = False
     show_change_link = False
-
+    classes = ['collapse']  # Makes this inline collapsible
 
 class FactAICDocLineInline(admin.TabularInline):
     model = FactAICDocLine
@@ -18,6 +18,7 @@ class FactAICDocLineInline(admin.TabularInline):
     fields = ('page_number', 'line_number', 'created_at', 'display_line_items')
     can_delete = False
     show_change_link = False
+    classes = ['collapse']  # Makes this inline collapsible
 
     def display_line_items(self, obj):
         """
@@ -38,6 +39,14 @@ class FactAICDocLineInline(admin.TabularInline):
     display_line_items.short_description = "Line Item Values"
     display_line_items.allow_tags = True
 
+class FactAICDocCheckItemInline(admin.TabularInline):
+    model = FactAICDocCheckItem
+    extra = 0
+    fields = ('amount', 'payee', 'memo', 'clearing_date', 'passing_date', 'check_number', 'created_at')
+    readonly_fields = ('amount', 'payee', 'memo', 'clearing_date', 'passing_date', 'check_number', 'created_at')
+    can_delete = False
+    show_change_link = False
+    classes = ['collapse']  # Makes this inline collapsible
 
 @admin.register(DimAICDocument)
 class DimAICDocumentAdmin(admin.ModelAdmin):
@@ -55,5 +64,16 @@ class DimAICDocumentAdmin(admin.ModelAdmin):
 
     inlines = [
         FactAICDocKeyItemInline,
-        FactAICDocLineInline
+        FactAICDocLineInline,
+        FactAICDocCheckItemInline,  # Attach check items as collapsible inline
     ]
+
+@admin.register(FactAICDocCheckItem)
+class FactAICDocCheckItemAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'doc', 'amount', 'payee', 'memo', 'clearing_date',
+        'passing_date', 'check_number', 'created_at'
+    )
+    search_fields = ('payee', 'check_number', 'amount')
+    list_filter = ('clearing_date', 'passing_date', 'created_at')
+    readonly_fields = ('created_at',)
