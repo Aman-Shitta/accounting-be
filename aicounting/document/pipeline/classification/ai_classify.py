@@ -177,23 +177,32 @@ class GLClassifier(OpeAIClient):
         results = {}
 
         for page_num, page_data in extracted_data.items():
-            line_items = page_data.get("line_items", {})
-            if not line_items:
-                continue
+            try:
+                line_items = page_data.get("line_items", {})
+                if not line_items:
+                    print(f"[DEBUG] No line items found for page {page_num}")
+                    continue
 
-            payload = self.format_line_items(line_items)
+                payload = self.format_line_items(line_items)
 
-            page_results = self.send_to_thread(payload)
+                print(f"[DEBUG] Payload for page {page_num}:\n{payload}")
 
-            print("paylaod : ", payload)
-            print("page_results :: ", page_num, page_results)
+                page_results = self.send_to_thread(payload)
 
-            if page_results and isinstance(page_results, list) and isinstance(ast.literal_eval(page_results[0]), dict):
-                classified_data = ast.literal_eval(page_results[0]).get("schema")
-                results[page_num] = classified_data
-            
-            time.sleep(5)
-            # rest the assistant API to process correectly
+                print(f"[DEBUG] Page results for page {page_num}: {page_results}")
+
+                if (
+                    page_results
+                    and isinstance(page_results, list)
+                    and isinstance(ast.literal_eval(page_results[0]), dict)
+                ):
+                    classified_data = ast.literal_eval(page_results[0]).get("schema")
+                    results[page_num] = classified_data
+
+                time.sleep(5)
+            except Exception as e:
+                print(f"[ERROR] Exception processing page {page_num}: {e}")
+                continue  # Skip to next page on error
 
         self.delete_thread(self.thread_id)
         return results

@@ -145,7 +145,7 @@ class ClassifyDocumentDataSerializer(DocumentDataSerializer):
                 if check_number and check_number in check_items:
                     check = check_items[check_number]
                     # Compose extra info string
-                    extra = f" | Payee: {check.payee or ''} | Memo: {check.memo or ''} | Clearing Date: {check.clearing_date or ''} | Passing Date: {check.passing_date or ''}"
+                    extra = f" Payee: {check.payee or ''}, Memo: {check.memo or ''},  Clearing Date: {check.clearing_date or ''} , Passing Date: {check.passing_date or ''}"
                     line_data.update({"description": f"{line_data.get('description')} : {extra}"})
 
         return ret
