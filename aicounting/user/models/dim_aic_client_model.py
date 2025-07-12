@@ -17,6 +17,7 @@ class DimAICClient(models.Model):
     )
 
     client_name = models.CharField(max_length=255, verbose_name="Client Name")
+    id = models.CharField(max_length=255, verbose_name="Client Assigned ID")
     street = models.CharField(max_length=255, verbose_name="Street")
     city = models.CharField(max_length=100, verbose_name="City")
     state = models.CharField(max_length=2, verbose_name="State Abbreviation")
@@ -48,7 +49,7 @@ class DimAICClient(models.Model):
         verbose_name_plural = "Clients"
 
     def __str__(self):
-        return f"{self.name} (ID: {self.client_id})"
+        return f"{self.client_name} (ID: {self.client_id})"
 
 
 class DimAICClientDocument(models.Model):
@@ -98,4 +99,4 @@ class DimAICClientDocument(models.Model):
         verbose_name_plural = "Client Documents"
 
     def __str__(self):
-        return f"{self.client.name} - {self.get_document_type_display()}"
+        return f"{self.client.client_name} - {self.get_document_type_display()}"

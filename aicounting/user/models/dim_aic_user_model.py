@@ -1,9 +1,19 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+
 
 class DimAICUser(models.Model):
     """
     Django model for the dim_AIC_User table, representing user information.
     """
+    system_user = models.OneToOneField(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="User_profile",
+        verbose_name="Linked Django User",
+        help_text="Link to Django user for authentication and permissions"
+    )
+
     user_id = models.AutoField(
         primary_key=True,
         verbose_name="User ID",

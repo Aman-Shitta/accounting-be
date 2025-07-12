@@ -6,7 +6,7 @@ class DimAICCustomer(models.Model):
     """
     Django model for the dim_AIC_Customer table, representing customer information.
     """
-    user = models.OneToOneField(
+    system_user = models.OneToOneField(
         get_user_model(),
         on_delete=models.CASCADE,
         related_name="customer_profile",
@@ -17,6 +17,12 @@ class DimAICCustomer(models.Model):
         primary_key=True,
         verbose_name="Customer ID",
 	)
+
+    # customer_unique_id = models.AutoField(
+    #     primary_key=True,
+    #     verbose_name="Customer ID",
+	# )
+
     customer_secure_id = models.CharField(
         max_length=9,
         editable=False,
@@ -91,14 +97,14 @@ class DimAICCustomer(models.Model):
             if not DimAICCustomer.objects.filter(customer_id=new_id).exists():
                 return new_id
 
-    def save(self, *args, **kwargs):
-        """
-        Overrides the save method to generate a unique cust_id if it's not already set.
-        """
-        if not self.customer_id:  # Only generate ID for new objects
-            self.customer_id = self.generate_unique_cust_id()
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     """
+    #     Overrides the save method to generate a unique cust_id if it's not already set.
+    #     """
+    #     if not self.customer_unique_id:  # Only generate ID for new objects
+    #         self.customer_unique_id = self.generate_unique_cust_id()
+    #     super().save(*args, **kwargs)
 
-    def __str__(self):
-        # String representation of the object, useful for the Django admin
-        return f"{self.customer_name} (ID: {self.customer_id})"
+    # def __str__(self):
+    #     # String representation of the object, useful for the Django admin
+    #     return f"{self.customer_name} (ID: {self.customer_unique_id})"
