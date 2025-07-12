@@ -9,27 +9,42 @@ class ContactSerializer(serializers.ModelSerializer):
 
 
 class ClientDocumentSerializer(serializers.ModelSerializer):
+    def validate_file(self, value):
+        import os
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in ['.pdf', '.xls', '.xlsx']:
+            raise serializers.ValidationError("Only PDF and Excel files are allowed.")
+        return value
+
     class Meta:
         model = DimAICClientDocument
         fields = ['document_type', 'file']
 
 
 class ClientSerializer(serializers.ModelSerializer):
-    contacts = ContactSerializer(many=True, write_only=True)
+    contacts = ContactSerializer(many=True, write_only=True, required=False)
     documents = ClientDocumentSerializer(many=True, write_only=True, required=False)
 
     class Meta:
         model = DimAICClient
         fields = [
-            'client_id', 'name', 'street', 'city', 'state', 'zip_code',
+            'client_id', 'client_name', 'street', 'city', 'state', 'zip_code',
             'contacts', 'documents'
         ]
+
+    def validate_documents(self, value):
+        # Ensure at least one COA document is present
+        has_coa = any(doc['document_type'] == 'COA' for doc in value)
+        if not has_coa:
+            raise serializers.ValidationError("At least one COA document is required.")
+        return value
 
     def create(self, validated_data):
         contacts_data = validated_data.pop('contacts', [])
         documents_data = validated_data.pop('documents', [])
 
         request_user = self.context['request'].user
+
         customer = getattr(request_user, 'customer_profile', None)
 
         if not customer:

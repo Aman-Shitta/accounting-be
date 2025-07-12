@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'authentication',
     'document',
     'user',
     'account',
@@ -76,7 +77,7 @@ WSGI_APPLICATION = 'aicounting.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
+print(BASE_DIR)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
@@ -130,7 +131,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Extra settings - not default
 
-MEDIA_ROOT = os.path.join(BASE_DIR, "uploads")
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    )
+}
+
+# MEDIA_ROOT = os.path.join(BASE_DIR, "uploads")
+from datetime import date
+
+today = date.today().strftime("%Y-%m-%d")
+
+MEDIA_ROOT = os.path.join(BASE_DIR, f"uploads/{today}")
+
 MEDIA_URL = "/media/"
 
 

@@ -19,7 +19,7 @@ def create_customer_and_user(customer_name, email, street='', city='', street_ab
     invite_token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
 
     customer = DimAICCustomer.objects.create(
-        user=user,
+        system_user=user,
         customer_name=customer_name,
         street=street,
         city=city,
