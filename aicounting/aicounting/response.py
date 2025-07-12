@@ -13,23 +13,23 @@ def create_api_response(status_code, message, data=None, **kwargs):
     Returns:
         Response: Django REST framework Response object.
     """
-    # Sanitize data for nested errors if present
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if isinstance(value, dict) and "error" in value:
-                error = value.get("error", "Unknown error - Contact Admin")
-                data[key] = {"error": error}
-
     response = {
         "status": get_status_from_code(status_code),
         "status_code": status_code,
         "message": message,
     }
 
-    if data is not None:
+    # If data is a dict and looks like serializer errors, put under 'errors'
+    if isinstance(data, dict):
+        # If any value is a list or dict, treat as field errors
+        if any(isinstance(v, (list, dict)) for v in data.values()):
+            response["errors"] = data
+        else:
+            response["data"] = data
+    elif data is not None:
         response["data"] = data
-    
-    for k, v in  kwargs.items():
+
+    for k, v in kwargs.items():
         response[k] = v
 
     return Response(response, status=status_code)
