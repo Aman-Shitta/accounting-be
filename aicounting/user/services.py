@@ -1,32 +1,55 @@
 # user/services.py
 
-import random
-import string
 from django.contrib.auth import get_user_model
-from user.models import DimAICCustomer
+from user.models import DimAICCustomer, DimAICUser
 
 
-def create_customer_and_user(customer_name, email, street='', city='', street_abrevation='', zip_code=None):
+def create_customer(request_user, customer_name, email, street='', city='', state_abrevation='', zip_code=None):
     User = get_user_model()
-
-    user = User.objects.create_user(
-        username=email,
+    user, created = User.objects.get_or_create(
         email=email,
-        password=None,
-        is_active=False
+        defaults={
+            "username": email,
+            "is_active": False,
+        }
     )
-
-    invite_token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+    if not created:
+        return None, "User with this email already exists."
 
     customer = DimAICCustomer.objects.create(
         system_user=user,
         customer_name=customer_name,
         street=street,
         city=city,
-        street_abrevation=street_abrevation,
+        state_abrevation=state_abrevation,
         zip_code=zip_code or 0,
-        invite_token=invite_token,
-        input_user=None  # You can set this to request.user if admin is authenticated
+        input_user=request_user
     )
+    return customer,
 
-    return customer, invite_token
+def create_user_for_customer(cust_id, email, first_name='', last_name=''):
+    User = get_user_model()
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={
+            "username": email,
+            "is_active": False,
+        }
+    )
+    if not created:
+        return None, "User with this email already exists."
+
+    try:
+        customer = DimAICCustomer.objects.get(pk=cust_id)
+    except DimAICCustomer.DoesNotExist:
+        return None, "Customer does not exist."
+
+    DimAICUser.objects.create(
+        system_user=user,
+        cust_id=customer,
+        username=email,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+    )
+    return user

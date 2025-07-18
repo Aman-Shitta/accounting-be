@@ -17,12 +17,6 @@ class DimAICCustomer(models.Model):
         primary_key=True,
         verbose_name="Customer ID",
 	)
-
-    # customer_unique_id = models.AutoField(
-    #     primary_key=True,
-    #     verbose_name="Customer ID",
-	# )
-
     customer_secure_id = models.CharField(
         max_length=9,
         editable=False,
@@ -61,12 +55,8 @@ class DimAICCustomer(models.Model):
         help_text="Becomes True after first SSO login"
     )
 
-    invite_token = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-        help_text="Invite token for registration"
-    )
+    verified = models.BooleanField(default=False, verbose_name="Verified")
+
     # TODO : possible limit for token life
     created_at = models.DateTimeField(
         auto_now_add=True, # Automatically sets the field to the current datetime when the object is first created.
@@ -94,17 +84,17 @@ class DimAICCustomer(models.Model):
             part2 = ''.join(random.choices(string.digits, k=4))
             new_id = f"{part1}-{part2}"
             # Check if an object with this ID already exists in the database
-            if not DimAICCustomer.objects.filter(customer_id=new_id).exists():
+            if not DimAICCustomer.objects.filter(customer_secure_id=new_id).exists():
                 return new_id
 
-    # def save(self, *args, **kwargs):
-    #     """
-    #     Overrides the save method to generate a unique cust_id if it's not already set.
-    #     """
-    #     if not self.customer_unique_id:  # Only generate ID for new objects
-    #         self.customer_unique_id = self.generate_unique_cust_id()
-    #     super().save(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        """
+        Overrides the save method to generate a unique cust_id if it's not already set.
+        """
+        if not self.customer_secure_id:  # Only generate ID for new objects
+            self.customer_secure_id = self.generate_unique_cust_id()
+        super().save(*args, **kwargs)
 
-    # def __str__(self):
-    #     # String representation of the object, useful for the Django admin
-    #     return f"{self.customer_name} (ID: {self.customer_unique_id})"
+    def __str__(self):
+        # String representation of the object, useful for the Django admin
+        return f"{self.customer_name} (ID: {self.customer_secure_id})"

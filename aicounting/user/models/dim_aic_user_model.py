@@ -41,6 +41,8 @@ class DimAICUser(models.Model):
         verbose_name="Created At",
 	)
     email = models.EmailField(verbose_name="User Email")
+
+    verified = models.BooleanField(default=False, verbose_name="Verified")
     # Addd permissions for accountant and supervisor
 
     class Meta:
