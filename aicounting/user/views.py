@@ -33,7 +33,7 @@ class ClientCreateView(generics.GenericAPIView):
         context.update({"request": self.request})
         return context
 
-    def create(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
         try:
 
             # Use atomic transaction for all operations
