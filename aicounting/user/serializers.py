@@ -125,7 +125,7 @@ class ClientSerializer(serializers.ModelSerializer):
         model = DimAICClient
         fields = [
             'client_id', 'client_name', 'id', 'street', 'city', 'state', 'zip_code',
-            'contacts', 'documents'
+            'contacts'
         ]
         read_only_fields = ['client_id']
 
