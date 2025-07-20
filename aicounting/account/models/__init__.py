@@ -11,6 +11,7 @@ from .dim_aic_je_template_header_model import DimAICJETemplateHeader
 from .fact_aic_je_periodic_status import FactAICJEMonthlyStat
 from .fact_aic_je_trans_bank_model import FactAICJETransBank
 
+
 __all__ = [
     'DimAICGLAcct', 
     'DimAICAcctType',

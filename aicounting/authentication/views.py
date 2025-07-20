@@ -29,6 +29,8 @@ class SSOLoginView(GenericAPIView):
             data={"auth_url": auth_url}
         )
 
+# ...existing code...
+
 class SSOCallbackView(GenericAPIView):
     def get(self, request):
         try:
@@ -53,6 +55,15 @@ class SSOCallbackView(GenericAPIView):
                     message=f'Failed to acquire token: {str(e)}'
                 )
 
+            # Get ID token instead of access token for user authentication
+            id_token = result.get('id_token')
+            if not id_token:
+                return create_api_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    data=None,
+                    message='No ID token received from Azure AD.'
+                )
+
             email = result.get('id_token_claims', {}).get('preferred_username')
             if not email:
                 return create_api_response(
@@ -63,6 +74,7 @@ class SSOCallbackView(GenericAPIView):
 
             domain = email.split('@')[1].lower()
             cust_name = domain.split('.')[0].capitalize()
+            print(f"Customer Name: {cust_name}")    
 
             customer = DimAICCustomer.objects.filter(customer_name=cust_name).first()
             if not customer:
@@ -89,17 +101,23 @@ class SSOCallbackView(GenericAPIView):
                 }
             )
 
-            token = {
-                "access_token": result.get('access_token'),
-                "refresh_token": result.get('refresh_token'),
+            # Return the ID token for client-side storage and future API calls
+            token_response = {
+                "access_token": id_token,  # This is what the client should use in Authorization header
+                # "access_token": result.get('access_token'),  # Optional: for accessing other APIs
+                # "refresh_token": result.get('refresh_token'),
                 "expires_in": result.get('expires_in'),
-                "info": result.get("client_info"),
+                # "token_type": "Bearer",
+                "user_info": {
+                    "email": email,
+                    "customer": cust_name
+                }
             }
-            print(token)
+            
             return create_api_response(
                 status_code=status.HTTP_200_OK,
-                message="Authorization URL generated successfully.",
-                data=token,
+                message="Authentication successful.",
+                data=token_response,
             )
         except Exception as e:
             return create_api_response(

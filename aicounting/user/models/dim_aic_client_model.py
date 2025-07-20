@@ -45,8 +45,8 @@ class DimAICClient(models.Model):
 
     class Meta:
         db_table = 'dim_aic_client'
-        verbose_name = "Client"
-        verbose_name_plural = "Clients"
+        verbose_name = "AIC Client"
+        verbose_name_plural = "AIC Clients"
 
     def __str__(self):
         return f"{self.client_name} (ID: {self.client_id})"

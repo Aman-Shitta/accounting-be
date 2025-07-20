@@ -2,6 +2,7 @@ import os
 import jwt
 import requests
 import msal
+from django.core.cache import cache
 
 
 from msgraph.graph_request_adapter import GraphRequestAdapter
@@ -30,12 +31,44 @@ class MsalConf:
         client_credential=CLIENT_SECRET
     )
 
-    REDIRECT_URI = "https://b7001b19d7b2.ngrok-free.app/api/v1/auth/callback"
+    REDIRECT_URI = "https://23cdd783904e.ngrok-free.app/api/v1/auth/callback"
 
+    def debug_jwt_token(self, jwt_token):
+        """
+        Debug method to inspect JWT token without validation.
+        Useful for troubleshooting authentication issues.
+        """
+        try:
+            # Get unverified header and payload
+            header = jwt.get_unverified_header(jwt_token)
+            payload = jwt.decode(jwt_token, options={"verify_signature": False})
+            
+            return {
+                "header": header,
+                "payload": payload,
+                "kid": header.get('kid'),
+                "alg": header.get('alg'),
+                "aud": payload.get('aud'),
+                "iss": payload.get('iss'),
+                "exp": payload.get('exp'),
+                "email": payload.get('preferred_username') or payload.get('email')
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def clear_cached_keys(self):
+        """
+        Clear all cached JWKS keys. Useful for troubleshooting or forced refresh.
+        """
+        from django.core.cache import cache
+        # Clear all keys that start with our cache prefix
+        cache.delete_many([key for key in cache._cache.keys() if key.startswith('azure_jwk_data_')])
+        
     def get_public_key(self, jwt_token):
         public_key = ""
-        
-        jwks_response = requests.get(self.JWKS_URI)
+        # Get Azure AD public keys for token signature verification
+        jwks_url = self.JWKS_URI
+        jwks_response = requests.get(jwks_url)
         jwks = jwks_response.json()
         # Find the appropriate key from the JWKS based on the token's "kid" (Key ID) claim
         header = jwt.get_unverified_header(jwt_token)

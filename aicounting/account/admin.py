@@ -2,7 +2,20 @@ from django.contrib import admin
 
 # Register your models here.
 from django.contrib import admin
-from .models.dim_aic_acct_type_model import DimAICAcctType
+
+
+from .models import (
+    DimAICAcctType,
+    DimAICGLAcct,
+    DimAICJEFreq,
+    DimAICJEType,
+    DimAICJETemplateHeader,
+    DimAICJETemplateGL,
+    DimAICTemplateDoc,
+    FactJETransOther,
+    FactAICJETransBank,
+    FactAICJEMonthlyStat,
+)
 
 @admin.register(DimAICAcctType)
 class DimAICAcctTypeAdmin(admin.ModelAdmin):
@@ -11,8 +24,6 @@ class DimAICAcctTypeAdmin(admin.ModelAdmin):
     list_filter = ('created_at', 'updated_at')
     ordering = ('account_type_id',)
 
-from django.contrib import admin
-from .models.dim_aic_gl_acct_model import DimAICGLAcct
 
 @admin.register(DimAICGLAcct)
 class DimAICGLAcctAdmin(admin.ModelAdmin):
@@ -31,16 +42,7 @@ class DimAICGLAcctAdmin(admin.ModelAdmin):
     list_filter = ('account_type_id', 'client_id', 'cust_id', 'created_at', 'updated_at')
     ordering = ('gl_acct_id',)
 
-from django.contrib import admin
 
-from .models.dim_aic_je_freq_model import DimAICJEFreq
-from .models.dim_aic_je_type_model import DimAICJEType
-from .models.dim_aic_je_template_header_model import DimAICJETemplateHeader
-from .models.dim_aic_je_template_gl_model import DimAICJETemplateGL
-from .models.dim_aic_je_template_doc_model import DimAICTemplateDoc
-from .models.fact_aic_je_trans_other_model import FactJETransOther
-from .models.fact_aic_je_trans_bank_model import FactAICJETransBank
-from .models.fact_aic_je_periodic_status import FactAICJEMonthlyStat
 
 @admin.register(DimAICJEFreq)
 class DimAICJEFreqAdmin(admin.ModelAdmin):

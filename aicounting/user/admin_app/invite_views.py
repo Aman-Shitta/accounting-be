@@ -6,8 +6,8 @@ from aicounting.msal_conf import MsalGraphConf
 
 from user.services import create_user_for_customer
 
-from .permissions import IsSuperUser
-from .jwt_auth import AdminJWTAuthentication
+from authentication.permissions import IsSuperUser
+from authentication.authenticate import AdminJWTAuthentication
 
 class AzureInviteView(GenericAPIView):
     """
@@ -42,6 +42,7 @@ class AzureInviteView(GenericAPIView):
                 errors=serializer.errors
             )
 
+        customer_name = email.split('@')[1].split('.')[0].title() if email else ""
         # Generate customer name from email domain if not provided
         # domain is ths customer name
         if not customer_name:

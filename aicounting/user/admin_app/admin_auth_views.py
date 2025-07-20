@@ -15,7 +15,7 @@ from .serializers import (
 )
 from user.models import DimAICCustomer
 from django.contrib.auth import get_user_model
-from .jwt_auth import AdminJWTAuthentication
+from authentication.authenticate import AdminJWTAuthentication
 
 User = get_user_model()
 

@@ -20,13 +20,7 @@ def create_api_response(status_code, message, data=None, **kwargs):
     }
 
     # If data is a dict and looks like serializer errors, put under 'errors'
-    if isinstance(data, dict):
-        # If any value is a list or dict, treat as field errors
-        if any(isinstance(v, (list, dict)) for v in data.values()):
-            response["errors"] = data
-        else:
-            response["data"] = data
-    elif data is not None:
+    if data is not None:
         response["data"] = data
 
     for k, v in kwargs.items():
