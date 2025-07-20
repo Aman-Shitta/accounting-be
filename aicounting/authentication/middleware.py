@@ -5,8 +5,6 @@ from django.conf import settings
 import jwt
 
 import requests
-from jose import jwt
-from jose.exceptions import JWTError
 from django.utils.deprecation import MiddlewareMixin
 from django.contrib.auth.models import AnonymousUser
 from django.conf import settings

@@ -2,7 +2,6 @@ import logging
 import datetime
 from datetime import datetime
 import jwt
-from jwt import DecodeError, InvalidSignatureError, ExpiredSignatureError, InvalidAudienceError
 
 from django.utils.encoding import force_str
 from django.utils.translation import gettext as _
@@ -180,7 +179,7 @@ class JSONWebTokenAuthentication(BaseAuthentication):
         except jwt.InvalidAudienceError as e:
             logger.error(f"JWT audience validation failed: {e}")
             raise CustomAuthenticationFailed('error', _('Token audience validation failed. Please re-authenticate.'))
-        except DecodeError as e:
+        except jwt.DecodeError as e:
             logger.error(f"JWT decode error: {e}")
             raise CustomAuthenticationFailed('error', _('Invalid or expired token.'))
         except ValueError as e:
