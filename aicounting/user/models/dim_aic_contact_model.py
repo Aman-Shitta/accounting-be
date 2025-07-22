@@ -1,8 +1,9 @@
 
-from django.db import models
-from django.core.validators import validate_email, RegexValidator
-from django.core.exceptions import ValidationError
+# Third-party imports
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator, validate_email
+from django.db import models
 
 class DimAICContact(models.Model):
     """

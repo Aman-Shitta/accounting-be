@@ -1,10 +1,10 @@
-from rest_framework import serializers
-
+# Third-party imports
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import F
+from rest_framework import serializers
 
-from django.core.files.storage import default_storage
-
+# Local imports
 from document.models import (
     DimAICDocument,
     FactAICDocKeyItem,

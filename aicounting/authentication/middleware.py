@@ -1,13 +1,10 @@
-from django.utils.deprecation import MiddlewareMixin
+# Third-party imports
+import jwt
+import requests
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.conf import settings
-import jwt
-
-import requests
 from django.utils.deprecation import MiddlewareMixin
-from django.contrib.auth.models import AnonymousUser
-from django.conf import settings
 
 JWKS_URL = f"https://login.microsoftonline.com/{settings.TENANT_ID}/discovery/v2.0/keys"
 JWKS = None

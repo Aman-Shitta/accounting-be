@@ -1,16 +1,13 @@
+# System imports
 import ast
 import sys
-sys.stdout.reconfigure(encoding='utf-8')
-
-from openai import OpenAI
 import time
-import math
-from tqdm import tqdm
-from datetime import datetime
-import tiktoken
-import requests
-import json
 
+# Third-party imports
+import tiktoken
+from openai import OpenAI
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 class OpeAIClient:
     """Base OpenAI Client."""
@@ -103,7 +100,6 @@ class OpeAIClient:
         except Exception as e:
             print(f"Error sending to thread: {e}")
             return []
-
 
 class GLClassifier(OpeAIClient):
     def __init__(self, api_key, assistant_id, vector_store_ids=None):

@@ -1,5 +1,8 @@
-from user.models import DimAICCustomer
+# Third-party imports
 from rest_framework.permissions import BasePermission
+
+# Local imports
+from user.models import DimAICCustomer
 
 class IsSuperUser(BasePermission):
     """

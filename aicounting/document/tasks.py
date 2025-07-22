@@ -1,18 +1,22 @@
-from django.conf import settings
+# System imports
 import json
 from pathlib import Path
+
+# Third-party imports
 from celery import shared_task
+from django.conf import settings
+
+# Local imports
 from document.models.dim_aic_doc_model import (
     DimAICDocument,
+    FactAICDocCheckItem,
     FactAICDocKeyItem,
     FactAICDocLine,
-    FactAICDocLineItem,
-    FactAICDocCheckItem
+    FactAICDocLineItem
 )
+from document.pipeline.classification import GLClassifier
 from document.pipeline.processor.ai_process import DocumentProcessor
 from document.pipeline.prompter import Configuration
-
-from document.pipeline.classification import GLClassifier
 
 @shared_task
 def process_uploaded_document(file_path: str, doc_id: int):

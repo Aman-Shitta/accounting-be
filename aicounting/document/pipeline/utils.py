@@ -1,9 +1,9 @@
 
+# System imports
 import io
-from pypdf import (
-    PdfReader,
-    PdfWriter
-)
+
+# Third-party imports
+from pypdf import PdfReader, PdfWriter
 
 def split_pdf_to_pages(pdf_bytes: bytes):
     """Splits a PDF file into individual pages and returns a list of bytes for each page."""

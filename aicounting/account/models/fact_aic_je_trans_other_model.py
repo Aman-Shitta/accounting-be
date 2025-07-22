@@ -1,6 +1,5 @@
+# Third-party imports
 from django.db import models
-import random # Added for potential future use or if custom ID generation is needed again
-import string # Added for potential future use or if custom ID generation is needed again
 
 
 class FactJETransOther(models.Model):

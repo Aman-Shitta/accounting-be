@@ -1,18 +1,13 @@
-from django.shortcuts import render
-
-# Create your views here.
-from rest_framework.generics import GenericAPIView
-
-
-from django.shortcuts import redirect
-from aicounting.response import create_api_response
-from rest_framework import status
-from django.conf import settings
-from aicounting.msal_conf import MsalConf
-from user.models import DimAICCustomer, DimAICUser  
-import jwt
+# Third-party imports
 
 from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.generics import GenericAPIView
+
+# Local imports
+from aicounting.msal_conf import MsalConf
+from aicounting.response import create_api_response
+from user.models import DimAICCustomer, DimAICUser
 
 msal = MsalConf()
 
@@ -29,9 +24,7 @@ class SSOLoginView(GenericAPIView):
             data={"auth_url": auth_url}
         )
 
-# ...existing code...
-
-class SSOCallbackView(GenericAPIView):
+class SSOGenerateTokenView(GenericAPIView):
     def get(self, request):
         try:
             code = request.GET.get('code')

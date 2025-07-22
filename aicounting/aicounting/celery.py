@@ -1,5 +1,8 @@
+# System imports
 from __future__ import absolute_import, unicode_literals
 import os
+
+# Third-party imports
 from celery import Celery
 
 # set the default Django settings module

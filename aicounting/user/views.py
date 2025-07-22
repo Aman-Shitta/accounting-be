@@ -6,7 +6,6 @@ from .serializers import (
     ClientRetrieveSerializer, 
     ClientUpdateSerializer,
     ContactSerializer,
-    ClientDocumentSerializer,
     ClientDocumentUploadSerializer
 )
 

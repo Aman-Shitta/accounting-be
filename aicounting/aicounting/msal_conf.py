@@ -1,16 +1,15 @@
+# System imports
 import os
+
+# Third-party imports
 import jwt
-import requests
 import msal
-from django.core.cache import cache
+import requests
+from asgiref.sync import async_to_sync
 
 
-from msgraph.graph_request_adapter import GraphRequestAdapter
 from msgraph.generated.models.invitation import Invitation
 from msgraph.generated.models.invited_user_message_info import InvitedUserMessageInfo
-
-from msgraph import GraphServiceClient
-from asgiref.sync import async_to_sync
 
 class MsalConf:
 
@@ -31,7 +30,7 @@ class MsalConf:
         client_credential=CLIENT_SECRET
     )
 
-    REDIRECT_URI = "https://23cdd783904e.ngrok-free.app/api/v1/auth/callback"
+    REDIRECT_URI = "https://4e3c70a21216.ngrok-free.app/api/v1/auth/callback"
 
     def debug_jwt_token(self, jwt_token):
         """
@@ -109,7 +108,6 @@ class MsalConf:
             # Handle exceptions and errors
             print(f"An error occurred while refreshing access token: {str(e)}")
             return None
-
 
 class MsalGraphConf(MsalConf):
     """
