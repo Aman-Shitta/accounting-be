@@ -56,3 +56,6 @@ pylint-report.txt
 # Other
 *.sqlite3
 *.db
+*.cnf
+uploads
+uploads/
