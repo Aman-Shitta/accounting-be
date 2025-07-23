@@ -152,12 +152,12 @@ class ClientUpdateView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
     serializer_class = ClientUpdateSerializer
 
-    def get_object(self):
+    def get_object(self, client_id):
         # For testing - using static user, remove in production
         customer = self.request.user.customer_profile
         if customer:
             try:
-                return DimAICClient.objects.get(customer=customer)
+                return DimAICClient.objects.get(customer=customer, id=client_id)
             except DimAICClient.DoesNotExist:
                 logger.error("Client not found for update.")
                 return DimAICClient.objects.none()
@@ -168,7 +168,12 @@ class ClientUpdateView(generics.GenericAPIView):
             # Use atomic transaction for update
             with transaction.atomic():
                 partial = kwargs.pop('partial', False)
-                instance = self.get_object()
+                instance = self.get_object(kwargs.get('assigned_id'))
+                if not instance:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Client does not exist or you don't have permission."
+                    )
                 serializer = self.get_serializer(instance, data=request.data, partial=partial)
                 
                 if not serializer.is_valid():
