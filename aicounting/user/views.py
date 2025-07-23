@@ -117,17 +117,17 @@ class ClientRetrieveView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
     serializer_class = ClientRetrieveSerializer
 
-    def get_queryset(self, assigned_id):
+    def get_queryset(self, id):
         customer = self.request.user.customer_profile
         if customer:
-            return DimAICClient.objects.filter(customer=customer, id=assigned_id)
+            return DimAICClient.objects.filter(customer=customer, id=id)
         return DimAICClient.objects.none()
 
     def get(self, request, *args, **kwargs):
         """
         Override get method to handle custom response structure
         """
-        assigned_id = kwargs.get('assigned_id')
+        assigned_id = kwargs.get('id')
         queryset = self.get_queryset(assigned_id)
         
         if not queryset.exists():
@@ -168,7 +168,7 @@ class ClientUpdateView(generics.GenericAPIView):
             # Use atomic transaction for update
             with transaction.atomic():
                 partial = kwargs.pop('partial', False)
-                instance = self.get_object(kwargs.get('assigned_id'))
+                instance = self.get_object(kwargs.get('id'))
                 if not instance:
                     return create_api_response(
                         status.HTTP_400_BAD_REQUEST,
@@ -208,7 +208,7 @@ class ContactCreateView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         try:
-            client_id = kwargs.get('assigned_id')
+            client_id = kwargs.get('id')
             
             # Use atomic transaction for contact creation
             with transaction.atomic():
@@ -273,8 +273,8 @@ class DocumentUploadView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         try:
-            assigned_id = kwargs.get('assigned_id')
-            
+            client_id = kwargs.get('id')
+
             # Use atomic transaction for document upload
             with transaction.atomic():
                 # Get the customer from the authenticated user
@@ -288,7 +288,7 @@ class DocumentUploadView(generics.GenericAPIView):
                     
                 try:
                     client = DimAICClient.objects.get(
-                        id=assigned_id, 
+                        id=client_id, 
                         customer=customer
                     )
                 except DimAICClient.DoesNotExist:
@@ -300,8 +300,8 @@ class DocumentUploadView(generics.GenericAPIView):
 
                 # Prepare the data - extract files from request.FILES based on document types
                 document_files = {}
-                valid_types = ['COA', 'GL_HISTORY', 'VENDOR_LIST']
-                
+                valid_types = ['gl_history', 'vendor_list']
+
                 for doc_type in valid_types:
                     if doc_type in request.FILES:
                         document_files[doc_type] = request.FILES[doc_type]
