@@ -30,7 +30,7 @@ class MsalConf:
         client_credential=CLIENT_SECRET
     )
 
-    REDIRECT_URI = "https://4e3c70a21216.ngrok-free.app/api/v1/auth/callback"
+    REDIRECT_URI = "https://firm-worm-evolved.ngrok-free.app/api/v1/auth/callback"
 
     def debug_jwt_token(self, jwt_token):
         """

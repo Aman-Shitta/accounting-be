@@ -28,11 +28,11 @@ class ClientDocumentProcessor:
         Main method to process documents based on type
         """
         try:
-            if document_type == 'COA':
+            if document_type == 'chart_of_account':
                 return self.process_coa_file(file_path)
-            elif document_type == 'GL_HISTORY':
+            elif document_type == 'gl_history':
                 return self.process_gl_history_file(file_path)
-            elif document_type == 'VENDOR_LIST':
+            elif document_type == 'vendor_list':
                 return self.process_vendor_list_file(file_path)
             else:
                 return {

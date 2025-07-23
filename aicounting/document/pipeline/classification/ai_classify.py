@@ -5,18 +5,14 @@ import time
 
 # Third-party imports
 import tiktoken
-from openai import OpenAI
+
+# Local imports
+from aicounting.openai_client import OpeAIClient
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-class OpeAIClient:
-    """Base OpenAI Client."""
-    def __init__(self, api_key, project_id="proj_gg8QzOxMs0eazoHjcjWugxyM", model="gpt-4o"):
-        self.client = OpenAI(
-            api_key=api_key, 
-            project=project_id
-        )
-        self.model = model
+class OpeAIThread(OpeAIClient):
+    """OpenAI Client with Thread Management."""
 
     def count_tokens(self, text: str):
         encoding = tiktoken.encoding_for_model(self.model)
@@ -101,7 +97,7 @@ class OpeAIClient:
             print(f"Error sending to thread: {e}")
             return []
 
-class GLClassifier(OpeAIClient):
+class GLClassifier(OpeAIThread):
     def __init__(self, api_key, assistant_id, vector_store_ids=None):
         super().__init__(api_key)
         self.assistant_id = assistant_id

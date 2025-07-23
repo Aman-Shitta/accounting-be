@@ -1,5 +1,6 @@
-from django.db import models
+# Third-party imports
 from django.contrib.auth import get_user_model
+from django.db import models
 
 
 class DimAICClient(models.Model):
@@ -7,7 +8,7 @@ class DimAICClient(models.Model):
     Represents a client entity associated with a customer and assigned user.
     """
 
-    client_id = models.AutoField(primary_key=True, verbose_name="Client ID")
+    id = models.AutoField(primary_key=True, verbose_name="Client ID")
 
     customer = models.ForeignKey(
         'DimAICCustomer',
@@ -17,7 +18,7 @@ class DimAICClient(models.Model):
     )
 
     client_name = models.CharField(max_length=255, verbose_name="Client Name")
-    id = models.CharField(max_length=255, verbose_name="Client Assigned ID")
+    client_id = models.CharField(max_length=255, verbose_name="Client Assigned ID", unique=True)
     street = models.CharField(max_length=255, verbose_name="Street")
     city = models.CharField(max_length=100, verbose_name="City")
     state = models.CharField(max_length=2, verbose_name="State Abbreviation")
@@ -58,9 +59,9 @@ class DimAICClientDocument(models.Model):
     """
 
     DOCUMENT_TYPE_CHOICES = [
-        ("COA", "Chart of Accounts"),
-        ("VENDOR_LIST", "Vendor List"),
-        ("GL_HISTORY", "GL History"),
+        ("chart_of_account", "Chart of Accounts"),
+        ("vendor_list", "Vendor List"),
+        ("gl_history", "GL History"),
     ]
 
     client = models.ForeignKey(

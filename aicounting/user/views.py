@@ -1,17 +1,23 @@
-from rest_framework import generics, permissions, status
+
+from django.conf import settings
 from django.db import transaction
+
+from rest_framework import generics, permissions, status
+
 from .models import DimAICClient
 from .serializers import (
     ClientSerializer, 
-    ClientRetrieveSerializer, 
+    ClientRetrieveSerializer,
     ClientUpdateSerializer,
     ContactSerializer,
-    ClientDocumentUploadSerializer
+    ClientDocumentUploadSerializer,
 )
 
 from authentication import authenticate
 from authentication.permissions import IsCustomer
 from aicounting.response import create_api_response
+
+from .utils import OpenAIAssistant
 
 import logging
 logger = logging.getLogger(__name__)
@@ -48,7 +54,15 @@ class ClientCreateView(generics.GenericAPIView):
 
                 # Create the client and related objects
                 client = serializer.save()
-                
+
+                client_assistant = OpenAIAssistant(
+                    api_key=settings.OPENAI_API_KEY,
+                    client_id=client.client_id,
+                    special_rules=serializer.validated_data.get('special_rules', None)
+                )
+                # Provision the client GPT assistant
+                # client_assistant.provison_client_assistant()
+
                 # Return success response with created client data
                 response_serializer = ClientRetrieveSerializer(client)
                 logger.info(f"Client created successfully: {client.client_id}")
@@ -60,6 +74,11 @@ class ClientCreateView(generics.GenericAPIView):
                 )
             
         except Exception as e:
+            import os, sys
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+
             logger.error(f"Unexpected error during client creation: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -300,6 +319,15 @@ class DocumentUploadView(generics.GenericAPIView):
                 # Create and process the documents
                 result = serializer.save()
                 
+                client_assistant = OpenAIAssistant(
+                    api_key=settings.OPENAI_API_KEY,
+                    client_id=client.client_id,
+                    special_rules=serializer.validated_data.get('special_rules', None)
+                )
+                # Provision the client GPT assistant
+                document_ids = [doc.id for doc in result['documents']]
+                client_assistant.update_assistant_with_new_files(new_document_ids=document_ids)
+
                 # Prepare response data
                 response_data = {
                     'uploaded_documents': len(result['documents']),
