@@ -27,10 +27,10 @@ class ContactSerializer(serializers.ModelSerializer):
         return value
 
 
-class ClientSerializer(serializers.ModelSerializer):
+class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     """Main serializer for creating DimAICClient with nested contacts and documents"""
     
-    contacts = ContactSerializer(write_only=True, required=False)
+    contacts = ContactSerializer(many=True, write_only=True, required=False)
     # Define the expected document types
     chart_of_account = serializers.FileField(required=True, help_text="Chart Of Accounts file (CSV/Excel)")
     gl_history = serializers.FileField(required=False, help_text="General Ledger History file (CSV/Excel)")
@@ -46,9 +46,10 @@ class ClientSerializer(serializers.ModelSerializer):
 
 
     def validate(self, attrs):
+
         return super().validate(attrs)
 
-    def __validate_document__(self, data, client):
+    def __validate_document__(self, data, client, is_update=False):
         """Ensure at least one file is provided and validate file types"""
 
         def validate_file_type(file_obj, doc_type):
@@ -62,24 +63,29 @@ class ClientSerializer(serializers.ModelSerializer):
             return file_obj
 
         if not any(data.values()):
-            raise serializers.ValidationError("At least one document file must be provided.")
-        
+            if not is_update:
+                raise serializers.ValidationError("At least one document file must be provided.")
+            # For updates, it's okay to have no documents if just updating client info
+            return data
+
         # Validate each file
         for doc_type, file_obj in data.items():
             if file_obj:
                 validate_file_type(file_obj, doc_type)
-        
-
-                if DimAICClientDocument.objects.filter(client=client, document_type=doc_type).exists():
-                    raise serializers.ValidationError({
-                        "non_field_errors": [f"A file of type '{doc_type}' already exists for this client."]
-                    })
+                
+                # For create operations, check if document type already exists
+                if not is_update:
+                    if DimAICClientDocument.objects.filter(client=client, document_type=doc_type).exists():
+                        raise serializers.ValidationError({
+                            "non_field_errors": [f"A file of type '{doc_type}' already exists for this client."]
+                        })
         return data
 
 
     def create(self, validated_data):
         
         contacts_data = validated_data.pop('contacts', [])
+
         documents = {
             'chart_of_account': validated_data.pop('chart_of_account', None),
             'gl_history': validated_data.pop('gl_history', None),
@@ -105,7 +111,7 @@ class ClientSerializer(serializers.ModelSerializer):
                     **validated_data
                 )
 
-                self.__validate_document__(documents, client)
+                self.__validate_document__(documents, client, is_update=False)
 
                 # Create contacts
                 for contact_data in contacts_data:
@@ -121,9 +127,16 @@ class ClientSerializer(serializers.ModelSerializer):
                 for doc_type, file_obj in documents.items():
                     if file_obj:
                         try:
+                            # Map document types to model choices
+                            doc_type_mapping = {
+                                'chart_of_account': 'COA',
+                                'gl_history': 'GL_HISTORY', 
+                                'vendor_list': 'VENDOR_LIST'
+                            }
+                            
                             document = DimAICClientDocument.objects.create(
                                 client=client,
-                                document_type=doc_type,
+                                document_type=doc_type_mapping.get(doc_type, doc_type.upper()),
                                 file=file_obj,
                                 uploaded_by=request_user
                             )
@@ -180,14 +193,125 @@ class ClientSerializer(serializers.ModelSerializer):
         return client
 
     def update(self, instance, validated_data):
-        # Update basic client fields
-        instance.client_name = validated_data.get('client_name', instance.client_name)
-        instance.id = validated_data.get('id', instance.id)
-        instance.street = validated_data.get('street', instance.street)
-        instance.city = validated_data.get('city', instance.city)
-        instance.state = validated_data.get('state', instance.state)
-        instance.zip_code = validated_data.get('zip_code', instance.zip_code)
-        instance.save()
+        """
+        Update client with support for contacts and documents
+        - Only one contact allowed per client (update existing or create new)
+        - Documents: Allow adding missing documents, error if document type already exists
+        """
+        contacts_data = validated_data.pop('contacts', [])
+        documents = {
+            'chart_of_account': validated_data.pop('chart_of_account', None),
+            'gl_history': validated_data.pop('gl_history', None),
+            'vendor_list': validated_data.pop('vendor_list', None)
+        }
+
+        request_user = self.context['request'].user
+
+        with transaction.atomic():
+            try:
+                # Update basic client fields
+                instance.client_name = validated_data.get('client_name', instance.client_name)
+                instance.street = validated_data.get('street', instance.street)
+                instance.city = validated_data.get('city', instance.city)
+                instance.state = validated_data.get('state', instance.state)
+                instance.zip_code = validated_data.get('zip_code', instance.zip_code)
+                instance.save()
+
+                # Handle contacts update (only one contact allowed)
+                if contacts_data:
+                    if len(contacts_data) > 1:
+                        raise serializers.ValidationError("Only one contact is allowed per client.")
+                    
+                    contact_data = contacts_data[0]
+                    existing_contact = DimAICContact.objects.filter(client_id=instance).first()
+                    
+                    if existing_contact:
+                        # Update existing contact
+                        existing_contact.contact_name = contact_data.get('contact_name', existing_contact.contact_name)
+                        existing_contact.contact_email = contact_data.get('contact_email', existing_contact.contact_email)
+                        existing_contact.contact_phone = contact_data.get('contact_phone', existing_contact.contact_phone)
+                        existing_contact.save()
+                        logger.info(f"Updated existing contact for client {instance.client_id}")
+                    else:
+                        # Create new contact
+                        DimAICContact.objects.create(
+                            client_id=instance,
+                            contact_name=contact_data['contact_name'],
+                            contact_email=contact_data['contact_email'],
+                            contact_phone=contact_data['contact_phone']
+                        )
+                        logger.info(f"Created new contact for client {instance.client_id}")
+
+                # Handle documents update
+                created_documents = []
+                doc_process_results = {}
+                
+                for doc_type, file_obj in documents.items():
+                    if file_obj:
+                        
+                        
+                        # Check if document type already exists
+                        existing_doc = DimAICClientDocument.objects.filter(
+                            client=instance, 
+                            document_type=doc_type
+                        ).first()
+                        
+                        if existing_doc:
+                            raise serializers.ValidationError({
+                                doc_type: [f"A document of type '{doc_type}' already exists for this client. Please delete the existing document first if you want to replace it."]
+                            })
+                        
+                        try:
+                            # Create new document
+                            document = DimAICClientDocument.objects.create(
+                                client=instance,
+                                document_type=doc_type,
+                                file=file_obj,
+                                uploaded_by=request_user
+                            )
+                            
+                            created_documents.append(document)
+                            
+                            # Process the document
+                            processor = ClientDocumentProcessor(
+                                customer=instance.customer,
+                                uploaded_by=request_user,
+                                client=instance
+                            )
+                            
+                            file_path = document.file.path
+                            result = processor.process_document(file_path, doc_type)
+                            
+                            if not result['success']:
+                                # Processing failed - cleanup files and raise error
+                                for doc in created_documents:
+                                    if doc.file and doc.file.path:
+                                        import os
+                                        if os.path.exists(doc.file.path):
+                                            os.remove(doc.file.path)
+                                
+                                raise Exception(f"Processing failed for {doc_type}: {result.get('error', 'Unknown error')}")
+                            
+                            doc_process_results[doc_type] = {
+                                'document_id': document.id,
+                                'processing_result': result,
+                                'success': result['success']
+                            }
+                            
+                            logger.info(f"Successfully processed {doc_type} document for client {instance.client_id}. "
+                                      f"Processed {result['processed_count']} records.")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing {doc_type} document: {str(e)}")
+                            raise
+
+            except Exception as e:
+                import os, sys
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
+                raise
+
         return instance
 
 

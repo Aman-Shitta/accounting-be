@@ -6,7 +6,7 @@ from rest_framework import generics, permissions, status
 
 from .models import DimAICClient
 from .serializers import (
-    ClientSerializer, 
+    ClientCreateUpdateSerializer, 
     ClientRetrieveSerializer,
     ClientUpdateSerializer,
     ContactSerializer,
@@ -30,7 +30,7 @@ class ClientCreateView(generics.GenericAPIView):
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
-    serializer_class = ClientSerializer
+    serializer_class = ClientCreateUpdateSerializer
     queryset = DimAICClient.objects.all()
 
     def get_serializer_context(self):
@@ -38,12 +38,48 @@ class ClientCreateView(generics.GenericAPIView):
         context.update({"request": self.request})
         return context
 
+    
+    def _parse_contacts_data(self, data):
+        """
+        Parse form data to handle nested structures like contacts[0][contact_name]
+        """
+        import re
+        from collections import defaultdict
+        
+        parsed_data = {}
+        contacts_data = defaultdict(dict)
+        
+        # Regular expression to match nested form data patterns
+        contact_pattern = re.compile(r'contacts\[(\d+)\]\[(\w+)\]')
+        
+        for key, value in data.items():
+            # Check if this is a contact field
+            contact_match = contact_pattern.match(key)
+            if contact_match:
+                index = int(contact_match.group(1))
+                field_name = contact_match.group(2)
+                contacts_data[index][field_name] = value
+            else:
+                # Regular field
+                parsed_data[key] = value
+        
+        # Convert contacts defaultdict to list
+        if contacts_data:
+            contacts_list = []
+            for i in sorted(contacts_data.keys()):
+                contacts_list.append(contacts_data[i])
+            parsed_data['contacts'] = contacts_list
+        
+        return parsed_data
+
     def post(self, request, *args, **kwargs):
         try:
 
             # Use atomic transaction for all operations
             with transaction.atomic():
-                serializer = self.get_serializer(data=request.data)
+                parsed_data = self._parse_contacts_data(request.data)
+
+                serializer = self.get_serializer(data=parsed_data)
                 if not serializer.is_valid():
                     logger.error(f"Client creation validation failed: {serializer.errors}")
                     return create_api_response(
@@ -55,11 +91,11 @@ class ClientCreateView(generics.GenericAPIView):
                 # Create the client and related objects
                 client = serializer.save()
 
-                client_assistant = OpenAIAssistant(
-                    api_key=settings.OPENAI_API_KEY,
-                    client_id=client.client_id,
-                    special_rules=serializer.validated_data.get('special_rules', None)
-                )
+                # client_assistant = OpenAIAssistant(
+                #     api_key=settings.OPENAI_API_KEY,
+                #     client_id=client.client_id,
+                #     special_rules=serializer.validated_data.get('special_rules', None)
+                # )
                 # Provision the client GPT assistant
                 # client_assistant.provison_client_assistant()
 
@@ -147,40 +183,101 @@ class ClientRetrieveView(generics.GenericAPIView):
         )
 
 class ClientUpdateView(generics.GenericAPIView):
-    """Update client basic information"""
+    """Update client information with support for contacts and documents"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
-    serializer_class = ClientUpdateSerializer
+    serializer_class = ClientCreateUpdateSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
 
     def get_object(self, client_id):
-        # For testing - using static user, remove in production
         customer = self.request.user.customer_profile
         if customer:
             try:
                 return DimAICClient.objects.get(customer=customer, id=client_id)
             except DimAICClient.DoesNotExist:
                 logger.error("Client not found for update.")
-                return DimAICClient.objects.none()
-        return DimAICClient.objects.none()
+                return None
+        return None
+
+    def _parse_contacts_data(self, data):
+        """
+        Parse form data to handle nested structures like contacts[0][contact_name]
+        """
+        import re
+        from collections import defaultdict
+        
+        parsed_data = {}
+        contacts_data = defaultdict(dict)
+        
+        # Regular expression to match nested form data patterns
+        contact_pattern = re.compile(r'contacts\[(\d+)\]\[(\w+)\]')
+        
+        for key, value in data.items():
+            # Check if this is a contact field
+            contact_match = contact_pattern.match(key)
+            if contact_match:
+                index = int(contact_match.group(1))
+                field_name = contact_match.group(2)
+                contacts_data[index][field_name] = value
+            else:
+                # Regular field
+                parsed_data[key] = value
+        
+        # Convert contacts defaultdict to list
+        if contacts_data:
+            contacts_list = []
+            for i in sorted(contacts_data.keys()):
+                contacts_list.append(contacts_data[i])
+            parsed_data['contacts'] = contacts_list
+        
+        return parsed_data
 
     def put(self, request, *args, **kwargs):
         try:
             # Use atomic transaction for update
             with transaction.atomic():
-                partial = kwargs.pop('partial', False)
                 instance = self.get_object(kwargs.get('id'))
                 if not instance:
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Client does not exist or you don't have permission."
+                        status.HTTP_404_NOT_FOUND,
+                        "Client not found or you don't have permission to update it."
                     )
-                serializer = self.get_serializer(instance, data=request.data, partial=partial)
+
+                # Check if data is sent as JSON in 'data' field (recommended approach)
+                if 'data' in request.data:
+                    import json
+                    try:
+                        json_data = json.loads(request.data['data'])
+                        # Merge JSON data with files
+                        combined_data = json_data.copy()
+                        # Add files to the data
+                        for key, file in request.FILES.items():
+                            combined_data[key] = file
+                        serializer_data = combined_data
+                    except json.JSONDecodeError:
+                        return create_api_response(
+                            status.HTTP_400_BAD_REQUEST,
+                            "Invalid JSON in 'data' field.",
+                            data={}
+                        )
+                else:
+                    # Fallback to old form-data parsing
+                    serializer_data = self._parse_contacts_data(request.data)
+                    # Add files to parsed data
+                    for key, file in request.FILES.items():
+                        serializer_data[key] = file
+                
+                serializer = self.get_serializer(instance, data=serializer_data, partial=True)
                 
                 if not serializer.is_valid():
                     return create_api_response(
                         status.HTTP_400_BAD_REQUEST,
                         "Client update failed due to validation errors.",
-                        error=serializer.errors
+                        data=serializer.errors
                     )
 
                 client = serializer.save()
