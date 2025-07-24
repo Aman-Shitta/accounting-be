@@ -82,7 +82,8 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             
             # Remove breakpoint for production
             # breakpoint()
-            
+            # print(f"Public key: {public_key}")
+            # print(f"Expected audience: {audience}")
             logger.debug(f"Expected audience: {audience}")
             
             # Try to decode with proper audience validation
@@ -144,31 +145,23 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             # ...rest of your existing user creation logic...
             from user.models import DimAICUser, DimAICCustomer
             
-            domain = email.split('@')[1].lower()
-            cust_name = domain.split('.')[0].capitalize()
+            azure_id = decoded_token.get("oid")
 
-            cust_id = DimAICCustomer.objects.filter(customer_name=cust_name).first()
+            cust_id = DimAICCustomer.objects.filter(azure_id=azure_id).first()
 
             if not cust_id:
-                logger.warning(f"Unauthorized customer: {cust_name}")
+                logger.warning(f"Unauthorized customer")
                 raise CustomAuthenticationFailed('error', _('Unauthorized Customer. Please contact admin.'))
 
             UserModel = get_user_model()    
             django_user, created = UserModel.objects.get_or_create(
                 email=email,
                 defaults={"username": email.split("@")[0]}
-            )    
-            user, created = DimAICUser.objects.get_or_create(
-                system_user=django_user,
-                defaults={
-                    "username": email.split("@")[0],
-                    "cust_id": cust_id,
-                    "first_name": email.split("@")[0],
-                    "last_name": "",
-                    "email": email
-                }
             )
+
             logger.debug(f"Authentication successful for user: {email}")
+
+            # msal_conf.refresh_access_token(django_user.customer_profile.refresher_token)
             return (django_user, jwt_token)
 
         except jwt.InvalidSignatureError as e:

@@ -25,6 +25,7 @@ class SSOLoginView(GenericAPIView):
         )
 
 class SSOGenerateTokenView(GenericAPIView):
+
     def get(self, request):
         try:
             code = request.GET.get('code')
@@ -50,14 +51,15 @@ class SSOGenerateTokenView(GenericAPIView):
 
             # Get ID token instead of access token for user authentication
             id_token = result.get('id_token')
+            refresh_token = result.get('refresh_token')
             if not id_token:
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
                     message='No ID token received from Azure AD.'
                 )
-
-            email = result.get('id_token_claims', {}).get('preferred_username')
+            token_claims = result.get('id_token_claims', {})
+            email = token_claims.get('preferred_username')
             if not email:
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -65,45 +67,84 @@ class SSOGenerateTokenView(GenericAPIView):
                     message='Email not found in token claims.'
                 )
 
-            domain = email.split('@')[1].lower()
-            cust_name = domain.split('.')[0].capitalize()
-            print(f"Customer Name: {cust_name}")    
+            user_object_id = token_claims.get('oid')
+            groups = token_claims.get('groups', [])
 
-            customer = DimAICCustomer.objects.filter(customer_name=cust_name).first()
-            if not customer:
+            if not groups:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='Unauthorized Customer. Please contact admin.'
+                    message='User does not belong to any required groups.'
+                )
+            
+            group = groups[0]  # Assuming the first group is the one we care about
+            user_assigned_groups = [k for k, v in msal.GROUPS.items() if v == group]
+
+            if not user_assigned_groups:
+                return create_api_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    data=None,
+                    message='Unauthorized group access.'
+                )
+            
+            user_name = ""
+            if user_assigned_groups[0] == 'customer':
+                customer = DimAICCustomer.objects.filter(system_user__username=email).first()
+
+                if not customer or not user_object_id:
+                    return create_api_response(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        data=None,
+                        message='Unauthorized Customer. Please contact admin.'
+                    )
+                if not customer.verified:
+                    customer.azure_id = user_object_id
+                    customer.verified = True
+                
+                customer.refresher_token = refresh_token
+                customer.save()
+
+                user_name = customer.customer_name
+
+            elif user_assigned_groups[0] == 'accountant':
+                user = DimAICUser.objects.filter(system_user__username=email).first()
+                if not user or not user_object_id:
+                    return create_api_response(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        data=None,
+                        message='Unauthorized Accountant. Please contact admin.'
+                    )
+                if not user.verified:
+                    user.azure_id = user_object_id
+                    user.verified = True
+                
+                user.refresher_token = refresh_token
+                user.save()
+
+                user_name = f"{user.first_name} {user.last_name}"
+            else:
+                return create_api_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    data=None,
+                    message='Unauthorized user type.'
                 )
 
-            UserModel = get_user_model()
-            system_user, _ = UserModel.objects.get_or_create(
+            get_user_model().objects.get_or_create(
                 email=email,
                 defaults={"username": email.split("@")[0]}
-            )
-            name = email.split("@")[0]
-            DimAICUser.objects.get_or_create(
-                system_user=system_user,
-                defaults={
-                    "cust_id": customer,
-                    "username": email.split("@")[0],
-                    "first_name": f"{name[0]}",
-                    "last_name": f"{name}",
-                    "email": email,
-                }
             )
 
             # Return the ID token for client-side storage and future API calls
             token_response = {
-                "access_token": id_token,  # This is what the client should use in Authorization header
+                "access_token": id_token,
                 # "access_token": result.get('access_token'),  # Optional: for accessing other APIs
                 # "refresh_token": result.get('refresh_token'),
                 "expires_in": result.get('expires_in'),
                 # "token_type": "Bearer",
+                "user_type": 'customer',
                 "user_info": {
                     "email": email,
-                    "customer": cust_name
+                    "name": user_name
                 }
             }
             

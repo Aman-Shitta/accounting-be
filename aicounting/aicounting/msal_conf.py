@@ -30,38 +30,13 @@ class MsalConf:
         client_credential=CLIENT_SECRET
     )
 
-    REDIRECT_URI = "https://firm-worm-evolved.ngrok-free.app/api/v1/auth/callback"
-
-    def debug_jwt_token(self, jwt_token):
-        """
-        Debug method to inspect JWT token without validation.
-        Useful for troubleshooting authentication issues.
-        """
-        try:
-            # Get unverified header and payload
-            header = jwt.get_unverified_header(jwt_token)
-            payload = jwt.decode(jwt_token, options={"verify_signature": False})
-            
-            return {
-                "header": header,
-                "payload": payload,
-                "kid": header.get('kid'),
-                "alg": header.get('alg'),
-                "aud": payload.get('aud'),
-                "iss": payload.get('iss'),
-                "exp": payload.get('exp'),
-                "email": payload.get('preferred_username') or payload.get('email')
-            }
-        except Exception as e:
-            return {"error": str(e)}
+    GROUPS = {
+            'customer': 'e1c94e8c-0f95-4594-8961-8ca9a0d44dc6',
+            'accountant':'dbee5e23-aaed-4208-a261-37386dea6821'
+        }
     
-    def clear_cached_keys(self):
-        """
-        Clear all cached JWKS keys. Useful for troubleshooting or forced refresh.
-        """
-        from django.core.cache import cache
-        # Clear all keys that start with our cache prefix
-        cache.delete_many([key for key in cache._cache.keys() if key.startswith('azure_jwk_data_')])
+    REDIRECT_URI = "https://firm-worm-evolved.ngrok-free.app/api/v1/auth/callback"
+    # REDIRECT_URI = "https://lively-renewing-monarch.ngrok-free.app/calback"
         
     def get_public_key(self, jwt_token):
         public_key = ""
@@ -153,11 +128,7 @@ class MsalGraphConf(MsalConf):
         Maps user type to a specific group ID.
         This is a placeholder for actual mapping logic.
         """
-        groups_name = {
-            'customer': 'e1c94e8c-0f95-4594-8961-8ca9a0d44dc6',
-            'accountant':'dbee5e23-aaed-4208-a261-37386dea6821'
-        }
-        return groups_name.get(user_type, None)
+        return self.GROUPS.get(user_type, None)
     
     def get_group(self, user_type):
         graph_client = self.get_graph_client()
@@ -165,7 +136,6 @@ class MsalGraphConf(MsalConf):
         azure_groups = groups.value if hasattr(groups, 'value') else []
 
         return azure_groups
-    
     
 
     def add_user_to_group(self, user_id, group_id):

@@ -8,7 +8,6 @@ from .models import DimAICClient
 from .serializers import (
     ClientCreateUpdateSerializer, 
     ClientRetrieveSerializer,
-    ClientUpdateSerializer,
     ContactSerializer,
     ClientDocumentUploadSerializer,
 )

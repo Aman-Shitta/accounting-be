@@ -23,7 +23,7 @@ class AzureInviteView(GenericAPIView):
     def post(self, request):
         data = request.data
         email = data.get("email")
-        # customer_name = data.get("customer_name", "")
+        customer_name = data.get("customer_name", "")
         street = data.get("street", "")
         city = data.get("city", "")
         state_abrevation = data.get("state_abrevation", "")
@@ -41,12 +41,6 @@ class AzureInviteView(GenericAPIView):
                 message="Invalid data",
                 errors=serializer.errors
             )
-
-        customer_name = email.split('@')[1].split('.')[0].title() if email else ""
-        # Generate customer name from email domain if not provided
-        # domain is ths customer name
-        if not customer_name:
-            customer_name = email.split('@')[1].replace('.', ' ').title()
         
         # Check if customer already exists
         customer, error_message = create_user_for_customer(
