@@ -19,10 +19,10 @@ class DimAICClient(models.Model):
 
     client_name = models.CharField(max_length=255, verbose_name="Client Name")
     client_id = models.CharField(max_length=255, verbose_name="Client Assigned ID", unique=True)
-    street = models.CharField(max_length=255, verbose_name="Street")
-    city = models.CharField(max_length=100, verbose_name="City")
-    state = models.CharField(max_length=2, verbose_name="State Abbreviation")
-    zip_code = models.IntegerField(verbose_name="Zip Code")
+    street = models.CharField(max_length=255, verbose_name="Street", null=True, blank=True,)
+    city = models.CharField(max_length=100, verbose_name="City", null=True, blank=True,)
+    state = models.CharField(max_length=2, verbose_name="State Abbreviation", null=True, blank=True)
+    zip_code = models.IntegerField(verbose_name="Zip Code", null=True, blank=True,)
 
     assigned_user = models.ForeignKey(
         "DimAICUser",

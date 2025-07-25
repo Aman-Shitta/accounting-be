@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('user', '0008_rename_temp_client_id_dimaicclient_client_id_and_more'),
+        ('user', '0009_alter_dimaicclient_city_alter_dimaicclient_state_and_more'),
     ]
 
     operations = [

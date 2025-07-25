@@ -39,7 +39,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAICClient
         fields = [
-            'id', 'client_id', 'client_name', 'street', 'city', 'state', 'zip_code',
+            'id', 'client_id', 'client_name', 
             'contacts', "chart_of_account", "gl_history", "vendor_list"
         ]
         read_only_fields = ['id']
@@ -100,7 +100,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
         created_documents = []
         doc_process_results = {}
-
+        client = None
         # Use atomic transaction to ensure all or nothing
         with transaction.atomic():
             try:
