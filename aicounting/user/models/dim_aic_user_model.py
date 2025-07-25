@@ -43,6 +43,21 @@ class DimAICUser(models.Model):
     email = models.EmailField(verbose_name="User Email")
 
     verified = models.BooleanField(default=False, verbose_name="Verified")
+
+    azure_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="Azure ID",
+        help_text="Azure Active Directory user ID for SSO integration"
+    )
+    refresher_token = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Refresher Token",
+        help_text="Azure AD refresher token for SSO integration"
+    )
     # Addd permissions for accountant and supervisor
 
     class Meta:

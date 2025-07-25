@@ -24,23 +24,31 @@ class DimAICGLAcct(models.Model):
     gl_acct_nbr = models.CharField(
         max_length=15,
         verbose_name="GL Account Number",
-	)
+    )
     gl_acct_name = models.CharField(
         max_length=255,
         verbose_name="GL Account Name",
-	)
+    )
     gl_acct_desc = models.TextField(
         verbose_name="GL Account Description",
-	)
+    )
+    account_class = models.CharField(
+        max_length=100,
+        verbose_name="Account Class",
+        help_text="e.g., Asset, Liability, Equity, Revenue, Expense"
+    )
+    sub_class = models.CharField(
+        max_length=100,
+        verbose_name="Account Sub Class",
+        help_text="e.g., Cash, Fixed Assets, Current Liabilities"
+    )
     account_type_id = models.ForeignKey(
         'DimAICAcctType',
         on_delete=models.CASCADE,
         verbose_name="Account Type ID",
-	)
-    # TODO: discuss if embedding needs to be saved as assistant have embedding saved directly
-    # embedding = models.TextField(
-    #     verbose_name="Embedding",
-    #         # )
+        null=True,
+        blank=True,
+    )
     input_user = models.ForeignKey(
         get_user_model(),
         on_delete=models.SET_NULL,

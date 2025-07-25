@@ -1,5 +1,6 @@
-from django.db import models
+# Third-party imports
 from django.contrib.auth import get_user_model
+from django.db import models
 
 
 class DimAICClient(models.Model):
@@ -7,7 +8,7 @@ class DimAICClient(models.Model):
     Represents a client entity associated with a customer and assigned user.
     """
 
-    client_id = models.AutoField(primary_key=True, verbose_name="Client ID")
+    id = models.AutoField(primary_key=True, verbose_name="Client ID")
 
     customer = models.ForeignKey(
         'DimAICCustomer',
@@ -17,11 +18,11 @@ class DimAICClient(models.Model):
     )
 
     client_name = models.CharField(max_length=255, verbose_name="Client Name")
-    id = models.CharField(max_length=255, verbose_name="Client Assigned ID")
-    street = models.CharField(max_length=255, verbose_name="Street")
-    city = models.CharField(max_length=100, verbose_name="City")
-    state = models.CharField(max_length=2, verbose_name="State Abbreviation")
-    zip_code = models.IntegerField(verbose_name="Zip Code")
+    client_id = models.CharField(max_length=255, verbose_name="Client Assigned ID", unique=True)
+    street = models.CharField(max_length=255, verbose_name="Street", null=True, blank=True,)
+    city = models.CharField(max_length=100, verbose_name="City", null=True, blank=True,)
+    state = models.CharField(max_length=2, verbose_name="State Abbreviation", null=True, blank=True)
+    zip_code = models.IntegerField(verbose_name="Zip Code", null=True, blank=True,)
 
     assigned_user = models.ForeignKey(
         "DimAICUser",
@@ -45,8 +46,8 @@ class DimAICClient(models.Model):
 
     class Meta:
         db_table = 'dim_aic_client'
-        verbose_name = "Client"
-        verbose_name_plural = "Clients"
+        verbose_name = "AIC Client"
+        verbose_name_plural = "AIC Clients"
 
     def __str__(self):
         return f"{self.client_name} (ID: {self.client_id})"
@@ -58,9 +59,9 @@ class DimAICClientDocument(models.Model):
     """
 
     DOCUMENT_TYPE_CHOICES = [
-        ("COA", "Chart of Accounts"),
-        ("VENDOR_LIST", "Vendor List"),
-        ("GL_HISTORY", "GL History"),
+        ("chart_of_account", "Chart of Accounts"),
+        ("vendor_list", "Vendor List"),
+        ("gl_history", "GL History"),
     ]
 
     client = models.ForeignKey(

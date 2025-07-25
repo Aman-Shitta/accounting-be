@@ -1,22 +1,23 @@
+# System imports
+import importlib
 import json
+import os
 import re
+import sys
 import time
 import unicodedata
-from typing import Any
 
+
+# Third-party imports
+from django.conf import settings
 from google import genai
 from google.genai import types
 
-import importlib
+# Local imports
 from document.pipeline.prompter import (
     Configuration,
     prepare_prompt,
 )
-
-from django.conf import settings
-import sys
-import logging
-import os
 
 class JSONCleaner:
     @staticmethod

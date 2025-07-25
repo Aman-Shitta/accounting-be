@@ -1,18 +1,13 @@
-from django.shortcuts import render
-
-# Create your views here.
-from rest_framework.generics import GenericAPIView
-
-
-from django.shortcuts import redirect
-from aicounting.response import create_api_response
-from rest_framework import status
-from django.conf import settings
-from aicounting.msal_conf import MsalConf
-from user.models import DimAICCustomer, DimAICUser  
-import jwt
+# Third-party imports
 
 from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.generics import GenericAPIView
+
+# Local imports
+from aicounting.msal_conf import MsalConf
+from aicounting.response import create_api_response
+from user.models import DimAICCustomer, DimAICUser
 
 msal = MsalConf()
 
@@ -29,7 +24,8 @@ class SSOLoginView(GenericAPIView):
             data={"auth_url": auth_url}
         )
 
-class SSOCallbackView(GenericAPIView):
+class SSOGenerateTokenView(GenericAPIView):
+
     def get(self, request):
         try:
             code = request.GET.get('code')
@@ -53,7 +49,17 @@ class SSOCallbackView(GenericAPIView):
                     message=f'Failed to acquire token: {str(e)}'
                 )
 
-            email = result.get('id_token_claims', {}).get('preferred_username')
+            # Get ID token instead of access token for user authentication
+            id_token = result.get('id_token')
+            refresh_token = result.get('refresh_token')
+            if not id_token:
+                return create_api_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    data=None,
+                    message='No ID token received from Azure AD.'
+                )
+            token_claims = result.get('id_token_claims', {})
+            email = token_claims.get('preferred_username')
             if not email:
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -61,45 +67,95 @@ class SSOCallbackView(GenericAPIView):
                     message='Email not found in token claims.'
                 )
 
-            domain = email.split('@')[1].lower()
-            cust_name = domain.split('.')[0].capitalize()
+            user_object_id = token_claims.get('oid')
+            groups = token_claims.get('groups', [])
 
-            customer = DimAICCustomer.objects.filter(customer_name=cust_name).first()
-            if not customer:
+            if not groups:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='Unauthorized Customer. Please contact admin.'
+                    message='User does not belong to any required groups.'
+                )
+            
+            group = groups[0]  # Assuming the first group is the one we care about
+            user_assigned_groups = [k for k, v in msal.GROUPS.items() if v == group]
+
+            if not user_assigned_groups:
+                return create_api_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    data=None,
+                    message='Unauthorized group access.'
+                )
+            
+            user_name = ""
+            customer_name = ""
+            if user_assigned_groups[0] == 'customer':
+                customer = DimAICCustomer.objects.filter(system_user__username=email).first()
+
+                if not customer or not user_object_id:
+                    return create_api_response(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        data=None,
+                        message='Unauthorized Customer. Please contact admin.'
+                    )
+                if not customer.verified:
+                    customer.azure_id = user_object_id
+                    customer.verified = True
+                
+                customer.refresher_token = refresh_token
+                customer.save()
+
+                user_name = customer.customer_name
+                customer_name = user_name
+
+            elif user_assigned_groups[0] == 'accountant':
+                user = DimAICUser.objects.filter(system_user__username=email).first()
+                if not user or not user_object_id:
+                    return create_api_response(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        data=None,
+                        message='Unauthorized Accountant. Please contact admin.'
+                    )
+                if not user.verified:
+                    user.azure_id = user_object_id
+                    user.verified = True
+                
+                user.refresher_token = refresh_token
+                user.save()
+
+                user_name = f"{user.first_name} {user.last_name}"
+                customer_name = user.cust_id.customer_name
+            else:
+                return create_api_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    data=None,
+                    message='Unauthorized user type.'
                 )
 
-            UserModel = get_user_model()
-            system_user, _ = UserModel.objects.get_or_create(
+            get_user_model().objects.get_or_create(
                 email=email,
                 defaults={"username": email.split("@")[0]}
             )
-            name = email.split("@")[0]
-            DimAICUser.objects.get_or_create(
-                system_user=system_user,
-                defaults={
-                    "cust_id": customer,
-                    "username": email.split("@")[0],
-                    "first_name": f"{name[0]}",
-                    "last_name": f"{name}",
-                    "email": email,
-                }
-            )
 
-            token = {
-                "access_token": result.get('access_token'),
-                "refresh_token": result.get('refresh_token'),
+            # Return the ID token for client-side storage and future API calls
+            token_response = {
+                "access_token": id_token,
+                # "access_token": result.get('access_token'),  # Optional: for accessing other APIs
+                # "refresh_token": result.get('refresh_token'),
                 "expires_in": result.get('expires_in'),
-                "info": result.get("client_info"),
+                # "token_type": "Bearer",
+                "user_info": {
+                    "user_type": 'customer',
+                    "email": email,
+                    "name": user_name,
+                    "customer_name": f"{customer_name}"
+                }
             }
-            print(token)
+            
             return create_api_response(
                 status_code=status.HTTP_200_OK,
-                message="Authorization URL generated successfully.",
-                data=token,
+                message="Authentication successful.",
+                data=token_response,
             )
         except Exception as e:
             return create_api_response(

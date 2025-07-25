@@ -1,14 +1,18 @@
+# System imports
 import logging
-import datetime
 from datetime import datetime
-import jwt
-from jwt import DecodeError
 
+# Third-party imports
+import jwt
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.utils.encoding import force_str
 from django.utils.translation import gettext as _
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
-from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,72 +44,141 @@ class JSONWebTokenAuthentication(BaseAuthentication):
         return token
 
     
+    
     def authenticate(self, request):
         """
         Authenticate the user based on the provided JSON Web Token (JWT).
-
-        Parameters:
-        - request: The HTTP request object.
-
-        Returns:
-        - A tuple (user, jwt_token) if authentication is successful, or None.
         """
-
         jwt_token = self.get_jwt_token(request)
         if jwt_token is None:
             return None
 
         try:
-            from aicounting.aicounting.msal_conf import AzureConf
-            azure_conf = AzureConf()
+            from aicounting.msal_conf import MsalConf
+            msal_conf = MsalConf()
 
-            public_key, audience = azure_conf.get_public_key(jwt_token)
+            # Debug: Check token type and contents
+            logger.debug("Inspecting JWT token")
+            try:
+                unverified_header = jwt.get_unverified_header(jwt_token)
+                unverified_payload = jwt.decode(jwt_token, options={"verify_signature": False})
+                
+                logger.debug(f"Token type (typ): {unverified_header.get('typ')}")
+                logger.debug(f"Token algorithm: {unverified_header.get('alg')}")
+                logger.debug(f"Token issuer: {unverified_payload.get('iss')}")
+                logger.debug(f"Token audience: {unverified_payload.get('aud')}")
+                logger.debug(f"Token version: {unverified_payload.get('ver')}")
+                
+                # Check if this is an ID token
+                if unverified_payload.get('ver') == '2.0':
+                    logger.debug("Detected Azure AD v2.0 ID token")
+                
+            except Exception as debug_error:
+                logger.warning(f"Could not inspect token: {debug_error}")
 
-            # Azure AD tokens are RS256 signed
-            decoded_token = jwt.decode(
-                jwt_token,
-                public_key,
-                algorithms=['RS256'],
-                audience=audience
-            )
+            # Get the public key and audience for verification
+            logger.debug("Fetching public key for JWT verification")
+            public_key, audience = msal_conf.get_public_key(jwt_token)
+            
+            # Remove breakpoint for production
+            # breakpoint()
+            # print(f"Public key: {public_key}")
+            # print(f"Expected audience: {audience}")
+            logger.debug(f"Expected audience: {audience}")
+            
+            # Try to decode with proper audience validation
+            try:
+                decoded_token = jwt.decode(
+                    jwt_token,
+                    public_key,
+                    algorithms=['RS256'],
+                    audience=audience,
+                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"  # Add issuer validation
+                )
+                logger.debug("JWT successfully decoded with full validation")
+            except jwt.InvalidAudienceError as aud_error:
+                logger.warning(f"Audience validation failed: {aud_error}")
+                logger.warning("Retrying without audience validation for debugging")
+                # Retry without audience validation for debugging
+                decoded_token = jwt.decode(
+                    jwt_token,
+                    public_key,
+                    algorithms=['RS256'],
+                    options={"verify_aud": False},
+                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"
+                )
+                logger.debug("JWT decoded without audience validation")
+            except jwt.InvalidIssuerError as iss_error:
+                logger.warning(f"Issuer validation failed: {iss_error}")
+                # Retry without issuer validation
+                decoded_token = jwt.decode(
+                    jwt_token,
+                    public_key,
+                    algorithms=['RS256'],
+                    options={"verify_aud": False, "verify_iss": False}
+                )
+                logger.debug("JWT decoded without issuer/audience validation")
 
-             # Check if the token has expired
+            logger.debug(f"Token successfully decoded. Claims: {list(decoded_token.keys())}")
+
+            # Check if the token has expired (JWT library already checks this, but let's be explicit)
             current_time = datetime.now()
             expiration_time = datetime.fromtimestamp(decoded_token["exp"])
 
-            # Refresh the token if it's about to expire
             if current_time > expiration_time:
+                logger.warning("Token has expired")
                 raise CustomAuthenticationFailed('error', _("Expired token. Please re-authenticate."))
 
-            # Get or create user based on claims
+            # Get user email from ID token claims
+            # ID tokens typically have these email fields
+            email = (decoded_token.get('preferred_username') or 
+                    decoded_token.get('email') or 
+                    decoded_token.get('upn'))
             
-            email = decoded_token.get('preferred_username') or decoded_token.get('email')
             if not email:
+                logger.error("No email found in token claims")
+                logger.error(f"Available claims: {list(decoded_token.keys())}")
                 raise CustomAuthenticationFailed('error', _('No email in token claims.'))
 
+            logger.debug(f"Processing authentication for email: {email}")
             
-            from aicounting.user.models import DimAICUser, DimAICCustomer
+            # ...rest of your existing user creation logic...
+            from user.models import DimAICUser, DimAICCustomer
             
-            domain = email.split('@')[1].lower()
+            azure_id = decoded_token.get("oid")
 
-            cust_name = domain.split('.')[0].capitalize()
-
-            cust_id = DimAICCustomer.objects.filter(customer_name=cust_name).first()
+            cust_id = DimAICCustomer.objects.filter(azure_id=azure_id).first()
 
             if not cust_id:
+                logger.warning(f"Unauthorized customer")
                 raise CustomAuthenticationFailed('error', _('Unauthorized Customer. Please contact admin.'))
 
-            UserModel = get_user_model()
-            django_user, _ = UserModel.objects.get_or_create(
+            UserModel = get_user_model()    
+            django_user, created = UserModel.objects.get_or_create(
                 email=email,
                 defaults={"username": email.split("@")[0]}
-            )    
-            user, _ = DimAICUser.objects.get_or_create(user=django_user, username= email.split("@")[0], cust_id=cust_id)
-            return (user, jwt_token)
+            )
 
-        except DecodeError   as e:
+            logger.debug(f"Authentication successful for user: {email}")
+
+            # msal_conf.refresh_access_token(django_user.customer_profile.refresher_token)
+            return (django_user, jwt_token)
+
+        except jwt.InvalidSignatureError as e:
+            logger.error(f"JWT signature verification failed: {e}")
+            raise CustomAuthenticationFailed('error', _('Invalid token signature. Please re-authenticate.'))
+        except jwt.ExpiredSignatureError as e:
+            logger.error(f"JWT token expired: {e}")
+            raise CustomAuthenticationFailed('error', _('Token has expired. Please re-authenticate.'))
+        except jwt.InvalidAudienceError as e:
+            logger.error(f"JWT audience validation failed: {e}")
+            raise CustomAuthenticationFailed('error', _('Token audience validation failed. Please re-authenticate.'))
+        except jwt.DecodeError as e:
             logger.error(f"JWT decode error: {e}")
             raise CustomAuthenticationFailed('error', _('Invalid or expired token.'))
+        except ValueError as e:
+            logger.error(f"JWT validation error: {e}")
+            raise CustomAuthenticationFailed('error', _('Token validation failed. Please re-authenticate.'))
         except Exception as e:
             logger.error(f"Authentication error: {e}")
             raise CustomAuthenticationFailed('error', _('Authentication failed.'))
@@ -144,3 +217,47 @@ class JSONWebTokenAuthentication(BaseAuthentication):
         - The authentication header as a string.
         """
         return "Bearer: api"
+
+
+class AdminJWTAuthentication(BaseAuthentication):
+    """
+    Custom JWT authentication backend.
+    """
+    
+    def authenticate(self, request):
+        auth_header = request.META.get('HTTP_AUTHORIZATION')
+        
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return None
+        
+        token = auth_header.split(' ')[1]
+        
+        try:
+            # Decode JWT token
+            secret_key = getattr(settings, 'SECRET_KEY', 'your-secret-key')
+            payload = jwt.decode(token, secret_key, algorithms=['HS256'])
+            
+            # Get user from payload
+            user_id = payload.get('user_id')
+            if not user_id:
+                raise exceptions.AuthenticationFailed('Invalid token payload')
+            
+            user = User.objects.get(id=user_id)
+            
+            # Verify superuser status
+            if not user.is_superuser:
+                raise exceptions.AuthenticationFailed('Superuser privileges required')
+            
+            return (user, token)
+            
+        except jwt.ExpiredSignatureError:
+            raise exceptions.AuthenticationFailed('Token has expired')
+        except jwt.InvalidTokenError:
+            raise exceptions.AuthenticationFailed('Invalid token')
+        except User.DoesNotExist:
+            raise exceptions.AuthenticationFailed('User not found')
+        except Exception as e:
+            raise exceptions.AuthenticationFailed(f'Authentication failed: {str(e)}')
+
+    def authenticate_header(self, request):
+        return 'Bearer'

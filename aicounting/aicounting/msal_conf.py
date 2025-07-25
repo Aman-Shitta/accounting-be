@@ -1,15 +1,15 @@
+# System imports
 import os
+
+# Third-party imports
 import jwt
-import requests
 import msal
+import requests
+from asgiref.sync import async_to_sync
 
 
-from msgraph.graph_request_adapter import GraphRequestAdapter
 from msgraph.generated.models.invitation import Invitation
 from msgraph.generated.models.invited_user_message_info import InvitedUserMessageInfo
-
-from msgraph import GraphServiceClient
-from asgiref.sync import async_to_sync
 
 class MsalConf:
 
@@ -30,12 +30,19 @@ class MsalConf:
         client_credential=CLIENT_SECRET
     )
 
-    REDIRECT_URI = "https://b7001b19d7b2.ngrok-free.app/api/v1/auth/callback"
-
+    GROUPS = {
+            'customer': 'e1c94e8c-0f95-4594-8961-8ca9a0d44dc6',
+            'accountant':'dbee5e23-aaed-4208-a261-37386dea6821'
+        }
+    
+    REDIRECT_URI = "https://firm-worm-evolved.ngrok-free.app/api/v1/auth/callback"
+    # REDIRECT_URI = "https://lively-renewing-monarch.ngrok-free.app/calback"
+        
     def get_public_key(self, jwt_token):
         public_key = ""
-        
-        jwks_response = requests.get(self.JWKS_URI)
+        # Get Azure AD public keys for token signature verification
+        jwks_url = self.JWKS_URI
+        jwks_response = requests.get(jwks_url)
         jwks = jwks_response.json()
         # Find the appropriate key from the JWKS based on the token's "kid" (Key ID) claim
         header = jwt.get_unverified_header(jwt_token)
@@ -76,7 +83,6 @@ class MsalConf:
             # Handle exceptions and errors
             print(f"An error occurred while refreshing access token: {str(e)}")
             return None
-
 
 class MsalGraphConf(MsalConf):
     """
@@ -122,11 +128,7 @@ class MsalGraphConf(MsalConf):
         Maps user type to a specific group ID.
         This is a placeholder for actual mapping logic.
         """
-        groups_name = {
-            'customer': 'e1c94e8c-0f95-4594-8961-8ca9a0d44dc6',
-            'accountant':'dbee5e23-aaed-4208-a261-37386dea6821'
-        }
-        return groups_name.get(user_type, None)
+        return self.GROUPS.get(user_type, None)
     
     def get_group(self, user_type):
         graph_client = self.get_graph_client()
@@ -134,7 +136,6 @@ class MsalGraphConf(MsalConf):
         azure_groups = groups.value if hasattr(groups, 'value') else []
 
         return azure_groups
-    
     
 
     def add_user_to_group(self, user_id, group_id):

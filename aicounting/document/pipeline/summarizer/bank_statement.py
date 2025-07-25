@@ -1,9 +1,10 @@
+# System imports
+import json
 import re
 import unicodedata
 
-import json
-from google.genai import types, Client
-from typing import List
+# Third-party imports
+from google.genai import Client, types
 
 
 class BankStatementSummarizer:

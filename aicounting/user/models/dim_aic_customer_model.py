@@ -57,14 +57,28 @@ class DimAICCustomer(models.Model):
 
     verified = models.BooleanField(default=False, verbose_name="Verified")
 
-    # TODO : possible limit for token life
+    azure_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="Azure ID",
+        help_text="Azure Active Directory user ID for SSO integration"
+    )
+    refresher_token = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Refresher Token",
+        help_text="Azure AD refresher token for SSO integration"
+    )
+
     created_at = models.DateTimeField(
-        auto_now_add=True, # Automatically sets the field to the current datetime when the object is first created.
+        auto_now_add=True,
         verbose_name="Created At",
 	)
 
     updated_at = models.DateTimeField(
-        auto_now=True, # Automatically updates the field to the current datetime every time the object is saved.
+        auto_now=True,
         verbose_name="Updated At",
 	)
 

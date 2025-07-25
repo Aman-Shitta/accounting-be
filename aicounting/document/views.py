@@ -1,28 +1,27 @@
+# System imports
+import logging
 from pathlib import Path
+
+# Third-party imports
 from django.conf import settings
-
-from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser
-
-from rest_framework import status, permissions
-from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import F
+from django.shortcuts import get_object_or_404
+from rest_framework import  status
+from rest_framework.parsers import MultiPartParser
+from rest_framework.views import APIView
 
-
-from document.models import FactAICDocLine
-
-from document.serializers import (
-    DocumentListSerializer,
-    DocumentDataSerializer,
-    LineUpdateModelSerializer,
-    LineUpdateModelSerializer,
-    LineItemCreateSerializer
-)
-
-from document.models.dim_aic_doc_model import DimAICDocument
-from document.tasks import process_uploaded_document
+# Local imports
 from aicounting.response import create_api_response
+from document.models import FactAICDocLine
+from document.models.dim_aic_doc_model import DimAICDocument
+from document.serializers import (
+    DocumentDataSerializer,
+    DocumentListSerializer,
+    LineItemCreateSerializer,
+    LineUpdateModelSerializer
+)
+from document.tasks import process_uploaded_document
 
 import logging
 logger = logging.getLogger(__name__)
@@ -78,7 +77,6 @@ class DocumentUploadView(APIView):
             }
         )
 
-
 class DocumentListView(APIView):
 
     """
@@ -95,7 +93,6 @@ class DocumentListView(APIView):
                 message="Document List Fetched",
                 data=serializer.data
             )
-        
 
 class DocumentGetDataView(APIView):
 
@@ -125,7 +122,6 @@ class DocumentGetDataView(APIView):
                 data=serializer.data
             )
 
-
 class LineItemUpdateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
 
@@ -147,7 +143,6 @@ class LineItemUpdateAPIView(APIView):
             data=serializer.errors
         )
 
-
 class LineItemCreateAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]
 
@@ -168,7 +163,6 @@ class LineItemCreateAPIView(APIView):
             data= serializer.errors,
             status_code=status.HTTP_400_BAD_REQUEST
         )
-
 
 class LineItemDeleteAPIView(APIView):
     # permission_classes = [permissions.IsAuthenticated]

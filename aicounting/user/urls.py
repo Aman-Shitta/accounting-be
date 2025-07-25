@@ -1,11 +1,23 @@
 from django.urls import path, include
 
-from .views import ClientCreateView
+from .views import (
+    ClientCreateView, 
+    ClientListView, 
+    ClientRetrieveView, 
+    ClientUpdateView,
+    ContactCreateView,
+    DocumentUploadView,
+)
 
 from .admin_app.admin_urls import  admin_urlpatterns
 
 client_urlpatterns = [
+    path("list/", ClientListView.as_view(), name="client-list"),
     path("create/", ClientCreateView.as_view(), name="client-create"),
+    path("<int:id>/", ClientRetrieveView.as_view(), name="client-detail"),
+    path("<int:id>/update/", ClientUpdateView.as_view(), name="client-update"),
+    path("<int:id>/contacts/create/", ContactCreateView.as_view(), name="contact-create"),
+    path("<int:id>/documents/upload/", DocumentUploadView.as_view(), name="document-upload"),
 ]
 
 accountant_urlpatterns = [
