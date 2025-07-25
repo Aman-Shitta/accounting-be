@@ -88,6 +88,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 )
             
             user_name = ""
+            customer_name = ""
             if user_assigned_groups[0] == 'customer':
                 customer = DimAICCustomer.objects.filter(system_user__username=email).first()
 
@@ -105,6 +106,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 customer.save()
 
                 user_name = customer.customer_name
+                customer_name = user_name
 
             elif user_assigned_groups[0] == 'accountant':
                 user = DimAICUser.objects.filter(system_user__username=email).first()
@@ -122,6 +124,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 user.save()
 
                 user_name = f"{user.first_name} {user.last_name}"
+                customer_name = user.cust_id.customer_name
             else:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -141,10 +144,11 @@ class SSOGenerateTokenView(GenericAPIView):
                 # "refresh_token": result.get('refresh_token'),
                 "expires_in": result.get('expires_in'),
                 # "token_type": "Bearer",
-                "user_type": 'customer',
                 "user_info": {
+                    "user_type": 'customer',
                     "email": email,
-                    "name": user_name
+                    "name": user_name,
+                    "customer_name": f"{customer_name}"
                 }
             }
             
