@@ -29,12 +29,12 @@ jobs:
       - name: Deploy to Dev Server
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.TAILSCALE_SERVER_IP }} << 'EOF'
-
-            cd /home/aicounting/aicounting-backend/aicount-ocr/aicounting
+            source /home/aicounting/venv/bin/activate
+            cd /home/aicounting/aicounting-backend
             git pull origin main
+            pip install -r requirements.txt
 
-            source ../../venv/bin/activate
-            pip install -r ../requirements.txt
+            cd /home/aicounting/aicounting-backend/aicounting
             python3 manage.py migrate --noinput
             python3 manage.py collectstatic --noinput
 
