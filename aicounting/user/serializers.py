@@ -127,16 +127,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 for doc_type, file_obj in documents.items():
                     if file_obj:
                         try:
-                            # Map document types to model choices
-                            doc_type_mapping = {
-                                'chart_of_account': 'COA',
-                                'gl_history': 'GL_HISTORY', 
-                                'vendor_list': 'VENDOR_LIST'
-                            }
+
                             
                             document = DimAICClientDocument.objects.create(
                                 client=client,
-                                document_type=doc_type_mapping.get(doc_type, doc_type.upper()),
+                                document_type=doc_type,
                                 file=file_obj,
                                 uploaded_by=request_user
                             )
