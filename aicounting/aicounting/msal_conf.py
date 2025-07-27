@@ -18,7 +18,7 @@ class MsalConf:
     CLIENT_SECRET = os.environ.get('AZURE_CLIENT_SECRET')
 
     AUTHORITY= f"https://login.microsoftonline.com/{TENANT_ID}"
-    APP_URI= f"https://OnestoneB2C.onmicrosoft.com/{CLIENT_ID}"
+    APP_URI= f"https://aicounting.onmicrosoft.com/{CLIENT_ID}"
     
     JWKS_URI= f"{AUTHORITY}/discovery/v2.0/keys"
 
