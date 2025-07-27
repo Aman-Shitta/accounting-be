@@ -7,32 +7,9 @@ import os
 from django.contrib.auth import get_user_model
 
 # Local imports
-from user.models import DimAICAssistant, DimAICClient, DimAICCustomer, DimAICUser
+from user.models import DimAICAccountant, DimAICAssistant, DimAICClient, DimAICCustomer
 from user.utils import OpenAIAssistant
 
-
-def create_customer(request_user, customer_name, email, street='', city='', state_abrevation='', zip_code=None):
-    User = get_user_model()
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            "username": email,
-            "is_active": False,
-        }
-    )
-    if not created:
-        return None, "User with this email already exists."
-
-    customer = DimAICCustomer.objects.create(
-        system_user=user,
-        customer_name=customer_name,
-        street=street,
-        city=city,
-        state_abrevation=state_abrevation,
-        zip_code=zip_code or 0,
-        input_user=request_user
-    )
-    return customer,
 
 
 def create_user_for_customer(request_user, customer_name, email, street='', city='', state_abrevation='', zip_code=None):
@@ -77,6 +54,48 @@ def create_user_for_customer(request_user, customer_name, email, street='', city
     )
 
     return customer, None
+
+def create_user_for_accountant(request_user, customer, user_email, user_name, first_name='', last_name=''):
+    """
+    Create an accountant with non-verified state.
+    Returns error if accountant already exists.
+    """
+    User = get_user_model()
+
+    # Check if accountant already exists
+    existing_accountant = DimAICAccountant.objects.filter(
+        system_user__email=user_email
+    ).first()
+
+    if existing_accountant:
+        return None, f"Accountant with email {user_email} already exists."
+
+    # Check if user already exists
+    existing_user = User.objects.filter(email=user_email).first()
+    if existing_user:
+        return None, f"User with email {user_email} already exists."
+
+    # Create user with non-verified state
+    user = User.objects.create(
+        email=user_email,
+        username=user_name,
+        is_active=False,
+        first_name=first_name,
+        last_name=last_name
+    )
+
+    # Create accountant record with non-verified state
+    accountant = DimAICAccountant.objects.create(
+        system_user=user,
+        customer=customer,
+        input_user=request_user,
+        username=user_name,
+        first_name=first_name,
+        last_name=last_name,
+        email=user_email
+    )
+
+    return accountant, None
 
 
 class AssistantService:

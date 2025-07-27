@@ -24,13 +24,11 @@ class DimAICClient(models.Model):
     state = models.CharField(max_length=2, verbose_name="State Abbreviation", null=True, blank=True)
     zip_code = models.IntegerField(verbose_name="Zip Code", null=True, blank=True,)
 
-    assigned_user = models.ForeignKey(
-        "DimAICUser",
-        on_delete=models.SET_NULL,
-        related_name="assigend_clients",
-        null=True,
+    assigned_accountants = models.ManyToManyField(
+        "DimAICAccountant",
+        related_name="assigned_clients",
         blank=True,
-        verbose_name="Assigned User",
+        verbose_name="Assigned Accountants",
     )
 
     input_user = models.ForeignKey(

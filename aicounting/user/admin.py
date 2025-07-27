@@ -2,18 +2,18 @@
 from django.contrib import admin
 
 # Local imports
+from .models.dim_aic_accountant_model import DimAICAccountant
 from .models.dim_aic_assistant_model import DimAICAssistant
 from .models.dim_aic_client_model import DimAICClient, DimAICClientDocument
 from .models.dim_aic_contact_model import DimAICContact
 from .models.dim_aic_customer_model import DimAICCustomer
-from .models.dim_aic_user_model import DimAICUser
 
-@admin.register(DimAICUser)
-class DimAICUserAdmin(admin.ModelAdmin):
-    list_display = ('user_id', 'username', 'first_name', 'last_name', 'cust_id', 'created_at')
-    search_fields = ('username', 'first_name', 'last_name')
-    list_filter = ('cust_id',)
-    ordering = ('user_id',)
+@admin.register(DimAICAccountant)
+class DimAICAccountantAdmin(admin.ModelAdmin):
+    list_display = ('id', 'username', 'first_name', 'last_name', 'customer', 'verified', 'created_at')
+    search_fields = ('username', 'first_name', 'last_name', 'email')
+    list_filter = ('customer', 'verified')
+    ordering = ('id',)
 
 
 class DimAICContactInline(admin.TabularInline):
@@ -38,13 +38,18 @@ class DimAICClientDocumentInline(admin.TabularInline):
 @admin.register(DimAICClient)
 class DimAICClientAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'client_id', 'client_name', 'customer', 'street', 'city', 'state', 'zip_code', 'input_user', 'created_at', 'updated_at'
+        'id', 'client_id', 'client_name', 'customer', 'street', 'city', 'state', 'zip_code', 'accountants_count', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('client_name', 'client_id', 'street', 'city')
     list_filter = ('customer', 'state', 'created_at')
     ordering = ('id', 'client_id')
     readonly_fields = ('id', 'created_at', 'updated_at')
     inlines = [DimAICContactInline, DimAICClientDocumentInline]
+    
+    def accountants_count(self, obj):
+        """Display the number of assigned accountants"""
+        return obj.assigned_accountants.count()
+    accountants_count.short_description = 'Accountants'
     
     fieldsets = (
         ('Client Information', {
@@ -54,7 +59,7 @@ class DimAICClientAdmin(admin.ModelAdmin):
             'fields': ('street', 'city', 'state', 'zip_code')
         }),
         ('Assignment Information', {
-            'fields': ('assigned_user', 'input_user')
+            'fields': ('assigned_accountants', 'input_user')
         }),
         ('Timestamps', {
             'fields': ('id', 'created_at', 'updated_at'),

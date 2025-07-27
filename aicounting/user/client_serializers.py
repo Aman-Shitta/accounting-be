@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import DimAICClient, DimAICContact, DimAICClientDocument
+from .models import DimAICAccountant, DimAICClient, DimAICContact, DimAICClientDocument
 import logging
 
 from .document_processors import ClientDocumentProcessor
@@ -25,6 +25,20 @@ class ContactSerializer(serializers.ModelSerializer):
         except DjangoValidationError:
             raise serializers.ValidationError("Enter a valid email address.")
         return value
+
+
+class DimAICAccountantSerializer(serializers.ModelSerializer):
+    """Serializer for DimAICAccountant model"""
+    email = serializers.CharField(source='system_user.email', read_only=True)
+    
+    class Meta:
+        model = DimAICAccountant
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 
+            'email', 'verified', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
 
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
@@ -323,14 +337,34 @@ class ClientRetrieveSerializer(serializers.ModelSerializer):
     
     contacts = ContactSerializer(many=True, read_only=True)
     documents = ClientDocumentSerializer(many=True, read_only=True)
+    assigned_accountants = DimAICAccountantSerializer(many=True, read_only=True)
 
     class Meta:
         model = DimAICClient
         fields = [
             'id', 'client_id', 'client_name',
-            'contacts', 'documents',
+            'contacts', 'documents', 'assigned_accountants',
             'created_at', 'updated_at',
         ]
+
+
+class ClientAccountantAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for assigning/unassigning accountants to/from clients"""
+    
+    assigned_accountants = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=DimAICAccountant.objects.all(),
+        required=False
+    )
+
+    class Meta:
+        model = DimAICClient
+        fields = ['assigned_accountants']
+
+    def update(self, instance, validated_data):
+        if 'assigned_accountants' in validated_data:
+            instance.assigned_accountants.set(validated_data['assigned_accountants'])
+        return instance
 
 
 class ClientUpdateSerializer(serializers.ModelSerializer):

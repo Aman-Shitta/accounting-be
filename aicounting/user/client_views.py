@@ -5,7 +5,7 @@ from django.db import transaction
 from rest_framework import generics, permissions, status
 
 from .models import DimAICClient
-from .serializers import (
+from .client_serializers import (
     ClientCreateUpdateSerializer, 
     ClientRetrieveSerializer,
     ContactSerializer,
