@@ -7,6 +7,9 @@ from .client_views import (
     ClientUpdateView,
     ContactCreateView,
     DocumentUploadView,
+    ClientAssignAccountantsView,
+    ClientAssignedAccountantsView,
+    ClientUnassignAccountantsView,
 )
 
 from .accountant_views import (
@@ -23,7 +26,9 @@ client_urlpatterns = [
     path("<int:id>/update/", ClientUpdateView.as_view(), name="client-update"),
     path("<int:id>/contacts/create/", ContactCreateView.as_view(), name="contact-create"),
     path("<int:id>/documents/upload/", DocumentUploadView.as_view(), name="document-upload"),
-
+    path("<int:id>/accountants/assign/", ClientAssignAccountantsView.as_view(), name="client-assign-accountants"),
+    path("<int:id>/accountants/", ClientAssignedAccountantsView.as_view(), name="client-assigned-accountants"),
+    path("<int:id>/accountants/unassign/", ClientUnassignAccountantsView.as_view(), name="client-unassign-accountants"),
 ]
 
 accountant_urlpatterns = [

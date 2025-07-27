@@ -10,6 +10,8 @@ from .client_serializers import (
     ClientRetrieveSerializer,
     ContactSerializer,
     ClientDocumentUploadSerializer,
+    ClientAccountantAssignmentSerializer,
+    DimAICAccountantSerializer,
 )
 
 from authentication import authenticate
@@ -467,3 +469,216 @@ class DocumentUploadView(generics.GenericAPIView):
                 "An unexpected error occurred during document upload.",
                 data={"error": str(e)}
             )
+
+
+class ClientAssignAccountantsView(generics.GenericAPIView):
+    """Assign or update accountants for a specific client"""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    serializer_class = ClientAccountantAssignmentSerializer
+
+    def get_object(self, client_id):
+        """Get client instance for the authenticated customer"""
+        customer = self.request.user.customer_profile
+        if customer:
+            try:
+                return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        return None
+
+    def put(self, request, *args, **kwargs):
+        """Assign accountants to a client"""
+        try:
+            client_id = kwargs.get('id')
+            client = self.get_object(client_id)
+            
+            if not client:
+                return create_api_response(
+                    status.HTTP_404_NOT_FOUND,
+                    "Client not found or you don't have permission to modify it."
+                )
+
+            # Validate that accountant IDs belong to the same customer
+            accountant_ids = request.data.get('assigned_accountants', [])
+            customer = request.user.customer_profile
+            
+            # Check if all provided accountants belong to the customer
+            valid_accountants = customer.accountants.filter(id__in=accountant_ids)
+            if len(valid_accountants) != len(accountant_ids):
+                invalid_ids = set(accountant_ids) - set(valid_accountants.values_list('id', flat=True))
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
+                )
+
+            serializer = self.get_serializer(client, data=request.data, partial=True)
+            
+            if not serializer.is_valid():
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Assignment failed due to validation errors.",
+                    data=serializer.errors
+                )
+
+            updated_client = serializer.save()
+            
+            # Return updated client with assigned accountants
+            response_data = {
+                'client_id': updated_client.id,
+                'client_name': updated_client.client_name,
+                'assigned_accountants': DimAICAccountantSerializer(
+                    updated_client.assigned_accountants.all(), 
+                    many=True
+                ).data
+            }
+            
+            return create_api_response(
+                status.HTTP_200_OK,
+                "Accountants assigned successfully.",
+                data=response_data
+            )
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during accountant assignment: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred during accountant assignment.",
+                data={"error": str(e)}
+            )
+
+
+class ClientAssignedAccountantsView(generics.GenericAPIView):
+    """Retrieve all accountants assigned to a specific client"""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    serializer_class = DimAICAccountantSerializer
+
+    def get_object(self, client_id):
+        """Get client instance for the authenticated customer"""
+        customer = self.request.user.customer_profile
+        if customer:
+            try:
+                return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        return None
+
+    def get(self, request, *args, **kwargs):
+        """Get all accountants assigned to a client"""
+        try:
+            client_id = kwargs.get('id')
+            client = self.get_object(client_id)
+            
+            if not client:
+                return create_api_response(
+                    status.HTTP_404_NOT_FOUND,
+                    "Client not found or you don't have permission to view it."
+                )
+
+            # Get all assigned accountants
+            assigned_accountants = client.assigned_accountants.all()
+            serializer = self.get_serializer(assigned_accountants, many=True)
+            
+            response_data = {
+                'client_id': client.id,
+                'client_name': client.client_name,
+                'total_assigned_accountants': assigned_accountants.count(),
+                'assigned_accountants': serializer.data
+            }
+            
+            return create_api_response(
+                status.HTTP_200_OK,
+                "Assigned accountants retrieved successfully.",
+                data=response_data
+            )
+            
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving assigned accountants: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred while retrieving assigned accountants.",
+                data={"error": str(e)}
+            )
+
+
+class ClientUnassignAccountantsView(generics.GenericAPIView):
+    """Unassign specific accountants from a client"""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    serializer_class = DimAICAccountantSerializer
+
+    def get_object(self, client_id):
+        """Get client instance for the authenticated customer"""
+        customer = self.request.user.customer_profile
+        if customer:
+            try:
+                return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        return None
+
+    def delete(self, request, *args, **kwargs):
+        """Remove specific accountants from a client"""
+        try:
+            client_id = kwargs.get('id')
+            client = self.get_object(client_id)
+            
+            if not client:
+                return create_api_response(
+                    status.HTTP_404_NOT_FOUND,
+                    "Client not found or you don't have permission to modify it."
+                )
+
+            # Get accountant IDs to remove from request body or query params
+            accountant_ids = request.data.get('accountant_ids', [])
+            
+            if not accountant_ids:
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Please provide accountant_ids to unassign."
+                )
+
+            # Validate that accountants are currently assigned to this client
+            currently_assigned = client.assigned_accountants.filter(id__in=accountant_ids)
+            
+            if currently_assigned.count() != len(accountant_ids):
+                assigned_ids = set(currently_assigned.values_list('id', flat=True))
+                invalid_ids = set(accountant_ids) - assigned_ids
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Accountant IDs {list(invalid_ids)} are not currently assigned to this client."
+                )
+
+            # Remove the accountants
+            client.assigned_accountants.remove(*accountant_ids)
+            
+            # Get remaining assigned accountants
+            remaining_accountants = client.assigned_accountants.all()
+            serializer = self.get_serializer(remaining_accountants, many=True)
+            
+            response_data = {
+                'client_id': client.id,
+                'client_name': client.client_name,
+                'unassigned_accountant_ids': accountant_ids,
+                'remaining_accountants': serializer.data,
+                'total_remaining_accountants': remaining_accountants.count()
+            }
+            
+            return create_api_response(
+                status.HTTP_200_OK,
+                f"Successfully unassigned {len(accountant_ids)} accountant(s) from client.",
+                data=response_data
+            )
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during accountant unassignment: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred during accountant unassignment.",
+                data={"error": str(e)}
+            )
+
+    def post(self, request, *args, **kwargs):
+        """Alternative method for unassigning (using POST for compatibility)"""
+        return self.delete(request, *args, **kwargs)
