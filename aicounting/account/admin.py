@@ -26,19 +26,44 @@ class DimAICAcctTypeAdmin(admin.ModelAdmin):
 @admin.register(DimAICGLAcct)
 class DimAICGLAcctAdmin(admin.ModelAdmin):
     list_display = (
-        'gl_acct_id',
-        'gl_acct_nbr',
-        'gl_acct_name',
-        'cust_id',
+        'id',
+        'account_number',
+        'account_name',
+        'customer',
         'client_id',
-        'account_type_id',
-        'input_user_id',
+        'account_class',
+        'sub_class',
+        'account_type',
+        'input_user',
         'created_at',
         'updated_at',
     )
-    search_fields = ('gl_acct_nbr', 'gl_acct_name', 'gl_acct_desc')
-    list_filter = ('account_type_id', 'client_id', 'cust_id', 'created_at', 'updated_at')
-    ordering = ('gl_acct_id',)
+    search_fields = ('account_number', 'account_name', 'description')
+    list_filter = ('account_type', 'account_class', 'sub_class', 'customer', 'client_id', 'created_at', 'updated_at')
+    ordering = ('id',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Account Information', {
+            'fields': ('account_number', 'account_name', 'description')
+        }),
+        ('Classification', {
+            'fields': ('account_class', 'sub_class', 'account_type')
+        }),
+        ('Relationships', {
+            'fields': ('customer', 'client_id', 'input_user')
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'customer', 'client_id', 'account_type', 'input_user'
+        )
 
 
 

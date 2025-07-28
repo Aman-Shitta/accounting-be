@@ -30,6 +30,8 @@ urlpatterns = [
     
     path("api/v1/user/", include('user.urls')),
     
+    path("api/v1/account/", include('account.urls')),
+    
 ] 
 
 

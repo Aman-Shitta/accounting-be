@@ -123,7 +123,7 @@ class ClientDocumentProcessor:
                         )
                         
                         processed_records.append({
-                            'gl_acct_id': gl_account.gl_acct_id,
+                            'gl_acct_id': gl_account.id,
                             'gl_code': gl_code,
                             'account_class': account_class,
                             'sub_class': sub_class,
