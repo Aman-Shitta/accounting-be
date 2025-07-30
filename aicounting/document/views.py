@@ -24,7 +24,7 @@ from document.tasks import process_uploaded_document
 
 
 from authentication import authenticate
-from authentication.permissions import IsAuthenticated, IsCustomer, IsAccountant
+from authentication.permissions import IsAuthenticated, IsCustomerOrAccountant
 
 import logging
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 class DocumentUploadView(APIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     parser_classes = [MultiPartParser]
 
@@ -64,7 +64,7 @@ class DocumentUploadView(APIView):
         file_path = doc.file.name if doc.file else None
         
         if file_path:
-            process_uploaded_document.delay(file_path, doc.doc_id)
+            # process_uploaded_document.delay(file_path, doc.doc_id)
             
             doc.upload_stat = "processing"
             doc.save()
@@ -84,7 +84,7 @@ class DocumentListView(APIView):
     API to list documents and processed status
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = DocumentListSerializer
     
     def get(self, request, *args, **kwargs):
@@ -99,7 +99,7 @@ class DocumentListView(APIView):
 class DocumentGetDataView(APIView):
 
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
     """
     API to get the data
     """
@@ -128,7 +128,7 @@ class DocumentGetDataView(APIView):
 
 class LineItemUpdateAPIView(APIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def patch(self, request, *args, **kwargs):
         line = get_object_or_404(FactAICDocLine, pk=kwargs.get('line_id'), doc__doc_id=kwargs.get('doc_id'))
@@ -150,7 +150,7 @@ class LineItemUpdateAPIView(APIView):
 
 class LineItemCreateAPIView(APIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def post(self, request, doc_id):
         doc = get_object_or_404(DimAICDocument, doc_id=doc_id)
@@ -172,7 +172,7 @@ class LineItemCreateAPIView(APIView):
 
 class LineItemDeleteAPIView(APIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [IsAuthenticated, IsCustomer, IsAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     @transaction.atomic
     def delete(self, request, doc_id, line_id):

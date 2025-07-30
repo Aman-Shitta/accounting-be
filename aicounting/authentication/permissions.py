@@ -58,9 +58,17 @@ class IsAccountant(BasePermission):
         
         # Check if the user has an associated User profile
         try:
+            breakpoint()
             DimAICAccountant.objects.get(system_user=request.user)
             return True
-        except DimAICCustomer.DoesNotExist:
+        except DimAICAccountant.DoesNotExist:
             return False
         
         return False
+
+class IsCustomerOrAccountant(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            IsAccountant().has_permission(request, view) or
+            IsCustomer().has_permission(request, view)
+        )
