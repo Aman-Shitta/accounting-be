@@ -1,7 +1,22 @@
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
+from datetime import datetime
 
+
+def upload_to_customer_client_folder(instance, filename):
+    """
+    Generate upload path based on customer and client structure
+    """
+    # Create structured path: customer_id/client_id/document_type/filename
+    customer_id = instance.client.customer.id
+    client_name = instance.client.client_name    
+    # Add timestamp to filename to avoid conflicts
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+    timestamped_filename = f"{timestamp}_{name}.{ext}" if ext else f"{timestamp}_{name}"
+    
+    return f"customer_{customer_id}/{client_name}/client_documents/{timestamped_filename}"
 
 class DimAICClient(models.Model):
     """
@@ -76,9 +91,10 @@ class DimAICClientDocument(models.Model):
     )
 
     file = models.FileField(
-        upload_to="client_documents/",
+        upload_to=upload_to_customer_client_folder,
         verbose_name="Document File",
-        help_text="File will be stored in local media folder. Future support for S3/Azure."
+        help_text="File will be stored in Azure Blob Storage with customer/client folder structure.",
+        max_length=500  # Increased from default 100 to accommodate Azure paths
     )
 
     uploaded_by = models.ForeignKey(
@@ -99,3 +115,17 @@ class DimAICClientDocument(models.Model):
 
     def __str__(self):
         return f"{self.client.client_name} - {self.get_document_type_display()}"
+    
+    def get_secure_url(self, expire_minutes=10):
+        """
+        Get a secure temporary URL for the document file with 10-minute expiry
+        """
+        if not self.file:
+            return ""
+        
+        # Generate Azure SAS URL with 10-minute expiry (no permission checks)
+        from django.core.files.storage import default_storage
+        if hasattr(default_storage, 'url'):
+            return default_storage.url(self.file.name, expire_minutes=expire_minutes)
+        return ""
+    

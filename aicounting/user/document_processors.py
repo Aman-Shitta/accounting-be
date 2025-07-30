@@ -109,16 +109,16 @@ class ClientDocumentProcessor:
                         
                         # Create or update GL Account record
                         gl_account, created = DimAICGLAcct.objects.update_or_create(
-                            cust_id=self.customer,
+                            customer=self.customer,
                             client_id=client,
-                            gl_acct_nbr=gl_code,
+                            account_number=gl_code,
                             defaults={
-                                'gl_acct_name': description,
-                                'gl_acct_desc': description,
+                                'account_name': description,
+                                'description': description,
                                 'account_class': account_class,
                                 'sub_class': sub_class,
                                 'input_user': self.uploaded_by,
-                                'account_type_id': None  # Can be null as requested
+                                'account_type': None  # Can be null as requested
                             }
                         )
                         

@@ -82,7 +82,7 @@ class AzureAccountantInviteView(GenericAPIView):
             message="Accountant invite sent successfully. Accountant created in non-verified state.",
             data={
                 "accountant": DimAICAccountantSerializer(accountant).data,
-                "customer_id": customer.customer_id,
+                "customer_id": customer.id,
                 "customer_name": customer.customer_name,
                 "email": user_email,
                 "verification_status": "pending",

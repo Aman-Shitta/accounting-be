@@ -141,8 +141,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 for doc_type, file_obj in documents.items():
                     if file_obj:
                         try:
-
-                            
                             document = DimAICClientDocument.objects.create(
                                 client=client,
                                 document_type=doc_type,
@@ -161,18 +159,37 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 client=client
                             )
 
-                            
-                            file_path = document.file.path
-                            result = processor.process_document(file_path, doc_type)
+                            # For Azure storage, we need to download the file content
+                            from django.core.files.storage import default_storage
+                            with default_storage.open(document.file.name, 'rb') as azure_file:
+                                # Create a temporary file for processing
+                                import tempfile
+                                import os
+                                
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
+                                    temp_file.write(azure_file.read())
+                                    temp_file_path = temp_file.name
+                                
+                                try:
+                                    result = processor.process_document(temp_file_path, doc_type)
+                                except Exception as e:
+                                    raise e
+                                finally:
+                                    # Clean up temporary file
+                                    if os.path.exists(temp_file_path):
+                                        os.remove(temp_file_path)
 
                             # Check if processing failed
                             if not result['success']:
                                 # Processing failed - cleanup files and raise error to rollback transaction
+                                from django.core.files.storage import default_storage
                                 for doc in created_documents:
-                                    if doc.file and doc.file.path:
-                                        import os
-                                        if os.path.exists(doc.file.path):
-                                            os.remove(doc.file.path)
+                                    if doc.file:
+                                        try:
+                                            default_storage.delete(doc.file.name)
+                                            logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                        except Exception as cleanup_error:
+                                            logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                                 
                                 raise Exception(f"Processing failed for {doc_type}: {result.get('error', 'Unknown error')}")
                             
@@ -191,6 +208,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                         except Exception as e:
                             # Processing error - cleanup files and raise error to rollback transaction
                             logger.error(f"Error processing {doc_type} document: {str(e)}")
+                            import os, sys
+                            exc_type, exc_obj, exc_tb = sys.exc_info()
+                            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                            print(exc_type, fname, exc_tb.tb_lineno)
+                            raise e
 
 
             except Exception as e:
@@ -219,7 +241,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             try:
                 # Update basic client fields
-                instance.client_name = validated_data.get('client_name', instance.client_name)
+                # instance.client_name = validated_data.get('client_name', instance.client_name)
+                # not allowing name change as this chnages blob storgae path
                 instance.street = validated_data.get('street', instance.street)
                 instance.city = validated_data.get('city', instance.city)
                 instance.state = validated_data.get('state', instance.state)
@@ -288,8 +311,23 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 client=instance
                             )
                             
-                            file_path = document.file.path
-                            result = processor.process_document(file_path, doc_type)
+                            # For Azure storage, we need to download the file content
+                            from django.core.files.storage import default_storage
+                            with default_storage.open(document.file.name, 'rb') as azure_file:
+                                # Create a temporary file for processing
+                                import tempfile
+                                import os
+                                
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
+                                    temp_file.write(azure_file.read())
+                                    temp_file_path = temp_file.name
+                                
+                                try:
+                                    result = processor.process_document(temp_file_path, doc_type)
+                                finally:
+                                    # Clean up temporary file
+                                    if os.path.exists(temp_file_path):
+                                        os.remove(temp_file_path)
                             
                             if not result['success']:
                                 # Processing failed - cleanup files and raise error
@@ -386,6 +424,24 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
+class ClientDocumentSerializer(serializers.ModelSerializer):
+    """Serializer for viewing client documents with secure URLs"""
+    
+    secure_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DimAICClientDocument
+        fields = [
+            'id', 'document_type', 'created_at', 'updated_at',
+            'secure_url',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_secure_url(self, obj):
+        """Get secure temporary URL for the document with 10-minute expiry"""
+        return obj.get_secure_url(expire_minutes=10)
+
+
 class ClientDocumentUploadSerializer(serializers.Serializer):
     """Serializer for uploading multiple documents with file types as keys"""
     
@@ -451,8 +507,23 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                         
                         # Process the document
                         try:
-                            file_path = document.file.path
-                            result = processor.process_document(file_path, doc_type)
+                            # For Azure storage, we need to download the file content
+                            from django.core.files.storage import default_storage
+                            with default_storage.open(document.file.name, 'rb') as azure_file:
+                                # Create a temporary file for processing
+                                import tempfile
+                                import os
+                                
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
+                                    temp_file.write(azure_file.read())
+                                    temp_file_path = temp_file.name
+                                
+                                try:
+                                    result = processor.process_document(temp_file_path, doc_type)
+                                finally:
+                                    # Clean up temporary file
+                                    if os.path.exists(temp_file_path):
+                                        os.remove(temp_file_path)
                             
                             # Check if processing failed
                             if not result['success']:
@@ -481,12 +552,15 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                             # Processing error - cleanup files and raise error to rollback transaction
                             logger.error(f"Error processing {doc_type} document: {str(e)}")
                             
-                            # Delete all uploaded files
+                            # Delete all uploaded files from Azure storage
+                            from django.core.files.storage import default_storage
                             for doc in created_documents:
-                                if doc.file and doc.file.path:
-                                    import os
-                                    if os.path.exists(doc.file.path):
-                                        os.remove(doc.file.path)
+                                if doc.file:
+                                    try:
+                                        default_storage.delete(doc.file.name)
+                                        logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                    except Exception as cleanup_error:
+                                        logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                             
                             raise Exception(f"Document processing failed for {doc_type}: {str(e)}")
         

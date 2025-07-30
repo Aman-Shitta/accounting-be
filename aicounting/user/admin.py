@@ -143,13 +143,13 @@ class DimAICContactAdmin(admin.ModelAdmin):
 @admin.register(DimAICCustomer)
 class DimAICCustomerAdmin(admin.ModelAdmin):
     list_display = (
-        'customer_id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state_abrevation', 
+        'id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state_abrevation', 
         'zip_code', 'accountants_count', 'clients_count', 'verified', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('customer_name', 'city', 'customer_secure_id', 'email')
     list_filter = ('state_abrevation', 'verified', 'created_at')
-    ordering = ('customer_id',)
-    readonly_fields = ('customer_id', 'customer_secure_id', 'created_at', 'updated_at')
+    ordering = ('id',)
+    readonly_fields = ('id', 'customer_secure_id', 'created_at', 'updated_at')
     inlines = [DimAICAccountantInline, DimAICClientInline]
     
     def accountants_count(self, obj):
@@ -164,7 +164,7 @@ class DimAICCustomerAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Customer Information', {
-            'fields': ('customer_id', 'customer_secure_id', 'customer_name', 'system_user')
+            'fields': ('id', 'customer_secure_id', 'customer_name', 'system_user')
         }),
         ('Address Information', {
             'fields': ('street', 'city', 'state_abrevation', 'zip_code')
