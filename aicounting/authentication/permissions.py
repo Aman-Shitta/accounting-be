@@ -1,5 +1,6 @@
 # Third-party imports
 from rest_framework.permissions import BasePermission
+from rest_framework.permissions import IsAuthenticated
 
 # Local imports
 from user.models import DimAICCustomer, DimAICAccountant
