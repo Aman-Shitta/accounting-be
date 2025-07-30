@@ -1,10 +1,27 @@
 # System imports
 import uuid
+from datetime import datetime
 
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
-# Create your models here.
+
+
+def upload_to_documents_folder(instance, filename):
+    """
+    Generate upload path for general documents
+    Structure: documents/doc_type/doc_id/filename
+    """
+    # Create structured path: documents/doc_type/doc_id/filename
+    doc_type = instance.doc_typ
+    doc_id = instance.doc_id
+    
+    # Add timestamp to filename to avoid conflicts
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
+    timestamped_filename = f"{timestamp}_{name}.{ext}" if ext else f"{timestamp}_{name}"
+    
+    return f"documents/{doc_type}/{doc_id}/{timestamped_filename}"
 
 class DimAICDocument(models.Model):
     """
@@ -40,10 +57,12 @@ class DimAICDocument(models.Model):
         verbose_name="Input User"
     )
 
-    file_loc = models.CharField(
-        max_length=1000,
-        verbose_name="File Location",
-	)
+    file = models.FileField(
+        upload_to=upload_to_documents_folder,
+        verbose_name="Document File",
+        help_text="File stored in Azure Blob Storage",
+        max_length=500  # Increased from default 100 to accommodate Azure paths
+    )
     control_item = models.JSONField(null=True, blank=True)
 
     class Meta:
@@ -56,6 +75,34 @@ class DimAICDocument(models.Model):
     def __str__(self):
         # String representation of the object, useful for the Django admin
         return f"Document ID: {self.doc_id} - Type: {self.doc_typ}"
+    
+    def get_azure_file_path(self):
+        """
+        Get the full Azure blob path for this document
+        Structure: documents/doc_type/doc_id/filename
+        """
+        if not self.file:
+            return ""
+        
+        # Get just the filename from the stored path
+        filename = self.file.name.split('/')[-1] if '/' in self.file.name else self.file.name
+        return f"documents/{self.doc_typ}/{self.doc_id}/{filename}"
+    
+    def get_secure_url(self, expire_minutes=10):
+        """
+        Get a secure temporary URL for the document file with 10-minute expiry
+        """
+        if not self.file:
+            return ""
+        
+        # Use the full Azure path for generating the SAS URL
+        azure_path = self.get_azure_file_path()
+        
+        # Generate Azure SAS URL with 10-minute expiry (no permission checks)
+        from django.core.files.storage import default_storage
+        if hasattr(default_storage, 'url'):
+            return default_storage.url(azure_path, expire_minutes=expire_minutes)
+        return ""
 
 
 class FactAICDocKeyItem(models.Model):
