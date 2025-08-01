@@ -1,27 +1,10 @@
 # System imports
 import uuid
-from datetime import datetime
 
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
-
-
-def upload_to_documents_folder(instance, filename):
-    """
-    Generate upload path for general documents
-    Structure: documents/doc_type/doc_id/filename
-    """
-    # Create structured path: documents/doc_type/doc_id/filename
-    doc_type = instance.doc_typ
-    doc_id = instance.doc_id
-    
-    # Add timestamp to filename to avoid conflicts
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-    timestamped_filename = f"{timestamp}_{name}.{ext}" if ext else f"{timestamp}_{name}"
-    
-    return f"documents/{doc_type}/{doc_id}/{timestamped_filename}"
+from aicounting.model_file_upload_helper import upload_to_documents_folder
 
 class DimAICDocument(models.Model):
     """

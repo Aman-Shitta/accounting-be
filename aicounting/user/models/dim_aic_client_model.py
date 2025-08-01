@@ -1,22 +1,7 @@
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
-from datetime import datetime
-
-
-def upload_to_customer_client_folder(instance, filename):
-    """
-    Generate upload path based on customer and client structure
-    """
-    # Create structured path: customer_id/client_id/document_type/filename
-    customer_id = instance.client.customer.id
-    client_name = instance.client.client_name    
-    # Add timestamp to filename to avoid conflicts
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name, ext = filename.rsplit('.', 1) if '.' in filename else (filename, '')
-    timestamped_filename = f"{timestamp}_{name}.{ext}" if ext else f"{timestamp}_{name}"
-    
-    return f"customer_{customer_id}/{client_name}/client_documents/{timestamped_filename}"
+from aicounting.model_file_upload_helper import upload_to_customer_client_folder
 
 class DimAICClient(models.Model):
     """
