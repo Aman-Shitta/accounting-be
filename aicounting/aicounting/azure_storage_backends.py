@@ -104,14 +104,13 @@ class AzureMediaStorage(Storage):
         normalized_name = self._normalize_name(name)
         if not normalized_name:
             return ""
-            
         sas_token = generate_blob_sas(
             account_name=self.account_name,
             container_name=self.container_name,
             blob_name=normalized_name,
             account_key=self.account_key,
             permission=BlobSasPermissions(read=True),
-            expiry=datetime.now() + timedelta(minutes=expire_minutes)
+            expiry=datetime.utcnow() + timedelta(minutes=expire_minutes)
         )
         
         return f"https://{self.account_name}.blob.core.windows.net/{self.container_name}/{normalized_name}?{sas_token}"
