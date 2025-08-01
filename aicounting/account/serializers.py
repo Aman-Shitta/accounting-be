@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import DimAICGLAcct
+from account.models import DimAICGLAcct
 
 
 class DimAICGLAcctSerializer(serializers.ModelSerializer):
