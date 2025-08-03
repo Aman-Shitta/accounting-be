@@ -4,7 +4,7 @@ class DimAICJEType(models.Model):
     """
     Django model for the dim_AIC_JE_Type table, representing Journal Entry Type information.
     """
-    je_type_id = models.AutoField(
+    id = models.AutoField(
         primary_key=True,
         verbose_name="JE Type ID",
 	)
