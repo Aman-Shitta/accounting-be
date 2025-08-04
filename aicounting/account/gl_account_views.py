@@ -2,7 +2,7 @@
 from django.conf import settings
 from django.db import transaction
 
-from rest_framework import generics, permissions, status
+from rest_framework import generics,  status
 from rest_framework.filters import SearchFilter
 
 from account.models import DimAICGLAcct
@@ -11,6 +11,7 @@ from account.serializers import (
 )
 
 from authentication import authenticate
+from authentication.permissions import IsAuthenticated, IsCustomerOrAccountant
 from aicounting.response import create_api_response
 
 
@@ -29,7 +30,7 @@ class ClientGLAccountListView(generics.GenericAPIView):
     - Accountant can view accounts for clients they are assigned to (same customer)
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = DimAICGLAcctSerializer
 
     filter_backends = [SearchFilter]
@@ -80,7 +81,7 @@ class ClientGLAccountListView(generics.GenericAPIView):
                 # Client doesn't exist or user doesn't have permission
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "t."
+                    "Client doesn't exist or user doesn't have permission."
                 )
 
             # Serialize the data

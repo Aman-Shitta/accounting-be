@@ -91,38 +91,15 @@ class InputFileBasicUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFiles
         fields = [
-            'name', 'file_type', 'file'
+            'name',
         ]
     
     def update(self, instance, validated_data):
         """Update input file basic information"""
-        request_user = self.context['request'].user
-        
-        # Check if file type is changing to bank_statement or credit_card
-        new_file_type = validated_data.get('file_type', instance.file_type)
-        old_file_type = instance.file_type
-        
-        # Update the input file
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-        
-        # Handle file type change to bank_statement or credit_card
-        if (new_file_type in ['bank_statement', 'credit_card'] and 
-            new_file_type != old_file_type):
-            # Remove all existing attributes
-            instance.attributes.all().delete()
-            
-            # Create default attribute
-            DimAicInputFileAttributes.objects.create(
-                input_file=instance,
-                name="*",
-                gl_account=None,
-                type="",
-                offset_gl_account=None,
-                input_user=request_user,
-                comments="Auto-generated for bank statement/credit card processing"
-            )
         
         return instance
 
