@@ -2,6 +2,8 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from account.models import DimAicInputFiles, DimAicInputFileAttributes
 
@@ -112,6 +114,10 @@ class InputFileCreateView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = InputFileBasicCreateSerializer
     parser_classes = [MultiPartParser, FormParser]
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def post(self, request, client_id, *args, **kwargs):
         """Create a new input file without attributes"""
@@ -176,6 +182,10 @@ class InputFileDetailView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     parser_classes = [MultiPartParser, FormParser]
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def get_object(self, client_id, file_id):
         """Get input file with proper authorization checks"""
@@ -309,6 +319,10 @@ class AttributeCreateView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = AttributeCreateSerializer
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def get_input_file(self, client_id, file_id):
         """Get input file with proper authorization checks"""
@@ -457,6 +471,10 @@ class AttributeBulkDeleteView(generics.GenericAPIView):
     
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+    
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
     def get_input_file(self, client_id, file_id):
         """Get input file with proper authorization checks"""

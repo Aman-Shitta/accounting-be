@@ -15,22 +15,22 @@ from .input_file_views import (
 # Input Files API URL patterns
 input_file_patterns = [
     # Input Files for a specific client
-    path('clients/<int:client_id>/input-files/', InputFileListView.as_view(), name='input-file-list'),
-    path('clients/<int:client_id>/input-files/create/', InputFileCreateView.as_view(), name='input-file-create'),
+    path('', InputFileListView.as_view(), name='list'),
+    path('create/', InputFileCreateView.as_view(), name='create'),
     
     # Specific Input File operations
-    path('clients/<int:client_id>/input-files/<int:file_id>/', InputFileDetailView.as_view(), name='input-file-detail'),
+    path('<int:file_id>/', InputFileDetailView.as_view(), name='detail'),
         
     # Attributes for a specific input file
-    path('clients/<int:client_id>/input-files/<int:file_id>/attributes/', AttributeListView.as_view(), name='attribute-list'),
-    path('clients/<int:client_id>/input-files/<int:file_id>/attributes/create/', AttributeCreateView.as_view(), name='attribute-create'),
-    path('clients/<int:client_id>/input-files/<int:file_id>/attributes/bulk-delete/', AttributeBulkDeleteView.as_view(), name='attribute-bulk-delete'),
+    path('<int:file_id>/attributes/', AttributeListView.as_view(), name='attribute_list'),
+    path('<int:file_id>/attributes/create/', AttributeCreateView.as_view(), name='attribute_create'),
+    path('<int:file_id>/attributes/bulk_delete/', AttributeBulkDeleteView.as_view(), name='attribute_bulk_delete'),
 ]
 
 
 urlpatterns = [
-    path('client/<int:client_id>/accounts/', ClientGLAccountListView.as_view(), name='client-accounts-list'),
+    path('client/<int:client_id>/accounts/', ClientGLAccountListView.as_view(), name='client_accounts_list'),
     
     # Include input file URLs
-    path('', include(input_file_patterns)),
+    path('clients/<int:client_id>/input_files/', include((input_file_patterns, 'account'), 'input_files')),
 ]

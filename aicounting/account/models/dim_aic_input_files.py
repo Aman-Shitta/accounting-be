@@ -44,6 +44,13 @@ class DimAicInputFiles(models.Model):
         help_text="Upload the input file"
     )
     
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Description",
+        help_text="Additional description or comments about the input file"
+    )
+    
     input_user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,

@@ -39,7 +39,7 @@ class InputFileListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = DimAicInputFiles
-        fields = ['id', 'name', 'file_type', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'file_type', 'description', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
@@ -49,7 +49,7 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFiles
         fields = [
-            'name', 'file_type', 'file'
+            'name', 'file_type', 'file', 'description'
         ]
     
     def create(self, validated_data):
@@ -91,7 +91,7 @@ class InputFileBasicUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFiles
         fields = [
-            'name',
+            'name', 'description',
         ]
     
     def update(self, instance, validated_data):
@@ -113,9 +113,10 @@ class InputFileDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFiles
         fields = [
-            'id', 'name', 'file_type', 'file_url', 'client_name', 
+            'id', 'name', 'file_type', 'file_url', 'client_name', 'description',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_file_url(self, obj):
         """Get secure URL for the file"""
