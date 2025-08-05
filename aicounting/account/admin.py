@@ -11,6 +11,7 @@ from .models import (
     DimAICJEType,
     DimAICJETemplateHeader,
     DimAICJETemplateGL,
+    DimAICJETemplateAttribute,
     DimAICTemplateDoc,
     FactJETransOther,
     FactAICJETransBank,
@@ -71,21 +72,21 @@ class DimAICGLAcctAdmin(admin.ModelAdmin):
 
 @admin.register(DimAICJEFreq)
 class DimAICJEFreqAdmin(admin.ModelAdmin):
-    list_display = ('je_freq_id', 'je_freq', 'created_at', 'updated_at')
+    list_display = ('id', 'je_freq', 'created_at', 'updated_at')
     search_fields = ('je_freq',)
-    ordering = ('je_freq_id',)
+    ordering = ('id',)
 
 @admin.register(DimAICJEType)
 class DimAICJETypeAdmin(admin.ModelAdmin):
-    list_display = ('je_type_id', 'je_type', 'created_at', 'updated_at')
+    list_display = ('je_type', 'je_type', 'created_at', 'updated_at')
     search_fields = ('je_type',)
-    ordering = ('je_type_id',)
+    ordering = ('je_type',)
 
 @admin.register(DimAICJETemplateHeader)
 class DimAICJETemplateHeaderAdmin(admin.ModelAdmin):
-    list_display = ('je_template_id', 'je_name', 'je_ref', 'cust_id', 'client_id', 'je_freq_id', 'je_type_id')
-    search_fields = ('je_name', 'je_ref')
-    ordering = ('je_template_id',)
+    list_display = ('id', 'je_name', 'je_refrence', 'customer', 'client', 'je_freq', 'je_type')
+    search_fields = ('je_name', 'je_refrence')
+    ordering = ('id',)
 
 @admin.register(DimAICJETemplateGL)
 class DimAICJETemplateGLAdmin(admin.ModelAdmin):
@@ -196,3 +197,62 @@ class DimAicInputFileAttributesAdmin(admin.ModelAdmin):
 
 # Add the inline to the DimAicInputFiles admin
 DimAicInputFilesAdmin.inlines = [DimAicInputFileAttributesInline]
+
+
+@admin.register(DimAICJETemplateAttribute)
+class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'je_template_id', 'attribute_name', 
+        'input_file_name', 'gl_account_name', 'offset_gl_account_name', 
+        'input_user', 'created_at', 'updated_at'
+    )
+    search_fields = (
+        'je_template_id__je_name', 'input_file_attribute__name',
+        'gl_acct_id__account_name', 'offset_gl_acct_id__account_name'
+    )
+    list_filter = ('input_user', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Template Attribute Information', {
+            'fields': ('je_template_id', 'input_file_attribute')
+        }),
+        ('GL Accounts', {
+            'fields': ('gl_acct_id', 'offset_gl_acct_id')
+        }),
+        ('User Information', {
+            'fields': ('input_user',)
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def attribute_name(self, obj):
+        """Display the attribute name"""
+        return obj.input_file_attribute.name
+    attribute_name.short_description = 'Attribute Name'
+    
+    def input_file_name(self, obj):
+        """Display the input file name"""
+        return obj.input_file_attribute.input_file.name
+    input_file_name.short_description = 'Input File'
+    
+    def gl_account_name(self, obj):
+        """Display the GL account name"""
+        return obj.gl_acct_id.account_name
+    gl_account_name.short_description = 'GL Account'
+    
+    def offset_gl_account_name(self, obj):
+        """Display the offset GL account name"""
+        return obj.offset_gl_acct_id.account_name
+    offset_gl_account_name.short_description = 'Offset GL Account'
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'je_template_id', 'input_file_attribute__input_file',
+            'gl_acct_id', 'offset_gl_acct_id', 'input_user'
+        )

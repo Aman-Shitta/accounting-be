@@ -5,6 +5,11 @@ from .if_urls import (
     input_file_patterns,
 )
 
+from .je_urls import (
+    je_template_patterns,
+)
+
+
 urlpatterns = [
     # Account URLS
     path('client/<int:client_id>/accounts/', ClientGLAccountListView.as_view(), name='client_accounts_list'),
@@ -12,3 +17,9 @@ urlpatterns = [
     # Include input file URLs
     path('clients/<int:client_id>/input_files/', include((input_file_patterns, 'account'), 'input_files')),
 ]
+
+urlpatterns += [
+    # Include JE template URLs
+    path('clients/<int:client_id>/je_templates/', include(je_template_patterns)),  
+]
+    
