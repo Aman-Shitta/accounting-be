@@ -6,11 +6,11 @@ class DimAICGLAcct(models.Model):
     """
     Django model for the dim_AIC_GL_Acct table, representing General Ledger Account information.
     """
-    gl_acct_id = models.AutoField(
+    id = models.AutoField(
         primary_key=True,
         verbose_name="GL Account ID",
 	)
-    cust_id = models.ForeignKey(
+    customer = models.ForeignKey(
         'user.DimAICCustomer',
         on_delete=models.CASCADE,
         verbose_name="Customer ID",
@@ -21,15 +21,15 @@ class DimAICGLAcct(models.Model):
         on_delete=models.CASCADE,
         verbose_name="Client ID",
 	)
-    gl_acct_nbr = models.CharField(
+    account_number = models.CharField(
         max_length=15,
         verbose_name="GL Account Number",
     )
-    gl_acct_name = models.CharField(
+    account_name = models.CharField(
         max_length=255,
         verbose_name="GL Account Name",
     )
-    gl_acct_desc = models.TextField(
+    description = models.TextField(
         verbose_name="GL Account Description",
     )
     account_class = models.CharField(
@@ -42,7 +42,7 @@ class DimAICGLAcct(models.Model):
         verbose_name="Account Sub Class",
         help_text="e.g., Cash, Fixed Assets, Current Liabilities"
     )
-    account_type_id = models.ForeignKey(
+    account_type = models.ForeignKey(
         'DimAICAcctType',
         on_delete=models.CASCADE,
         verbose_name="Account Type ID",
@@ -71,5 +71,5 @@ class DimAICGLAcct(models.Model):
         verbose_name_plural = "AIC GL Accounts"
 
     def __str__(self):
-        return f"{self.gl_acct_name} ({self.gl_acct_nbr})"
+        return f"{self.account_name} ({self.account_number})"
 

@@ -21,15 +21,18 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+app_v1_url_patterns = [
+    path("auth/", include('authentication.urls')),
+    path("document/", include('document.urls')),
+    path("user/", include('user.urls')),
+    path("account/", include('account.urls')),
+ 
+]
+ 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
-    path("api/v1/auth/", include('authentication.urls')),
+    path("api/v1/", include((app_v1_url_patterns, 'api_v1'))),
 
-    path("api/v1/document/", include('document.urls')),
-    
-    path("api/v1/user/", include('user.urls')),
-    
 ] 
 
 

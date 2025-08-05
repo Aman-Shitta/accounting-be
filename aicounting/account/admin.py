@@ -5,6 +5,8 @@ from django.contrib import admin
 from .models import (
     DimAICAcctType,
     DimAICGLAcct,
+    DimAicInputFiles,
+    DimAicInputFileAttributes,
     DimAICJEFreq,
     DimAICJEType,
     DimAICJETemplateHeader,
@@ -26,19 +28,44 @@ class DimAICAcctTypeAdmin(admin.ModelAdmin):
 @admin.register(DimAICGLAcct)
 class DimAICGLAcctAdmin(admin.ModelAdmin):
     list_display = (
-        'gl_acct_id',
-        'gl_acct_nbr',
-        'gl_acct_name',
-        'cust_id',
+        'id',
+        'account_number',
+        'account_name',
+        'customer',
         'client_id',
-        'account_type_id',
-        'input_user_id',
+        'account_class',
+        'sub_class',
+        'account_type',
+        'input_user',
         'created_at',
         'updated_at',
     )
-    search_fields = ('gl_acct_nbr', 'gl_acct_name', 'gl_acct_desc')
-    list_filter = ('account_type_id', 'client_id', 'cust_id', 'created_at', 'updated_at')
-    ordering = ('gl_acct_id',)
+    search_fields = ('account_number', 'account_name', 'description')
+    list_filter = ('account_type', 'account_class', 'sub_class', 'customer', 'client_id', 'created_at', 'updated_at')
+    ordering = ('id',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Account Information', {
+            'fields': ('account_number', 'account_name', 'description')
+        }),
+        ('Classification', {
+            'fields': ('account_class', 'sub_class', 'account_type')
+        }),
+        ('Relationships', {
+            'fields': ('customer', 'client_id', 'input_user')
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'customer', 'client_id', 'account_type', 'input_user'
+        )
 
 
 
@@ -96,3 +123,76 @@ class FactAICJEMonthlyStatAdmin(admin.ModelAdmin):
     )
     list_filter = ('is_processed', 'is_verified', 'je_mth', 'je_yr')
     ordering = ('je_trans_id',)
+
+
+@admin.register(DimAicInputFiles)
+class DimAicInputFilesAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'name', 'file_type', 'client', 'input_user', 'created_at', 'updated_at'
+    )
+    search_fields = ('name', 'client__client_name')
+    list_filter = ('file_type', 'client', 'input_user', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('File Information', {
+            'fields': ('name', 'file_type', 'file')
+        }),
+        ('Relationships', {
+            'fields': ('client', 'input_user')
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'client', 'input_user'
+        )
+
+
+class DimAicInputFileAttributesInline(admin.TabularInline):
+    model = DimAicInputFileAttributes
+    extra = 1
+    fields = ('name', 'gl_account', 'type', 'offset_gl_account', 'input_user', 'comments')
+
+
+@admin.register(DimAicInputFileAttributes)
+class DimAicInputFileAttributesAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'name', 'input_file', 'gl_account', 'type', 'offset_gl_account', 'input_user', 'created_at', 'updated_at'
+    )
+    search_fields = ('name', 'input_file__name', 'gl_account__account_name', 'offset_gl_account__account_name')
+    list_filter = ('type', 'input_user', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Attribute Information', {
+            'fields': ('name', 'input_file', 'type', 'comments')
+        }),
+        ('GL Accounts', {
+            'fields': ('gl_account', 'offset_gl_account')
+        }),
+        ('User Information', {
+            'fields': ('input_user',)
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'input_file', 'gl_account', 'offset_gl_account', 'input_user'
+        )
+
+
+# Add the inline to the DimAicInputFiles admin
+DimAicInputFilesAdmin.inlines = [DimAicInputFileAttributesInline]

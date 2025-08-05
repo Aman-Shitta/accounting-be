@@ -1,8 +1,9 @@
 # Third-party imports
 from rest_framework.permissions import BasePermission
+from rest_framework.permissions import IsAuthenticated
 
 # Local imports
-from user.models import DimAICCustomer
+from user.models import DimAICCustomer, DimAICAccountant
 
 class IsSuperUser(BasePermission):
     """
@@ -35,7 +36,7 @@ class IsCustomer(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Check if the user has an associated DimAICUser profile
+        # Check if the user has an associated User profile
         try:
             DimAICCustomer.objects.get(system_user=request.user)
             return True
@@ -43,3 +44,30 @@ class IsCustomer(BasePermission):
             return False
         
         return False
+
+
+class IsAccountant(BasePermission):
+    """
+    Custom permission to only allow authenticated users who are associated with a customer.
+    """
+    
+    def has_permission(self, request, view):
+        # Check if user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Check if the user has an associated User profile
+        try:
+            DimAICAccountant.objects.get(system_user=request.user)
+            return True
+        except DimAICAccountant.DoesNotExist:
+            return False
+        
+        return False
+
+class IsCustomerOrAccountant(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            IsAccountant().has_permission(request, view) or
+            IsCustomer().has_permission(request, view)
+        )

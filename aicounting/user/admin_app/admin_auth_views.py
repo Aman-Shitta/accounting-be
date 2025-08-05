@@ -162,7 +162,7 @@ class AdminDashboardView(GenericAPIView):
         }
 
         # Get recent customers
-        recent_customers_queryset = DimAICCustomer.objects.select_related('system_user').order_by('-customer_id')[:5]
+        recent_customers_queryset = DimAICCustomer.objects.select_related('system_user').order_by('-id')[:5]
 
         # Serialize the data
         # statistics_serializer = CustomerStatisticsSerializer(statistics_data)
@@ -180,6 +180,3 @@ class AdminDashboardView(GenericAPIView):
             message="Dashboard data retrieved successfully",
             data=dashboard_serializer.data
         )
-
-{'statistics': {'total_customers': 1, 'verified_customers': 0, 'pending_customers': 1, 'verification_rate': 0.0}, 'recent_customers': [{'customer_id': 5, 'customer_name': 'Aman', 'email': 'aman@zygoon.com', 'is_active': False, 'date_joined': '2025-07-18T15:53:40.445556Z', 'verification_status': 'pending'}]}
-#

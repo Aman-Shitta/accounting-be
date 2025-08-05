@@ -7,7 +7,7 @@ from rest_framework.generics import GenericAPIView
 # Local imports
 from aicounting.msal_conf import MsalConf
 from aicounting.response import create_api_response
-from user.models import DimAICCustomer, DimAICUser
+from user.models import DimAICCustomer, DimAICAccountant
 
 msal = MsalConf()
 
@@ -90,7 +90,7 @@ class SSOGenerateTokenView(GenericAPIView):
             user_name = ""
             customer_name = ""
             if user_assigned_groups[0] == 'customer':
-                customer = DimAICCustomer.objects.filter(system_user__username=email).first()
+                customer = DimAICCustomer.objects.filter(system_user__email=email).first()
 
                 if not customer or not user_object_id:
                     return create_api_response(
@@ -105,26 +105,33 @@ class SSOGenerateTokenView(GenericAPIView):
                 customer.refresher_token = refresh_token
                 customer.save()
 
+                customer.system_user.is_active = True
+                customer.system_user.save()
+
                 user_name = customer.customer_name
                 customer_name = user_name
 
             elif user_assigned_groups[0] == 'accountant':
-                user = DimAICUser.objects.filter(system_user__username=email).first()
-                if not user or not user_object_id:
+
+                accountant = DimAICAccountant.objects.filter(system_user__email=email).first()
+                if not accountant or not user_object_id:
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
                         data=None,
                         message='Unauthorized Accountant. Please contact admin.'
                     )
-                if not user.verified:
-                    user.azure_id = user_object_id
-                    user.verified = True
+                if not accountant.verified:
+                    accountant.azure_id = user_object_id
+                    accountant.verified = True
                 
-                user.refresher_token = refresh_token
-                user.save()
+                accountant.refresher_token = refresh_token
+                accountant.save()
 
-                user_name = f"{user.first_name} {user.last_name}"
-                customer_name = user.cust_id.customer_name
+                accountant.system_user.is_active = True
+                accountant.system_user.save()
+
+                user_name = accountant.username
+                customer_name = accountant.customer.customer_name
             else:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,

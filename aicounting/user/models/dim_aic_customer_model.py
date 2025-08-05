@@ -13,7 +13,7 @@ class DimAICCustomer(models.Model):
         verbose_name="Linked Django User",
         help_text="Link to Django user for authentication and permissions"
     )
-    customer_id = models.AutoField(
+    id = models.AutoField(
         primary_key=True,
         verbose_name="Customer ID",
 	)

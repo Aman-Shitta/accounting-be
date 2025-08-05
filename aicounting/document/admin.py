@@ -55,7 +55,7 @@ class DimAICDocumentAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {
-            'fields': ('doc_id', 'doc_typ', 'file_format', 'upload_stat', 'input_user', 'file_loc')
+            'fields': ('doc_id', 'doc_typ', 'file_format', 'upload_stat', 'input_user', 'file')
         }),
         ('Timestamps', {
             'fields': ('created_at',),

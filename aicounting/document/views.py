@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 
 # Third-party imports
-from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
@@ -23,11 +22,18 @@ from document.serializers import (
 )
 from document.tasks import process_uploaded_document
 
+
+from authentication import authenticate
+from authentication.permissions import IsAuthenticated, IsCustomerOrAccountant
+
 import logging
 logger = logging.getLogger(__name__)
 
 
 class DocumentUploadView(APIView):
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+
     parser_classes = [MultiPartParser]
 
     def post(self, request, *args, **kwargs):
@@ -50,24 +56,19 @@ class DocumentUploadView(APIView):
             file_format=file_ext.strip('.'),
             upload_stat="uploaded",
             input_user=get_user_model().objects.filter().first(),
+            file=uploaded_file
         )
-
-        upload_dir = Path(settings.MEDIA_ROOT) / str(doc.doc_id)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        saved_path = upload_dir / uploaded_file.name
-
-        with open(saved_path, "wb") as f:
-            for chunk in uploaded_file.chunks():
-                f.write(chunk)
-
-        doc.file_loc=f"{doc.doc_id}/{str(uploaded_file.name)}"
         doc.save()
 
-        # Trigger celery job
-        process_uploaded_document.delay(str(saved_path), doc.doc_id)
+        # For processing, get file path from Azure storage
+        file_path = doc.file.name if doc.file else None
         
-        doc.upload_stat = "processing"
-        doc.save()
+        if file_path:
+            # process_uploaded_document.delay(file_path, doc.doc_id)
+            
+            doc.upload_stat = "processing"
+            doc.save()
+        
         return create_api_response(
             status_code=status.HTTP_202_ACCEPTED,
             message="File uploaded",
@@ -82,7 +83,8 @@ class DocumentListView(APIView):
     """
     API to list documents and processed status
     """
-
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = DocumentListSerializer
     
     def get(self, request, *args, **kwargs):
@@ -96,6 +98,8 @@ class DocumentListView(APIView):
 
 class DocumentGetDataView(APIView):
 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
     """
     API to get the data
     """
@@ -123,7 +127,8 @@ class DocumentGetDataView(APIView):
             )
 
 class LineItemUpdateAPIView(APIView):
-    # permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def patch(self, request, *args, **kwargs):
         line = get_object_or_404(FactAICDocLine, pk=kwargs.get('line_id'), doc__doc_id=kwargs.get('doc_id'))
@@ -144,7 +149,8 @@ class LineItemUpdateAPIView(APIView):
         )
 
 class LineItemCreateAPIView(APIView):
-    # permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def post(self, request, doc_id):
         doc = get_object_or_404(DimAICDocument, doc_id=doc_id)
@@ -165,7 +171,8 @@ class LineItemCreateAPIView(APIView):
         )
 
 class LineItemDeleteAPIView(APIView):
-    # permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     @transaction.atomic
     def delete(self, request, doc_id, line_id):

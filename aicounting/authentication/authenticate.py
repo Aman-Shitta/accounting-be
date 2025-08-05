@@ -11,6 +11,7 @@ from django.utils.translation import gettext as _
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 
+from user.models import DimAICCustomer
 User = get_user_model()
 
 
@@ -141,9 +142,7 @@ class JSONWebTokenAuthentication(BaseAuthentication):
                 raise CustomAuthenticationFailed('error', _('No email in token claims.'))
 
             logger.debug(f"Processing authentication for email: {email}")
-            
-            # ...rest of your existing user creation logic...
-            from user.models import DimAICUser, DimAICCustomer
+
             
             azure_id = decoded_token.get("oid")
 

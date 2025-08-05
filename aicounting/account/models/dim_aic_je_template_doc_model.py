@@ -8,7 +8,6 @@ class DimAICTemplateDoc(models.Model):
     """
     je_template_gl_acct_id = models.ForeignKey(
         'DimAICGLAcct', 
-        to_field='gl_acct_id',
         on_delete=models.CASCADE,
         verbose_name="JE Temaplate GL Account ID",
 	)

@@ -75,8 +75,9 @@ class DocumentDataSerializer(serializers.ModelSerializer):
         fields = ["doc_id", "doc_type", "created_at", "input_user", "extracted_data", "document_url", "control_total", "upload_status"]
 
     def get_document_url(self, obj):
-        return default_storage.url(obj.file_loc)
-
+        # Get secure URL with 10-minute expiry (no user-based permission checks)
+        return obj.get_secure_url(expire_minutes=10)
+    
     def get_extracted_data(self, obj):
         data = {}
 

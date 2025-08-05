@@ -1,5 +1,6 @@
 # System imports
 import json
+import logging
 from pathlib import Path
 
 # Third-party imports
@@ -18,15 +19,31 @@ from document.pipeline.classification import GLClassifier
 from document.pipeline.processor.ai_process import DocumentProcessor
 from document.pipeline.prompter import Configuration
 
+logger = logging.getLogger(__name__)
+
 @shared_task
 def process_uploaded_document(file_path: str, doc_id: int):
-    file = Path(file_path)
-    if not file.exists():
-        return
-
+    """
+    Process a document uploaded to Azure Blob Storage
+    
+    Args:
+        file_path: Path to the file in Azure Blob Storage
+        doc_id: Document ID to process
+    """
     doc = None
     try:
         doc = DimAICDocument.objects.get(doc_id=doc_id)
+
+        # Download file from Azure Blob Storage
+        from django.core.files.storage import default_storage
+        
+        if not default_storage.exists(file_path):
+            logger.error(f"File does not exist in Azure storage: {file_path}")
+            return
+
+        # Get file content from Azure storage
+        with default_storage.open(file_path, 'rb') as azure_file:
+            pdf_bytes = azure_file.read()
 
         config = Configuration(
             # TODO: make it come from confguration
@@ -45,9 +62,6 @@ def process_uploaded_document(file_path: str, doc_id: int):
         )
         processor = DocumentProcessor(config=config)
         mime_type = "application/pdf"
-        with open(file, "rb") as f:
-            pdf_bytes = f.read()
-
 
         processor.process_document(pdf_bytes, mime_type)
 
@@ -58,10 +72,13 @@ def process_uploaded_document(file_path: str, doc_id: int):
         doc.control_item = control_totals
         doc.save()
 
-        # Save JSON output
-        out_path = file.parent / "extracted_output.json"
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2)
+        # Save JSON output to Azure storage
+        import json
+        from django.core.files.base import ContentFile
+        
+        output_json = json.dumps(result, indent=2)
+        output_path = f"processed_output/{doc.doc_id}/extracted_output.json"
+        default_storage.save(output_path, ContentFile(output_json.encode('utf-8')))
         
         # Insert Key Items
         for idx, item in enumerate(result):

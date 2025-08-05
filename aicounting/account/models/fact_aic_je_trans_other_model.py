@@ -18,7 +18,6 @@ class FactJETransOther(models.Model):
 	)
     offset_gl_acct_id = models.ForeignKey(
         'DimAICGLAcct', 
-        to_field='gl_acct_id',
         on_delete=models.CASCADE,
         related_name='je_trans_offset_accounts',
         verbose_name="Offset GL Account ID",

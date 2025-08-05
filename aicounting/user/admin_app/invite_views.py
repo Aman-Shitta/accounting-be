@@ -88,7 +88,7 @@ class AzureInviteView(GenericAPIView):
             status_code=status.HTTP_201_CREATED,
             message="Customer invite sent successfully. Customer created in non-verified state.",
             data={
-                "customer_id": customer.customer_id,
+                "customer_id": customer.id,
                 "customer_name": customer.customer_name,
                 "email": email,
                 "verification_status": "pending",

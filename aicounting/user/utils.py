@@ -72,18 +72,30 @@ class OpenAIAssistant(OpeAIClient):
         return None
 
     def create_vector_store(self, client_documents):
-        """Create a vector store with client documents"""
+        """Create a vector store with client documents from Azure storage"""
         try:
             # Create vector store
             vector_store = self.client.vector_stores.create(
                 name=f"Client_{self.client_id}_Documents"
             )
             
-            # Upload files to vector store
+            # Upload files to vector store from Azure storage
             file_streams = []
+            from django.core.files.storage import default_storage
+            
             for doc in client_documents:
-                if doc.file and os.path.exists(doc.file.path):
-                    file_streams.append(open(doc.file.path, "rb"))
+                if doc.file:
+                    try:
+                        # Download file from Azure storage
+                        with default_storage.open(doc.file.name, 'rb') as azure_file:
+                            file_content = azure_file.read()
+                            # Create a file-like object for OpenAI
+                            import io
+                            file_stream = io.BytesIO(file_content)
+                            file_stream.name = doc.file.name.split('/')[-1]
+                            file_streams.append(file_stream)
+                    except Exception as e:
+                        print(f"Error downloading file {doc.file.name} from Azure: {e}")
             
             if file_streams:
                 file_batch = self.client.vector_stores.file_batches.upload_and_poll(
@@ -256,18 +268,30 @@ class OpenAIAssistant(OpeAIClient):
             # Filter documents that have valid file paths
             valid_documents = []
             for doc in documents_to_add:
-                if doc.file and os.path.exists(doc.file.path):
+                if doc.file:
                     valid_documents.append(doc)
             
             if not valid_documents:
                 print("No valid documents found to add to vector store")
                 return True
             
-            # Add new files to existing vector store
+            # Add new files to existing vector store from Azure storage
             file_streams = []
+            from django.core.files.storage import default_storage
+            
             try:
                 for doc in valid_documents:
-                    file_streams.append(open(doc.file.path, "rb"))
+                    try:
+                        # Download file from Azure storage
+                        with default_storage.open(doc.file.name, 'rb') as azure_file:
+                            file_content = azure_file.read()
+                            # Create a file-like object for OpenAI
+                            import io
+                            file_stream = io.BytesIO(file_content)
+                            file_stream.name = doc.file.name.split('/')[-1]  # Get just the filename
+                            file_streams.append(file_stream)
+                    except Exception as e:
+                        print(f"Error downloading file {doc.file.name} from Azure: {e}")
                 
                 if file_streams:
                     file_batch = self.client.vector_stores.file_batches.upload_and_poll(
