@@ -72,7 +72,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='factaicjetransbank',
             name='created_at',
-            field=models.DateTimeField(auto_now_add=True, default=1, verbose_name='Created At'),
+            field=models.DateTimeField(auto_now_add=True, default=django.utils.timezone.now, verbose_name='Created At'),
             preserve_default=False,
         ),
         migrations.AddField(
