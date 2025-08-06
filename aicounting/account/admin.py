@@ -203,12 +203,13 @@ DimAicInputFilesAdmin.inlines = [DimAicInputFileAttributesInline]
 class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
     list_display = (
         'id', 'je_template_id', 'attribute_name', 
-        'input_file_name', 'gl_account_name', 'offset_gl_account_name', 
+        'input_file_name', 
+        # 'gl_account_name', 'offset_gl_account_name',  # Fields commented out in model
         'input_user', 'created_at', 'updated_at'
     )
     search_fields = (
         'je_template_id__je_name', 'input_file_attribute__name',
-        'gl_acct_id__account_name', 'offset_gl_acct_id__account_name'
+        # 'gl_acct_id__account_name', 'offset_gl_acct_id__account_name'  # Fields commented out in model
     )
     list_filter = ('input_user', 'created_at', 'updated_at')
     ordering = ('-created_at',)
@@ -219,7 +220,7 @@ class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
             'fields': ('je_template_id', 'input_file_attribute')
         }),
         ('GL Accounts', {
-            'fields': ('gl_acct_id', 'offset_gl_acct_id')
+            'fields': ()  # 'gl_acct_id', 'offset_gl_acct_id' fields commented out in model
         }),
         ('User Information', {
             'fields': ('input_user',)
@@ -242,17 +243,20 @@ class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
     
     def gl_account_name(self, obj):
         """Display the GL account name"""
-        return obj.gl_acct_id.account_name
+        # return obj.gl_acct_id.account_name  # Field commented out in model
+        return "N/A"
     gl_account_name.short_description = 'GL Account'
     
     def offset_gl_account_name(self, obj):
         """Display the offset GL account name"""
-        return obj.offset_gl_acct_id.account_name
+        # return obj.offset_gl_acct_id.account_name  # Field commented out in model
+        return "N/A"
     offset_gl_account_name.short_description = 'Offset GL Account'
     
     def get_queryset(self, request):
         """Optimize queries with select_related"""
         return super().get_queryset(request).select_related(
             'je_template_id', 'input_file_attribute__input_file',
-            'gl_acct_id', 'offset_gl_acct_id', 'input_user'
+            # 'gl_acct_id', 'offset_gl_acct_id',  # Fields commented out in model
+            'input_user'
         )
