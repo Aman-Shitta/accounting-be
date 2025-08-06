@@ -16,8 +16,8 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFileAttributes
         fields = [
-            'id', 'name', 'gl_account', 'gl_account', 'type', 
-            'offset_gl_account', 'offset_gl_account', 'comments',
+            'id', 'name', 'gl_account', 'type', 
+            'offset_gl_account', 'comments',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', ]
     
@@ -26,6 +26,7 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
         gl_account = attrs.get('gl_account')
         offset_gl_account = attrs.get('offset_gl_account')
         
+        # Both can be null for bank statement and credit card types
         if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
             raise serializers.ValidationError(
                 "GL Account and Offset GL Account cannot be the same."
@@ -46,16 +47,35 @@ class InputFileListSerializer(serializers.ModelSerializer):
 class InputFileBasicCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating input files without attributes"""
     
+    offset_gl_account = serializers.IntegerField(required=False, write_only=True, help_text="Offset GL Account ID for bank/credit card statements")
+    
     class Meta:
         model = DimAicInputFiles
         fields = [
-            'name', 'file_type', 'file', 'description'
+            'name', 'file_type', 'file', 'description', 'offset_gl_account'
         ]
+    
+    def validate(self, attrs):
+        """Validate offset_gl_account based on file_type"""
+        file_type = attrs.get('file_type')
+        offset_gl_account = attrs.get('offset_gl_account')
+        
+        # For bank statement and credit card, offset_gl_account is required
+        if file_type in ['bank_statement', 'credit_card']:
+            if not offset_gl_account:
+                raise serializers.ValidationError({
+                    'offset_gl_account': f'Offset GL Account is required for {file_type} files.'
+                })
+        
+        return attrs
     
     def create(self, validated_data):
         """Create input file without attributes"""
         request_user = self.context['request'].user
         client_id = self.context['client_id']
+        
+        # Extract offset_gl_account from validated_data
+        offset_gl_account_id = validated_data.pop('offset_gl_account', None)
         
         # Get the client instance
         try:
@@ -71,13 +91,26 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
         )
         
         # If file type is bank_statement or credit_card, create default attribute
-        if validated_data['file_type'] in ['bank_statement', 'credit_card']:
+        if input_file.file_type in ['bank_statement', 'credit_card']:
+            # Validate that the offset GL account exists
+            from account.models.dim_aic_gl_acct_model import DimAICGLAcct
+            try:
+                offset_gl_account = DimAICGLAcct.objects.get(
+                    id=offset_gl_account_id,
+                    customer__system_user=request_user,
+                    client_id=client,   
+                )
+            except DimAICGLAcct.DoesNotExist:
+                raise serializers.ValidationError({
+                    'offset_gl_account': 'Invalid offset GL account ID.'
+                })
+            
             DimAicInputFileAttributes.objects.create(
                 input_file=input_file,
                 name="*",  # Default name
-                gl_account=None,  # Empty GL account
-                type="",  # Empty type
-                offset_gl_account=None,  # Will be required to be set later
+                gl_account=None,  # Null GL account for bank/credit card statements
+                type="",  # Empty type initially
+                offset_gl_account=offset_gl_account,  # Required offset GL account
                 input_user=request_user,
                 comments="Auto-generated for bank statement/credit card processing"
             )
@@ -137,14 +170,35 @@ class AttributeCreateSerializer(serializers.ModelSerializer):
         ]
     
     def validate(self, attrs):
-        """Validate that gl_account and offset_gl_account are different"""
+        """Validate input file attributes based on file type"""
         gl_account = attrs.get('gl_account')
         offset_gl_account = attrs.get('offset_gl_account')
         
-        if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
-            raise serializers.ValidationError(
-                "GL Account and Offset GL Account cannot be the same."
-            )
+        # Get the input file from context if available
+        input_file = self.context.get('input_file')
+        
+        # If we have input file context, check file type
+        if input_file:
+            # For bank statements and credit cards, GL accounts can be null
+            if input_file.file_type in ['bank_statement', 'credit_card']:
+                # Both can be null for bank statement and credit card types
+                if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                    raise serializers.ValidationError(
+                        "GL Account and Offset GL Account cannot be the same."
+                    )
+            else:
+                # For other file types, both accounts are typically required
+                # (though we allow nulls at model level for flexibility)
+                if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                    raise serializers.ValidationError(
+                        "GL Account and Offset GL Account cannot be the same."
+                    )
+        else:
+            # General validation when context is not available
+            if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                raise serializers.ValidationError(
+                    "GL Account and Offset GL Account cannot be the same."
+                )
         
         return attrs
 

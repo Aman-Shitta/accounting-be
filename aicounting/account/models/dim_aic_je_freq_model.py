@@ -4,7 +4,7 @@ class DimAICJEFreq(models.Model):
     """
     Django model for the dim_AIC_JE_Freq table, representing Journal Entry Frequency information.
     """
-    je_freq_id = models.AutoField(
+    id = models.AutoField(
         primary_key=True,
         verbose_name="JE Frequency ID",
 	)

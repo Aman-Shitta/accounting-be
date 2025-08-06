@@ -366,7 +366,11 @@ class AttributeCreateView(generics.GenericAPIView):
                     "These files use auto-generated attributes."
                 )
             
-            serializer = self.get_serializer(data=request.data, many=True)
+            serializer = self.get_serializer(
+                data=request.data, 
+                many=True,
+                context={'request': request, 'input_file': input_file}
+            )
             
             if serializer.is_valid():
                 attribute = serializer.save(
@@ -452,6 +456,7 @@ class AttributeListView(generics.GenericAPIView):
                 data={
                     'input_file_id': input_file.id,
                     'input_file_name': input_file.name,
+                    'input_file_type': input_file.file_type,
                     'total_attributes': attributes.count(),
                     'attributes': serializer.data
                 }

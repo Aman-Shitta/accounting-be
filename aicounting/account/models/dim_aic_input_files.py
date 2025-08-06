@@ -107,7 +107,9 @@ class DimAicInputFileAttributes(models.Model):
         'DimAICGLAcct',
         on_delete=models.CASCADE,
         verbose_name="GL Account",
-        related_name="input_file_attributes"
+        related_name="input_file_attributes",
+        null=True,
+        blank=True,
     )
     
     type = models.CharField(
@@ -121,7 +123,9 @@ class DimAicInputFileAttributes(models.Model):
         'DimAICGLAcct',
         on_delete=models.CASCADE,
         verbose_name="Offset GL Account",
-        related_name="offset_input_file_attributes"
+        related_name="offset_input_file_attributes",
+        null=True,
+        blank=True,
     )
     
     input_user = models.ForeignKey(
