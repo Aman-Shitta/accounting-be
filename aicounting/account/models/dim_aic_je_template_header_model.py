@@ -9,16 +9,16 @@ class DimAICJETemplateHeader(models.Model):
     Django model for the dim_AIC_JE_Template_Header table.
     Represents header information for Journal Entry Templates.
     """
-    id = models.AutoField(
+    je_template_id = models.AutoField(
         primary_key=True,
         verbose_name="JE Template ID",
 	)
-    customer = models.ForeignKey(
+    cust_id = models.ForeignKey(
         'user.DimAICCustomer',
         on_delete=models.CASCADE, # Or models.PROTECT, models.SET_NULL, etc., depending on desired behavior
         verbose_name="Customer ID",
 	)
-    client = models.ForeignKey(
+    client_id = models.ForeignKey(
         'user.DimAICClient',
         on_delete=models.CASCADE, # Or models.PROTECT, models.SET_NULL, etc., depending on desired behavior
         verbose_name="Client ID",
@@ -27,38 +27,27 @@ class DimAICJETemplateHeader(models.Model):
         max_length=500,
         verbose_name="JE Name",
 	)
-    je_refrence = models.CharField(
+    je_ref = models.CharField(
         max_length=255,
         verbose_name="JE Reference",
 	)
-    je_freq= models.ForeignKey(
+    je_freq_id = models.ForeignKey(
         'DimAICJEFreq',
         on_delete=models.CASCADE, # Or models.PROTECT, models.SET_NULL, etc., depending on desired behavior
         verbose_name="JE Frequency ID",
 	)
-    je_type = models.ForeignKey(
+    je_type_id = models.ForeignKey(
         'DimAICJEType',
-        on_delete=models.SET_NULL, # Or models.PROTECT, models.SET_NULL, etc., depending on desired behavior
-        null=True,
-        blank=True,
+        on_delete=models.CASCADE, # Or models.PROTECT, models.SET_NULL, etc., depending on desired behavior
         verbose_name="JE Type ID",
 	)
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Created At",
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        verbose_name="Updated At",
-    )
 
 
     class Meta:
         db_table = 'dim_aic_je_template_header'
         verbose_name = "AIC JE Template Header"
         verbose_name_plural = "AIC JE Template Headers"
-        unique_together = ('customer', 'client', 'je_freq', 'je_name')
 
     def __str__(self):
-        return f"Template {self.id} - {self.je_name}"
+        return f"Template {self.je_template_id} - {self.je_name}"
 
