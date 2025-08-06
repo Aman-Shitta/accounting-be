@@ -16,8 +16,8 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAicInputFileAttributes
         fields = [
-            'id', 'name', 'gl_account', 'gl_account', 'type', 
-            'offset_gl_account', 'offset_gl_account', 'comments',
+            'id', 'name', 'gl_account', 'type', 
+            'offset_gl_account', 'comments',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', ]
     
@@ -26,6 +26,7 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
         gl_account = attrs.get('gl_account')
         offset_gl_account = attrs.get('offset_gl_account')
         
+        # Both can be null for bank statement and credit card types
         if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
             raise serializers.ValidationError(
                 "GL Account and Offset GL Account cannot be the same."
@@ -75,9 +76,9 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
             DimAicInputFileAttributes.objects.create(
                 input_file=input_file,
                 name="*",  # Default name
-                gl_account=None,  # Empty GL account
-                type="",  # Empty type
-                offset_gl_account=None,  # Will be required to be set later
+                gl_account=None,  # Null GL account for bank/credit card statements
+                type="",  # Empty type initially
+                offset_gl_account=None,  # Null offset GL account for bank/credit card statements
                 input_user=request_user,
                 comments="Auto-generated for bank statement/credit card processing"
             )
@@ -137,14 +138,35 @@ class AttributeCreateSerializer(serializers.ModelSerializer):
         ]
     
     def validate(self, attrs):
-        """Validate that gl_account and offset_gl_account are different"""
+        """Validate input file attributes based on file type"""
         gl_account = attrs.get('gl_account')
         offset_gl_account = attrs.get('offset_gl_account')
         
-        if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
-            raise serializers.ValidationError(
-                "GL Account and Offset GL Account cannot be the same."
-            )
+        # Get the input file from context if available
+        input_file = self.context.get('input_file')
+        
+        # If we have input file context, check file type
+        if input_file:
+            # For bank statements and credit cards, GL accounts can be null
+            if input_file.file_type in ['bank_statement', 'credit_card']:
+                # Both can be null for bank statement and credit card types
+                if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                    raise serializers.ValidationError(
+                        "GL Account and Offset GL Account cannot be the same."
+                    )
+            else:
+                # For other file types, both accounts are typically required
+                # (though we allow nulls at model level for flexibility)
+                if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                    raise serializers.ValidationError(
+                        "GL Account and Offset GL Account cannot be the same."
+                    )
+        else:
+            # General validation when context is not available
+            if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+                raise serializers.ValidationError(
+                    "GL Account and Offset GL Account cannot be the same."
+                )
         
         return attrs
 
