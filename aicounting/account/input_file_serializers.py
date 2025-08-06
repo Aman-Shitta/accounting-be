@@ -95,7 +95,10 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
             # Validate that the offset GL account exists
             from account.models.dim_aic_gl_acct_model import DimAICGLAcct
             try:
-                offset_gl_account = DimAICGLAcct.objects.get(id=offset_gl_account_id)
+                offset_gl_account = DimAICGLAcct.objects.get(
+                    id=offset_gl_account_id
+                    customer__system_user=request_user    
+                )
             except DimAICGLAcct.DoesNotExist:
                 raise serializers.ValidationError({
                     'offset_gl_account': 'Invalid offset GL account ID.'
