@@ -97,7 +97,8 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
             try:
                 offset_gl_account = DimAICGLAcct.objects.get(
                     id=offset_gl_account_id,
-                    customer__system_user=request_user    
+                    customer__system_user=request_user,
+                    client=client,   
                 )
             except DimAICGLAcct.DoesNotExist:
                 raise serializers.ValidationError({
