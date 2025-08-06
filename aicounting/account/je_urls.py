@@ -15,8 +15,6 @@ from .je_template_views import (
 # JE Template API URL patterns  
 je_template_patterns = [
     
-    path('frequency/', JEFreqListView.as_view(), name='je_freq_list'),
-    
     # JE Templates for a specific client
     path('', JETemplateListView.as_view(), name='je_template_list'),
     path('create/', JETemplateCreateView.as_view(), name='je_template_create'),

@@ -1,5 +1,6 @@
 from django.urls import path, include
 from .gl_account_views import ClientGLAccountListView
+from .je_template_views import JEFreqListView
 
 from .if_urls import (
     input_file_patterns,
@@ -19,6 +20,7 @@ urlpatterns = [
 ]
 
 urlpatterns += [
+    path('frequency/', JEFreqListView.as_view(), name='je_freq_list'),
     # Include JE template URLs
     path('clients/<int:client_id>/je_templates/', include(je_template_patterns)),  
 ]
