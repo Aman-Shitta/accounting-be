@@ -48,4 +48,3 @@ class FactJETransOther(models.Model):
     def __str__(self):
         return f"Other JE Trans {self.je_trans_id}"
 
-

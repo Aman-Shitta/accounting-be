@@ -44,4 +44,3 @@ class DimAICJETemplateGL(models.Model):
 
     def __str__(self):
         return f"JE Template GL for Template {self.je_template_gl_id}"
-
