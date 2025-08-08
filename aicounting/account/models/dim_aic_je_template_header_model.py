@@ -47,6 +47,20 @@ class DimAICJETemplateHeader(models.Model):
         verbose_name="JE Type ID",
         db_column='je_type_id',
 	)
+    is_object = models.BooleanField(
+        default=False,
+        verbose_name="Is Object",
+        help_text="Indicates if the template is an object template or not"
+    )
+    input_file = models.ForeignKey(
+        'DimAicInputFiles',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="Input File",
+        db_column='input_file_id',
+        help_text="The input file associated with this JE template"
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At",

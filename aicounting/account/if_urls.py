@@ -1,5 +1,6 @@
 from django.urls import path
 from .input_file_views import (
+    InputFileTypesListView,
     InputFileListView,
     InputFileCreateView,
     InputFileDetailView,
@@ -12,6 +13,9 @@ from .input_file_views import (
 
 # Input Files API URL patterns
 input_file_patterns = [
+    # Available file types
+    path('types/', InputFileTypesListView.as_view(), name='input_file_types_list'),
+    
     # Input Files for a specific client
     path('', InputFileListView.as_view(), name='input_file_list'),
     path('create/', InputFileCreateView.as_view(), name='input_file_create'),

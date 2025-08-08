@@ -24,6 +24,45 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class InputFileTypesListView(generics.GenericAPIView):
+    """
+    List all available input file types.
+    
+    Returns the available file types that can be used when creating input files.
+    """
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+
+    def get(self, request, *args, **kwargs):
+        """Get all available input file types"""
+        try:
+            # Get file type choices from the model
+            file_types = [
+                {
+                    'value': choice[0],
+                    'display_name': choice[1]
+                }
+                for choice in DimAicInputFiles.FILE_TYPE_CHOICES
+            ]
+            
+            return create_api_response(
+                status.HTTP_200_OK,
+                "Input file types retrieved successfully",
+                data={
+                    'file_types': file_types,
+                    'total_count': len(file_types)
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error retrieving input file types: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while retrieving input file types.",
+                data={"error": str(e)}
+            )
+
+
 class InputFileListView(generics.GenericAPIView):
     """
     List all input files for a specific client.

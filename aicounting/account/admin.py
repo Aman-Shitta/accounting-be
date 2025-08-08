@@ -82,11 +82,74 @@ class DimAICJETypeAdmin(admin.ModelAdmin):
     search_fields = ('je_type',)
     ordering = ('je_type',)
 
+
+class DimAICJETemplateAttributeInline(admin.TabularInline):
+    model = DimAICJETemplateAttribute
+    extra = 1
+    fields = ('template_type_display', 'input_file_attribute', 'gl_account', 'debit', 'credit', 'attribute_name')
+    readonly_fields = ('template_type_display',)
+    
+    def template_type_display(self, obj):
+        """Display template type"""
+        if obj.je_template_id:
+            return "Object" if obj.je_template_id.is_object else "Non-Object"
+        return "Unknown"
+    template_type_display.short_description = 'Template Type'
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        """Customize the formset based on template type"""
+        formset = super().get_formset(request, obj, **kwargs)
+        if obj and obj.is_object:
+            # For object templates, hide non-object fields
+            self.fields = ('template_type_display', 'input_file_attribute')
+        else:
+            # For non-object templates, hide object fields
+            self.fields = ('template_type_display', 'gl_account', 'debit', 'credit', 'attribute_name')
+        return formset
+
+
 @admin.register(DimAICJETemplateHeader)
 class DimAICJETemplateHeaderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'je_name', 'je_refrence', 'customer', 'client', 'je_freq', 'je_type')
-    search_fields = ('je_name', 'je_refrence')
-    ordering = ('id',)
+    list_display = (
+        'id', 'je_name', 'je_refrence', 'customer', 'client', 
+        'je_freq', 'je_type', 'is_object', 'input_file', 'created_at', 'updated_at'
+    )
+    search_fields = ('je_name', 'je_refrence', 'client__client_name')
+    list_filter = ('is_object', 'je_freq', 'je_type', 'client', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    inlines = [DimAICJETemplateAttributeInline]
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('je_name', 'je_refrence', 'je_freq', 'je_type')
+        }),
+        ('Template Type', {
+            'fields': ('is_object', 'input_file'),
+            'description': 'is_object determines the template type. If True, input_file is required.'
+        }),
+        ('Relationships', {
+            'fields': ('customer', 'client')
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queries with select_related"""
+        return super().get_queryset(request).select_related(
+            'customer', 'client', 'je_freq', 'je_type', 'input_file'
+        )
+    
+    def save_model(self, request, obj, form, change):
+        """Custom save logic with validation"""
+        # Validate that if is_object is True, input_file must be provided
+        if obj.is_object and not obj.input_file:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Input file is required when template is an object template.")
+        super().save_model(request, obj, form, change)
 
 @admin.register(DimAICJETemplateGL)
 class DimAICJETemplateGLAdmin(admin.ModelAdmin):
@@ -202,25 +265,29 @@ DimAicInputFilesAdmin.inlines = [DimAicInputFileAttributesInline]
 @admin.register(DimAICJETemplateAttribute)
 class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'je_template_id', 'attribute_name', 
-        'input_file_name', 
-        # 'gl_account_name', 'offset_gl_account_name',  # Fields commented out in model
+        'id', 'je_template_id', 'template_type', 'attribute_display', 
+        'gl_account_display', 'debit', 'credit', 'attribute_name',
         'input_user', 'created_at', 'updated_at'
     )
     search_fields = (
         'je_template_id__je_name', 'input_file_attribute__name',
-        # 'gl_acct_id__account_name', 'offset_gl_acct_id__account_name'  # Fields commented out in model
+        'gl_account__account_name', 'attribute_name'
     )
-    list_filter = ('input_user', 'created_at', 'updated_at')
+    list_filter = ('je_template_id__is_object', 'input_user', 'created_at', 'updated_at')
     ordering = ('-created_at',)
     readonly_fields = ('id', 'created_at', 'updated_at')
     
     fieldsets = (
-        ('Template Attribute Information', {
-            'fields': ('je_template_id', 'input_file_attribute')
+        ('Template Information', {
+            'fields': ('je_template_id',)
         }),
-        ('GL Accounts', {
-            'fields': ()  # 'gl_acct_id', 'offset_gl_acct_id' fields commented out in model
+        ('Object Template Fields', {
+            'fields': ('input_file_attribute',),
+            'description': 'Used with Object(Attribute) View'
+        }),
+        ('Non-Object Template Fields', {
+            'fields': ('gl_account', 'debit', 'credit', 'attribute_name'),
+            'description': 'Used with GL view'
         }),
         ('User Information', {
             'fields': ('input_user',)
@@ -231,32 +298,54 @@ class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
         }),
     )
     
-    def attribute_name(self, obj):
-        """Display the attribute name"""
-        return obj.input_file_attribute.name
-    attribute_name.short_description = 'Attribute Name'
+    def template_type(self, obj):
+        """Display whether this is an object or non-object template"""
+        return "Object" if obj.je_template_id.is_object else "Non-Object"
+    template_type.short_description = 'Template Type'
     
-    def input_file_name(self, obj):
-        """Display the input file name"""
-        return obj.input_file_attribute.input_file.name
-    input_file_name.short_description = 'Input File'
-    
-    def gl_account_name(self, obj):
-        """Display the GL account name"""
-        # return obj.gl_acct_id.account_name  # Field commented out in model
+    def attribute_display(self, obj):
+        """Display the attribute name for object templates"""
+        if obj.input_file_attribute:
+            return f"{obj.input_file_attribute.name} ({obj.input_file_attribute.input_file.name})"
         return "N/A"
-    gl_account_name.short_description = 'GL Account'
+    attribute_display.short_description = 'Input File Attribute'
     
-    def offset_gl_account_name(self, obj):
-        """Display the offset GL account name"""
-        # return obj.offset_gl_acct_id.account_name  # Field commented out in model
+    def gl_account_display(self, obj):
+        """Display the GL account for non-object templates"""
+        if obj.gl_account:
+            return f"{obj.gl_account.account_name} ({obj.gl_account.account_number})"
         return "N/A"
-    offset_gl_account_name.short_description = 'Offset GL Account'
+    gl_account_display.short_description = 'GL Account'
     
     def get_queryset(self, request):
         """Optimize queries with select_related"""
         return super().get_queryset(request).select_related(
             'je_template_id', 'input_file_attribute__input_file',
-            # 'gl_acct_id', 'offset_gl_acct_id',  # Fields commented out in model
-            'input_user'
+            'gl_account', 'input_user'
         )
+    
+    def save_model(self, request, obj, form, change):
+        """Custom save logic with validation"""
+        from django.core.exceptions import ValidationError
+        
+        # Validate fields based on template type
+        if obj.je_template_id.is_object:
+            # For object templates, input_file_attribute is required
+            if not obj.input_file_attribute:
+                raise ValidationError("Input file attribute is required for object templates.")
+            # Clear non-object fields
+            obj.gl_account = None
+            obj.debit = None
+            obj.credit = None
+            obj.attribute_name = None
+        else:
+            # For non-object templates, gl_account is required
+            if not obj.gl_account:
+                raise ValidationError("GL account is required for non-object templates.")
+            # At least one of debit or credit should have a value
+            if not obj.debit and not obj.credit:
+                raise ValidationError("At least one of debit or credit must have a value.")
+            # Clear object fields
+            obj.input_file_attribute = None
+        
+        super().save_model(request, obj, form, change)

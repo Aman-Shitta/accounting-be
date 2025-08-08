@@ -428,8 +428,10 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             
             configured_attributes = je_template.template_attributes.all().select_related(
                 'input_file_attribute',
-                # 'gl_acct_id',
-                # 'offset_gl_acct_id'
+                'input_file_attribute__input_file',
+                'input_file_attribute__gl_account',
+                'input_file_attribute__offset_gl_account',
+                'gl_account'
             )
             
             serializer = JETemplateAttributeSerializer(configured_attributes, many=True)
@@ -457,13 +459,44 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
         """
         Add attributes to a JE Template (bulk create)
         
-        Expected payload format:
+        The expected payload format depends on the template's is_object field:
+        
+        For Object Templates (is_object=True):
         {
-            "input_file_attribute_ids": [1, 2, 3, 4]
+            "attributes": [
+                {"attr_id": 1},
+                {"attr_id": 2}
+            ]
         }
         
-        The input_file_attribute_ids should be a list of valid attribute IDs 
-        that belong to the client and are not from bank_statement or credit_card files.
+        For Non-Object Templates (is_object=False):
+        {
+            "attributes": [
+                {
+                    "gl_account": 1,
+                    "debit": "1",
+                    "credit": null
+                },
+                {
+                    "gl_account": 1,
+                    "debit": null,
+                    "credit": "manual"
+                },
+                {
+                    "gl_account": 2,
+                    "debit": null,
+                    "credit": "[attribute_id]"
+                }
+            ]
+        }
+        
+        Special Restrictions:
+        - Templates with bank_statement or credit_card input files can only be object templates
+        - Bank_statement and credit_card templates automatically get default attributes and cannot have additional attributes
+        - For object templates, attr_id must reference an attribute from the template's selected input file
+        - Object templates (except bank_statement/credit_card) cannot have duplicate configurations across templates for the same client
+        - Non-object templates can have repeated configurations
+        - Attributes can only be added from the template's selected input file
         """
         try:
             je_template = self.get_template(client_id, template_id)
@@ -472,6 +505,21 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
+            
+            # Additional validation for bank_statement and credit_card templates
+            if (je_template.input_file and 
+                je_template.input_file.file_type in ['bank_statement', 'credit_card']):
+                
+                existing_attrs = DimAICJETemplateAttribute.objects.filter(
+                    je_template_id=je_template,
+                    input_file_attribute__isnull=False
+                ).count()
+                
+                if existing_attrs > 0:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Templates with {je_template.input_file.file_type} files already have default attributes configured and cannot be modified."
+                    )
             
             serializer = JETemplateAttributeCreateSerializer(
                 data=request.data,
@@ -550,7 +598,24 @@ class JETemplateAttributeDetailView(generics.GenericAPIView):
                     "Template attribute not found or access denied."
                 )
             
-            attribute_name = template_attribute.input_file_attribute.name
+            # Additional validation for bank_statement and credit_card templates
+            template = template_attribute.je_template_id
+            if (template.input_file and 
+                template.input_file.file_type in ['bank_statement', 'credit_card']):
+                
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Cannot remove attributes from {template.input_file.file_type} templates as they have default configurations."
+                )
+            
+            # Get attribute name based on template type
+            if template_attribute.input_file_attribute:
+                attribute_name = template_attribute.input_file_attribute.name
+            elif template_attribute.gl_account:
+                attribute_name = f"GL Account: {template_attribute.gl_account.account_name}"
+            else:
+                attribute_name = "Unknown Attribute"
+            
             template_name = template_attribute.je_template_id.je_name
             template_attribute.delete()
             

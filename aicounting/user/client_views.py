@@ -471,8 +471,85 @@ class DocumentUploadView(generics.GenericAPIView):
             )
 
 
+# class ClientAssignAccountantsView(generics.GenericAPIView):
+#     """Assign or update accountants for a specific client (replaces existing assignments)"""
+#     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
+#     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+#     serializer_class = ClientAccountantAssignmentSerializer
+
+#     def get_object(self, client_id):
+#         """Get client instance for the authenticated customer"""
+#         customer = self.request.user.customer_profile
+#         if customer:
+#             try:
+#                 return DimAICClient.objects.get(customer=customer, id=client_id)
+#             except DimAICClient.DoesNotExist:
+#                 return None
+#         return None
+
+#     def put(self, request, *args, **kwargs):
+#         """Assign accountants to a client (replaces all existing assignments)"""
+#         try:
+#             client_id = kwargs.get('id')
+#             client = self.get_object(client_id)
+            
+#             if not client:
+#                 return create_api_response(
+#                     status.HTTP_404_NOT_FOUND,
+#                     "Client not found or you don't have permission to modify it."
+#                 )
+
+#             # Validate that accountant IDs belong to the same customer
+#             accountant_ids = request.data.get('assigned_accountants', [])
+#             customer = request.user.customer_profile
+            
+#             # Check if all provided accountants belong to the customer
+#             valid_accountants = customer.accountants.filter(id__in=accountant_ids)
+#             if len(valid_accountants) != len(accountant_ids):
+#                 invalid_ids = set(accountant_ids) - set(valid_accountants.values_list('id', flat=True))
+#                 return create_api_response(
+#                     status.HTTP_400_BAD_REQUEST,
+#                     f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
+#                 )
+
+#             serializer = self.get_serializer(client, data=request.data, partial=True)
+            
+#             if not serializer.is_valid():
+#                 return create_api_response(
+#                     status.HTTP_400_BAD_REQUEST,
+#                     "Assignment failed due to validation errors.",
+#                     data=serializer.errors
+#                 )
+
+#             updated_client = serializer.save()
+            
+#             # Return updated client with assigned accountants
+#             response_data = {
+#                 'client_id': updated_client.id,
+#                 'client_name': updated_client.client_name,
+#                 'assigned_accountants': DimAICAccountantSerializer(
+#                     updated_client.assigned_accountants.all(), 
+#                     many=True
+#                 ).data
+#             }
+            
+#             return create_api_response(
+#                 status.HTTP_200_OK,
+#                 "Accountants assigned successfully.",
+#                 data=response_data
+#             )
+            
+#         except Exception as e:
+#             logger.error(f"Unexpected error during accountant assignment: {str(e)}")
+#             return create_api_response(
+#                 status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 "An unexpected error occurred during accountant assignment.",
+#                 data={"error": str(e)}
+#             )
+
+
 class ClientAssignAccountantsView(generics.GenericAPIView):
-    """Assign or update accountants for a specific client"""
+    """Append accountants to a client (without replacing existing ones)"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
     serializer_class = ClientAccountantAssignmentSerializer
@@ -487,8 +564,8 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                 return None
         return None
 
-    def put(self, request, *args, **kwargs):
-        """Assign accountants to a client"""
+    def post(self, request, *args, **kwargs):
+        """Append accountants to a client"""
         try:
             client_id = kwargs.get('id')
             client = self.get_object(client_id)
@@ -499,51 +576,44 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                     "Client not found or you don't have permission to modify it."
                 )
 
-            # Validate that accountant IDs belong to the same customer
-            accountant_ids = request.data.get('assigned_accountants', [])
             customer = request.user.customer_profile
-            
-            # Check if all provided accountants belong to the customer
-            valid_accountants = customer.accountants.filter(id__in=accountant_ids)
-            if len(valid_accountants) != len(accountant_ids):
-                invalid_ids = set(accountant_ids) - set(valid_accountants.values_list('id', flat=True))
-                return create_api_response(
-                    status.HTTP_400_BAD_REQUEST,
-                    f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
-                )
-
-            serializer = self.get_serializer(client, data=request.data, partial=True)
+            serializer = self.get_serializer(
+                client, 
+                data=request.data, 
+                context={'customer': customer}
+            )
             
             if not serializer.is_valid():
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
-                    "Assignment failed due to validation errors.",
+                    "Failed to append accountants due to validation errors.",
                     data=serializer.errors
                 )
 
             updated_client = serializer.save()
             
-            # Return updated client with assigned accountants
+            # Return updated client with all assigned accountants
             response_data = {
                 'client_id': updated_client.id,
                 'client_name': updated_client.client_name,
                 'assigned_accountants': DimAICAccountantSerializer(
                     updated_client.assigned_accountants.all(), 
                     many=True
-                ).data
+                ).data,
+                'total_assigned_accountants': updated_client.assigned_accountants.count()
             }
             
             return create_api_response(
                 status.HTTP_200_OK,
-                "Accountants assigned successfully.",
+                "Accountants appended successfully.",
                 data=response_data
             )
             
         except Exception as e:
-            logger.error(f"Unexpected error during accountant assignment: {str(e)}")
+            logger.error(f"Unexpected error during accountant append: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during accountant assignment.",
+                "An unexpected error occurred while appending accountants.",
                 data={"error": str(e)}
             )
 
