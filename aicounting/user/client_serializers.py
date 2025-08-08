@@ -386,22 +386,45 @@ class ClientRetrieveSerializer(serializers.ModelSerializer):
         ]
 
 
-class ClientAccountantAssignmentSerializer(serializers.ModelSerializer):
-    """Serializer for assigning/unassigning accountants to/from clients"""
+class ClientAccountantAssignmentSerializer(serializers.Serializer):
+    """Serializer for appending accountants to a client (not replacing)"""
     
-    assigned_accountants = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=DimAICAccountant.objects.all(),
-        required=False
+    accountant_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="List of accountant IDs to add to the client"
     )
-
-    class Meta:
-        model = DimAICClient
-        fields = ['assigned_accountants']
-
+    
+    def validate_accountant_ids(self, value):
+        """Validate that all accountant IDs exist and belong to the customer"""
+        customer = self.context.get('customer')
+        if not customer:
+            raise serializers.ValidationError("Customer context is required")
+        
+        # Check if all provided accountants belong to the customer and exist
+        valid_accountants = customer.accountants.filter(id__in=value)
+        valid_ids = set(valid_accountants.values_list('id', flat=True))
+        invalid_ids = set(value) - valid_ids
+        
+        if invalid_ids:
+            raise serializers.ValidationError(
+                f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
+            )
+        
+        return list(valid_accountants)
+    
     def update(self, instance, validated_data):
-        if 'assigned_accountants' in validated_data:
-            instance.assigned_accountants.set(validated_data['assigned_accountants'])
+        """Append accountants to the client"""
+        accountants_to_add = validated_data.get('accountant_ids', [])
+        
+        # Get currently assigned accountant IDs
+        current_accountants = set(instance.assigned_accountants.values_list('id', flat=True))
+        
+        # Add new accountants without removing existing ones
+        for accountant in accountants_to_add:
+            if accountant.id not in current_accountants:
+                instance.assigned_accountants.add(accountant)
+        
         return instance
 
 

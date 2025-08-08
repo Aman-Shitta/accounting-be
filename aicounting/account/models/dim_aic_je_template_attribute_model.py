@@ -22,20 +22,42 @@ class DimAICJETemplateAttribute(models.Model):
         'DimAicInputFileAttributes',
         on_delete=models.CASCADE,
         verbose_name="Input File Attribute",
-        related_name='je_templates'
+        related_name='je_templates',
+        null=True,
+        blank=True,
+        help_text="For object templates - the attribute from input file"
     )
-    # gl_acct_id = models.ForeignKey(
-    #     'DimAICGLAcct',
-    #     on_delete=models.CASCADE,
-    #     verbose_name="GL Account ID",
-    #     related_name='je_template_attributes'
-    # )
-    # offset_gl_acct_id = models.ForeignKey(
-    #     'DimAICGLAcct',
-    #     on_delete=models.CASCADE,
-    #     verbose_name="Offset GL Account ID",
-    #     related_name='je_template_offset_attributes'
-    # )
+    # Fields for non-object templates
+    gl_account = models.ForeignKey(
+        'DimAICGLAcct',
+        on_delete=models.CASCADE,
+        verbose_name="GL Account",
+        related_name='je_template_attributes',
+        null=True,
+        blank=True,
+        help_text="For non-object templates - the GL account"
+    )
+    debit = models.CharField(
+        max_length=255,
+        verbose_name="Debit",
+        null=True,
+        blank=True,
+        help_text="Debit value: can be null, number as string, attribute_id, or 'manual'"
+    )
+    credit = models.CharField(
+        max_length=255,
+        verbose_name="Credit",
+        null=True,
+        blank=True,
+        help_text="Credit value: can be null, number as string, attribute_id, or 'manual'"
+    )
+    attribute_name = models.CharField(
+        max_length=255,
+        verbose_name="Attribute Name",
+        null=True,
+        blank=True,
+        help_text="Name of the attribute when referenced by ID"
+    )
     input_user = models.ForeignKey(
         get_user_model(),
         on_delete=models.SET_NULL,
@@ -56,7 +78,9 @@ class DimAICJETemplateAttribute(models.Model):
         db_table = 'dim_aic_je_template_attribute'
         verbose_name = "AIC JE Template Attribute"
         verbose_name_plural = "AIC JE Template Attributes"
-        unique_together = ['je_template_id', 'input_file_attribute']
 
     def __str__(self):
-        return f"Template {self.je_template_id.je_name} - Attribute {self.input_file_attribute.name}"
+        if self.input_file_attribute:
+            return f"Template {self.je_template_id.je_name} - Attribute {self.input_file_attribute.name}"
+        else:
+            return f"Template {self.je_template_id.je_name} - GL Account {self.gl_account.account_name if self.gl_account else 'Unknown'}"

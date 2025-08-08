@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 class InputFileAttributeSerializer(serializers.ModelSerializer):
     """Serializer for DimAicInputFileAttributes model"""
     
-    # gl_account_name = serializers.CharField(source='gl_account.account_name', read_only=True)
-    # offset_gl_account_name = serializers.CharField(source='offset_gl_account.account_name', read_only=True)
+    gl_account = serializers.SerializerMethodField()
+    offset_gl_account = serializers.SerializerMethodField()
     
     class Meta:
         model = DimAicInputFileAttributes
@@ -33,6 +33,28 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
             )
         
         return attrs
+
+    def get_gl_account(self, obj):
+        """Return the GL account ID as a string"""
+        if obj.gl_account:
+            data = {
+                'id': obj.gl_account.id,
+                'name': obj.gl_account.account_name,
+                'account_number': obj.gl_account.account_number
+            }
+            return data
+        return None
+
+    def get_offset_gl_account(self, obj):
+        """Return the GL account ID as a string"""
+        if obj.offset_gl_account:
+            data = {
+                'id': obj.offset_gl_account.id,
+                'name': obj.offset_gl_account.account_name,
+                'account_number': obj.offset_gl_account.account_number
+            }
+            return data
+        return None
 
 
 class InputFileListSerializer(serializers.ModelSerializer):
