@@ -17,12 +17,12 @@ je_template_patterns = [
     
     # JE Templates for a specific client
     path('', JETemplateListView.as_view(), name='je_template_list'),
-    path('create/', JETemplateCreateView.as_view(), name='je_template_create'),
-    
+
     # Available attributes for JE Template configuration
     path('available_attributes/', AvailableAttributesView.as_view(), name='available_attributes'),
-    
-    # Specific JE Template operations
+
+    # Specific JE Template operations [(POST), (GET, PUT, DELETE)]
+    path('create/', JETemplateCreateView.as_view(), name='je_template_create'),
     path('<int:template_id>/', JETemplateDetailView.as_view(), name='je_template_detail'),
     
     # JE Template attribute configuration

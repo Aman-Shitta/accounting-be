@@ -79,7 +79,8 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAICJETemplateHeader
         fields = [
-            'je_name', 'je_refrence', 'je_freq', 'je_type', 'is_object', 'input_file'
+            'je_name', 'je_refrence', 'je_freq', 'je_type',
+            'is_object', 'input_file', 'description'
         ]
     
     def validate(self, data):
@@ -154,7 +155,9 @@ class JETemplateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAICJETemplateHeader
         fields = [
-            'je_name', 'je_refrence', 'je_freq', # 'je_type', 'is_object', 'input_file'
+            'je_name', 'je_refrence', 'je_freq', 
+            'description',
+            # 'je_type', 'is_object', 'input_file'
         ]
     
     # def validate(self, data):

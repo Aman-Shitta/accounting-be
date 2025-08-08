@@ -61,6 +61,12 @@ class DimAICJETemplateHeader(models.Model):
         db_column='input_file_id',
         help_text="The input file associated with this JE template"
     )
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Description",
+        help_text="Additional description or comments about the Template"
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At",
