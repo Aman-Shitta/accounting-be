@@ -442,6 +442,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 data={
                     'template_id': je_template.id,
                     'template_name': je_template.je_name,
+                    'template_is_object': je_template.is_object,
                     'total_attributes': configured_attributes.count(),
                     'configured_attributes': serializer.data
                 }
@@ -457,15 +458,15 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
 
     def post(self, request, client_id, template_id, *args, **kwargs):
         """
-        Add attributes to a JE Template (bulk create)
+        Replace attributes for a JE Template (replace all existing attributes with new ones)
         
         The expected payload format depends on the template's is_object field:
         
         For Object Templates (is_object=True):
         {
             "attributes": [
-                {"attr_id": 1},
-                {"attr_id": 2}
+                {"id": 1},
+                {"id": 2}
             ]
         }
         
@@ -493,7 +494,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
         Special Restrictions:
         - Templates with bank_statement or credit_card input files can only be object templates
         - Bank_statement and credit_card templates automatically get default attributes and cannot have additional attributes
-        - For object templates, attr_id must reference an attribute from the template's selected input file
+        - For object templates, id must reference an attribute from the template's selected input file
         - Object templates (except bank_statement/credit_card) cannot have duplicate configurations across templates for the same client
         - Non-object templates can have repeated configurations
         - Attributes can only be added from the template's selected input file
@@ -531,13 +532,19 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             )
             
             if serializer.is_valid():
+                # Delete all existing attributes for this template first
+                deleted_count = DimAICJETemplateAttribute.objects.filter(
+                    je_template_id=je_template
+                ).delete()[0]
+                
+                # Create new attributes
                 created_attributes = serializer.save()
                 
                 response_serializer = JETemplateAttributeSerializer(created_attributes, many=True)
                 
                 return create_api_response(
                     status.HTTP_201_CREATED,
-                    f"Successfully added {len(created_attributes)} attribute(s) to template {je_template.je_name}.",
+                    f"Successfully updated attributes for template {je_template.je_name}.",
                     data=response_serializer.data
                 )
             
