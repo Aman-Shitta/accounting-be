@@ -60,7 +60,7 @@ class JETemplateDetailSerializer(serializers.ModelSerializer):
         model = DimAICJETemplateHeader
         fields = [
             'id', 'je_name', 'je_refrence', 'je_freq', 'is_object', 'input_file', 
-            'file_type'
+            'file_type', "description"
         ]
 
     def get_input_file(self, obj):
