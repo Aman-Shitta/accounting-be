@@ -389,13 +389,13 @@ class ClientRetrieveSerializer(serializers.ModelSerializer):
 class ClientAccountantAssignmentSerializer(serializers.Serializer):
     """Serializer for appending accountants to a client (not replacing)"""
     
-    accountant_ids = serializers.ListField(
+    assigned_accountants = serializers.ListField(
         child=serializers.IntegerField(),
         min_length=1,
         help_text="List of accountant IDs to add to the client"
     )
     
-    def validate_accountant_ids(self, value):
+    def validate_assigned_accountants(self, value):
         """Validate that all accountant IDs exist and belong to the customer"""
         customer = self.context.get('customer')
         if not customer:
@@ -415,7 +415,7 @@ class ClientAccountantAssignmentSerializer(serializers.Serializer):
     
     def update(self, instance, validated_data):
         """Append accountants to the client"""
-        accountants_to_add = validated_data.get('accountant_ids', [])
+        accountants_to_add = validated_data.get('assigned_accountants', [])
         
         # Get currently assigned accountant IDs
         current_accountants = set(instance.assigned_accountants.values_list('id', flat=True))
