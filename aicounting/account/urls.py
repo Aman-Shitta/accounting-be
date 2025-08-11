@@ -11,6 +11,8 @@ from .je_urls import (
 )
 
 
+from .monthly_accounting_urls import monthly_accounting_url_patterns
+
 urlpatterns = [
     # Account URLS
     path('client/<int:client_id>/accounts/', ClientGLAccountListView.as_view(), name='client_accounts_list'),
@@ -21,7 +23,14 @@ urlpatterns = [
 
 urlpatterns += [
     path('frequency/', JEFreqListView.as_view(), name='je_freq_list'),
+    
     # Include JE template URLs
-    path('clients/<int:client_id>/je_templates/', include(je_template_patterns)),  
+    path('clients/<int:client_id>/je_templates/', include(je_template_patterns)),
+]
+
+urlpatterns += [
+    # Include Accounting URLs
+    path('clients/<int:client_id>/accounting/monthly/', include(monthly_accounting_url_patterns)),
+    
 ]
     
