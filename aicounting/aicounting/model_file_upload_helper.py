@@ -200,6 +200,14 @@ def upload_to_temp_folder(instance, filename):
     return f"temp/{session_id}/{timestamped_filename}"
 
 
+def upload_to_montly_accounting_folder(document, filename):
+
+    client = document.monthly_accounting.client
+    customer_id = client.customer.id if hasattr(client, 'customer') else 'default'
+    client_name = client.client_name
+    timestamped_filename = _add_timestamp_to_filename(filename)
+    
+    return f"customer_{customer_id}/{client_name}/monthly_accounting/{timestamped_filename}"
 # Utility functions for file management
 
 def get_file_extension(filename):

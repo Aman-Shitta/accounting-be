@@ -1,243 +1,8 @@
 from django.db import models
-from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
 
 User = get_user_model()
-
-
-class FactAICMonthlyAccounting(models.Model):
-    """
-    Model for managing monthly accounting sessions for a client.
-    """
-    
-    STATUS_CHOICES = [
-        ('initiated', 'Initiated'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ]
-    
-    id = models.AutoField(primary_key=True, verbose_name="Monthly Accounting ID")
-    
-    client = models.ForeignKey(
-        'user.DimAICClient',
-        on_delete=models.CASCADE,
-        verbose_name="Client",
-        related_name="monthly_accounting"
-    )
-    
-    month = models.IntegerField(
-        verbose_name="Month",
-        help_text="Month (1-12)"
-    )
-    
-    year = models.IntegerField(
-        verbose_name="Year",
-        help_text="Year (e.g., 2025)"
-    )
-    
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='initiated',
-        verbose_name="Status"
-    )
-    
-    created_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        verbose_name="Created By",
-        help_text="User who initiated this accounting session"
-    )
-    
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name="Created At"
-    )
-    
-    completed_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Completed At"
-    )
-    
-    class Meta:
-        db_table = 'fact_aic_monthly_accounting'
-        verbose_name = "Monthly Accounting"
-        verbose_name_plural = "Monthly Accounting Sessions"
-        unique_together = ('client', 'month', 'year')
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.client.client_name} - {self.get_month_name()} {self.year} ({self.status})"
-    
-    def get_month_name(self):
-        """Get the full month name"""
-        month_names = {
-            1: 'January', 2: 'February', 3: 'March', 4: 'April',
-            5: 'May', 6: 'June', 7: 'July', 8: 'August',
-            9: 'September', 10: 'October', 11: 'November', 12: 'December'
-        }
-        return month_names.get(self.month, 'Unknown')
-    
-    def clean(self):
-        """Validate that accounting for this client/month/year doesn't already exist"""
-        if FactAICMonthlyAccounting.objects.filter(
-            client=self.client,
-            month=self.month,
-            year=self.year
-        ).exclude(id=self.id).exists():
-            raise ValidationError(
-                f"Accounting for {self.get_month_name()} {self.year} already exists for this client."
-            )
-    
-    @classmethod
-    def create_monthly_accounting_with_snapshots(cls, client, month, year, created_by):
-        """
-        Create a new monthly accounting session with snapshots of current configuration
-        """
-        # Create the monthly accounting session
-        monthly_accounting = cls.objects.create(
-            client=client,
-            month=month,
-            year=year,
-            created_by=created_by
-        )
-
-        
-        # Create snapshots
-        monthly_accounting.create_snapshots()
-        
-        return monthly_accounting
-    
-    def create_snapshots(self):
-        """Create snapshots of current templates and input files configuration"""
-        from .dim_aic_je_template_header_model import DimAICJETemplateHeader
-        from .dim_aic_input_files import DimAicInputFiles
-        from .dim_aic_je_freq_model import DimAICJEFreq
-        
-        # Get monthly frequency templates
-        try:
-            monthly_freq = DimAICJEFreq.objects.get(je_freq__icontains='monthly')
-        except DimAICJEFreq.DoesNotExist:
-            monthly_freq = None
-        
-        try:
-            # Create input files snapshots
-            input_files = DimAicInputFiles.objects.filter(client=self.client)
-            for input_file in input_files:
-                self._create_input_file_snapshot(input_file)
-            
-            # Create template snapshots (only monthly frequency)
-            if monthly_freq:
-                templates = DimAICJETemplateHeader.objects.filter(
-                    client=self.client,
-                    je_freq=monthly_freq
-                )
-                for template in templates:
-                    self._create_template_snapshot(template)
-        except Exception as e:
-            import os, sys
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-    
-    def _create_input_file_snapshot(self, input_file):
-        """Create snapshot of an input file and its attributes"""
-        # Create input file snapshot
-        file_snapshot = FactAICInputFileSnapshot.objects.create(
-            monthly_accounting=self,
-            original_input_file=input_file,
-            client=input_file.client,
-            name=input_file.name,
-            file_type=input_file.file_type,
-            file=input_file.file.name if input_file.file else '',
-            description=input_file.description,
-            input_user=input_file.input_user,
-            original_created_at=input_file.created_at,
-            original_updated_at=input_file.updated_at
-        )
-        
-        # Create attribute snapshots
-        for attribute in input_file.attributes.all():
-            FactAICInputFileAttributeSnapshot.objects.create(
-                input_file_snapshot=file_snapshot,
-                original_attribute=attribute,
-                name=attribute.name,
-                gl_account=attribute.gl_account,
-                type=attribute.type,
-                offset_gl_account=attribute.offset_gl_account,
-                input_user=attribute.input_user,
-                comments=attribute.comments,
-                original_created_at=attribute.created_at,
-                original_updated_at=attribute.updated_at
-            )
-        
-        return file_snapshot
-    
-    def _create_template_snapshot(self, template):
-        """Create snapshot of a JE template and its attributes"""
-        # Find the corresponding input file snapshot if exists
-        input_file_snapshot = None
-        if template.input_file:
-            try:
-                input_file_snapshot = FactAICInputFileSnapshot.objects.get(
-                    monthly_accounting=self,
-                    original_input_file=template.input_file
-                )
-            except FactAICInputFileSnapshot.DoesNotExist:
-                pass
-        
-        # Create template snapshot
-        template_snapshot = FactAICJETemplateHeaderSnapshot.objects.create(
-            monthly_accounting=self,
-            original_template=template,
-            customer=template.customer,
-            client=template.client,
-            je_name=template.je_name,
-            je_refrence=template.je_refrence,
-            je_freq=template.je_freq,
-            je_type=template.je_type,
-            is_object=template.is_object,
-            input_file=input_file_snapshot,
-            description=template.description,
-            original_created_at=template.created_at,
-            original_updated_at=template.updated_at
-        )
-        
-        # Create template attribute snapshots
-        for attribute in template.template_attributes.all():
-            # Find corresponding input file attribute snapshot if exists
-            input_file_attribute_snapshot = None
-            if attribute.input_file_attribute:
-                try:
-                    # Find the input file snapshot first
-                    input_file_snap = FactAICInputFileSnapshot.objects.get(
-                        monthly_accounting=self,
-                        original_input_file=attribute.input_file_attribute.input_file
-                    )
-                    # Find the attribute snapshot
-                    input_file_attribute_snapshot = FactAICInputFileAttributeSnapshot.objects.get(
-                        input_file_snapshot=input_file_snap,
-                        original_attribute=attribute.input_file_attribute
-                    )
-                except (FactAICInputFileSnapshot.DoesNotExist, FactAICInputFileAttributeSnapshot.DoesNotExist):
-                    pass
-            
-            FactAICJETemplateAttributeSnapshot.objects.create(
-                je_template_snapshot=template_snapshot,
-                original_attribute=attribute,
-                input_file_attribute=input_file_attribute_snapshot,
-                gl_account=attribute.gl_account,
-                debit=attribute.debit,
-                credit=attribute.credit,
-                attribute_name=attribute.attribute_name,
-                input_user=attribute.input_user,
-                original_created_at=attribute.created_at,
-                original_updated_at=attribute.updated_at
-            )
-        
-        return template_snapshot
 
 
 class FactAICInputFileSnapshot(models.Model):
@@ -290,10 +55,12 @@ class FactAICInputFileSnapshot(models.Model):
         help_text="Type of the input file"
     )
     
-    file = models.CharField(
-        max_length=500,
-        verbose_name="File Path",
-        help_text="Path to the input file at time of snapshot"
+    file = models.FileField(
+        upload_to='monthly_accounting_snapshots/',
+        null=True,
+        blank=True,
+        verbose_name="File",
+        help_text="Snapshot copy of the input file"
     )
     
     description = models.TextField(
@@ -333,6 +100,15 @@ class FactAICInputFileSnapshot(models.Model):
     
     def __str__(self):
         return f"Snapshot: {self.name} - {self.get_file_type_display()}"
+    
+    @property
+    def file_url(self):
+        """Get the file URL if file exists"""
+        return self.file.url if self.file else None
+    
+    def get_file_size(self):
+        """Get the file size in bytes if file exists"""
+        return self.file.size if self.file else None
 
 
 class FactAICInputFileAttributeSnapshot(models.Model):
@@ -649,3 +425,4 @@ class FactAICJETemplateAttributeSnapshot(models.Model):
             return f"Snapshot: Template {self.je_template_snapshot.je_name} - Attribute {self.input_file_attribute.name}"
         else:
             return f"Snapshot: Template {self.je_template_snapshot.je_name} - GL Account {self.gl_account.account_name if self.gl_account else 'Unknown'}"
+

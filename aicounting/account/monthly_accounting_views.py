@@ -3,14 +3,10 @@ from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import generics, status, permissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from .models import FactAICMonthlyAccounting
-from .monthly_accounting_serializers import (
-    MonthlyAccountingCreateSerializer,
-    MonthlyAccountingSerializer,
-    MonthlyAccountingDetailSerializer
-)
 from user.models import DimAICClient
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
@@ -25,7 +21,6 @@ class MonthlyAccountingListView(generics.GenericAPIView):
     
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
-    serializer_class = MonthlyAccountingSerializer
 
     def get_queryset(self, client_id):
         """Get monthly accounting sessions with proper authorization checks"""
@@ -36,7 +31,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
             return FactAICMonthlyAccounting.objects.filter(
                 client=client_id,
                 client__customer=customer
-            ).select_related('client', 'created_by').order_by('-created_at')
+            ).order_by('-created_at')
         
         elif hasattr(user, 'accountant_profile'):
             accountant = user.accountant_profile
@@ -44,14 +39,14 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                 client=client_id,
                 client__customer=accountant.customer,
                 client__assigned_accountants=accountant
-            ).select_related('client', 'created_by').order_by('-created_at')
+            ).order_by('-created_at')
         
         return FactAICMonthlyAccounting.objects.none()
 
     def get(self, request, client_id, *args, **kwargs):
         """
         List all monthly accounting sessions for a specific client.
-        Supports filtering by year, status
+        Returns only basic monthly accounting information without snapshots.
         
         GET /api/clients/{client_id}/accounting/monthly/
         
@@ -105,7 +100,18 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                         f"Invalid status. Valid options: {', '.join(valid_statuses)}"
                     )
             
-            serializer = self.serializer_class(queryset, many=True)
+            # Serialize the queryset manually
+            monthly_accounting_data = []
+            for accounting in queryset:
+                monthly_accounting_data.append({
+                    'id': accounting.id,
+                    'month': accounting.get_month_name(),
+                    'year': accounting.year,
+                    'status': accounting.status,
+                    'created_by': accounting.created_by.username if accounting.created_by else None,
+                    'created_at': accounting.created_at.isoformat() if accounting.created_at else None,
+                    'completed_at': accounting.completed_at.isoformat() if accounting.completed_at else None
+                })
             
             return create_api_response(
                 status.HTTP_200_OK,
@@ -114,7 +120,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                     'client': client.id,
                     'client_name': client.client_name,
                     'total_sessions': queryset.count(),
-                    'monthly_accounting': serializer.data
+                    'monthly_accounting': monthly_accounting_data
                 }
             )
         
@@ -132,6 +138,29 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
     
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+
+    def validate_create_data(self, data):
+        """Validate the create data manually"""
+        errors = {}
+        
+        # Validate month
+        month = data.get('month')
+        if not month:
+            errors['month'] = ['This field is required.']
+        elif not isinstance(month, int) or month < 1 or month > 12:
+            errors['month'] = ['Month must be an integer between 1 and 12.']
+        
+        # Validate year  
+        year = data.get('year')
+        if not year:
+            errors['year'] = ['This field is required.']
+        elif not isinstance(year, int) or year < 2000 or year > 2100:
+            errors['year'] = ['Year must be an integer between 2000 and 2100.']
+        
+        if errors:
+            return {'errors': errors}
+        
+        return {'month': month, 'year': year}
 
     def post(self, request, client_id, *args, **kwargs):
         """
@@ -166,18 +195,17 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                     "Access denied."
                 )
 
-            serializer = MonthlyAccountingCreateSerializer(data=request.data)
+            serializer = self.validate_create_data(request.data)
             
-            if not serializer.is_valid():
+            if 'errors' in serializer:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Monthly accounting creation failed due to validation errors.",
-                    data=serializer.errors
+                    data=serializer['errors']
                 )
             
-            validated_data = serializer.validated_data
-            month = validated_data['month']
-            year = validated_data['year']
+            month = serializer['month']
+            year = serializer['year']
             
             # Check if accounting for this month/year already exists
             if FactAICMonthlyAccounting.objects.filter(
@@ -200,12 +228,20 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                 )
                 
                 # Serialize the response (basic details only)
-                response_serializer = MonthlyAccountingSerializer(monthly_accounting)
+                response_data = {
+                    'id': monthly_accounting.id,
+                    'month': monthly_accounting.get_month_name(),
+                    'year': monthly_accounting.year,
+                    'status': monthly_accounting.status,
+                    'created_by': monthly_accounting.created_by.username if monthly_accounting.created_by else None,
+                    'created_at': monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
+                    'completed_at': monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None
+                }
                 
                 return create_api_response(
                     status.HTTP_201_CREATED,
                     f"Monthly accounting for {client.client_name} - {monthly_accounting.get_month_name()} {year} has been initiated successfully.",
-                    data=response_serializer.data
+                    data=response_data
                 )
         
         except DjangoValidationError as e:
@@ -230,7 +266,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
     
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
-    serializer_class = MonthlyAccountingDetailSerializer
 
     def get_object(self, client_id, accounting_id):
         """Get monthly accounting session with proper authorization checks"""
@@ -258,9 +293,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
 
     def get(self, request, client_id, accounting_id, *args, **kwargs):
         """
-        Retrieve basic information about a monthly accounting session.
-        
-        GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/
+        Retrieve monthly accounting details with input files and JE templates from snapshots.
+        Returns the accounting information and its associated snapshot data.
         """
         try:
             accounting_id = int(accounting_id)
@@ -269,7 +303,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 status.HTTP_400_BAD_REQUEST,
                 "Invalid accounting ID."
             )
-        
+
         try:
             monthly_accounting = self.get_object(client_id, accounting_id)
             if not monthly_accounting:
@@ -277,15 +311,61 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "Monthly accounting session not found or access denied."
                 )
+
+            # Get documents for upload (replacing input file snapshots)
+            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
             
-            serializer = self.serializer_class(monthly_accounting)
+            documents = MonthlyAccountingDocument.objects.filter(
+                monthly_accounting=monthly_accounting
+            ).select_related('input_file_snapshot')
             
+            input_documents = []
+            for document in documents:
+                input_documents.append({
+                    "id": document.id,
+                    "doc_id": str(document.doc_id),
+                    "doc_type": document.doc_type,
+                    "status": document.upload_status,
+                    "upload_status": document.get_upload_status_display(),
+                    "file_url": document.file_url,
+                    "created_at": document.created_at.isoformat(),
+                    "updated_at": document.updated_at.isoformat()
+                })
+
+            # Get JE template snapshots (basic info only)
+            je_template_snapshots = monthly_accounting.je_template_snapshots.select_related(
+                'original_template', 'je_type'
+            )
+            
+            je_templates = []
+            for template_snapshot in je_template_snapshots:
+                je_templates.append({
+                    "id": template_snapshot.id,  # Snapshot ID
+                    "name": template_snapshot.je_name,
+                    "je_type": template_snapshot.je_type.je_type if template_snapshot.je_type else None,
+                    "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
+                    "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None
+                })
+
+            # Build the response data
+            data = {
+                "id": monthly_accounting.id,
+                "month": monthly_accounting.get_month_name(),
+                "year": monthly_accounting.year,
+                "status": monthly_accounting.status,
+                "created_by": monthly_accounting.created_by.username if monthly_accounting.created_by else None,
+                "created_at": monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
+                "completed_at": monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None,
+                "documents": input_documents,
+                "je_templates": je_templates
+            }
+
             return create_api_response(
                 status.HTTP_200_OK,
                 "Monthly accounting details retrieved successfully.",
-                data=serializer.data
+                data=data
             )
-        
+
         except Exception as e:
             logger.error(f"Error retrieving monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
@@ -344,12 +424,21 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 
                 monthly_accounting.save()
                 
-                serializer = MonthlyAccountingSerializer(monthly_accounting)
+                # Create response data manually
+                response_data = {
+                    'id': monthly_accounting.id,
+                    'month': monthly_accounting.get_month_name(),
+                    'year': monthly_accounting.year,
+                    'status': monthly_accounting.status,
+                    'created_by': monthly_accounting.created_by.username if monthly_accounting.created_by else None,
+                    'created_at': monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
+                    'completed_at': monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None
+                }
                 
                 return create_api_response(
                     status.HTTP_200_OK,
                     f"Status updated to '{new_status}' successfully.",
-                    data=serializer.data
+                    data=response_data
                 )
         
         except Exception as e:
@@ -406,5 +495,94 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while deleting monthly accounting.",
+                data={"error": str(e)}
+            )
+
+
+class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
+    """
+    Handle document uploads for monthly accounting extraction workflow
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, client_id, doc_id, *args, **kwargs):
+        """
+        Upload a file for a specific document
+        
+        POST /api/clients/{client_id}/accounting/documents/{doc_id}/upload/
+        
+        Body (multipart/form-data):
+        {
+            "file": <file>
+        }
+        """
+        try:
+            client_id = int(client_id)
+        except ValueError:
+            return create_api_response(
+                status.HTTP_400_BAD_REQUEST,
+                "Invalid client ID."
+            )
+
+        try:
+            # Import the document model
+            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+            
+            # Get the document by doc_id (UUID)
+            try:
+                document = MonthlyAccountingDocument.objects.select_related(
+                    'monthly_accounting', 'monthly_accounting__client'
+                ).get(
+                    doc_id=doc_id,
+                    monthly_accounting__client_id=client_id
+                )
+            except MonthlyAccountingDocument.DoesNotExist:
+                return create_api_response(
+                    status.HTTP_404_NOT_FOUND,
+                    "Document not found or access denied."
+                )
+            
+            # Check if file is provided
+            if 'file' not in request.FILES:
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    "No file provided."
+                )
+            
+            uploaded_file = request.FILES['file']
+            
+            # Validate file type if needed (basic validation)
+            if document.file_type and hasattr(document.file_type, 'id'):
+                # Add any file type validation here if needed
+                pass
+            
+            # Update the document with the uploaded file
+            document.file = uploaded_file
+            document.mark_as_uploaded(request.user)  # Using the helper method
+            
+            # Prepare response data
+            data = {
+                "doc_id": str(document.doc_id),
+                "id": document.id,
+                "name": document.name,
+                "doc_type": document.doc_type,
+                "status": document.upload_status,
+                "upload_status": document.get_upload_status_display(),
+                "file_url": document.file.url,
+                "created_at": document.created_at.isoformat(),
+                "updated_at": document.updated_at.isoformat()
+            }
+            
+            return create_api_response(
+                status.HTTP_200_OK,
+                "File uploaded successfully.",
+                data=data
+            )
+
+        except Exception as e:
+            logger.error(f"Error uploading file for document {doc_id} and client {client_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while uploading the file.",
                 data={"error": str(e)}
             )

@@ -58,6 +58,12 @@ class DimAICJETemplateAttribute(models.Model):
         blank=True,
         help_text="Name of the attribute when referenced by ID"
     )
+    attribute_comment = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Comments",
+        help_text="Additional comments for attribute"
+    )
     input_user = models.ForeignKey(
         get_user_model(),
         on_delete=models.SET_NULL,

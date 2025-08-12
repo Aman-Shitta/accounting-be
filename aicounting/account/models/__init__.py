@@ -11,13 +11,14 @@ from .dim_aic_je_type_model import DimAICJEType
 from .fact_aic_je_periodic_status import FactAICJEMonthlyStat
 from .fact_aic_je_trans_bank_model import FactAICJETransBank
 from .fact_aic_je_trans_other_model import FactJETransOther
-from .fact_aic_monthly_accounting_snapshot_models import (
-    FactAICMonthlyAccounting,
+from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
+from .dim_aic_snapshot_models import(
     FactAICInputFileSnapshot,
     FactAICInputFileAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,
     FactAICJETemplateAttributeSnapshot
 )
+from .monthly_accounting_document_model import MonthlyAccountingDocument
 
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     'FactAICInputFileAttributeSnapshot',
     'FactAICJETemplateHeaderSnapshot',
     'FactAICJETemplateAttributeSnapshot',
+    'MonthlyAccountingDocument'
 ]
