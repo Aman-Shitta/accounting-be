@@ -1,5 +1,8 @@
 # Third-party imports
 from django.contrib import admin
+from django.utils.html import format_html
+from django.contrib import messages
+from django.core.exceptions import ValidationError
 
 # Local imports
 from .models import (
@@ -16,6 +19,14 @@ from .models import (
     FactJETransOther,
     FactAICJETransBank,
     FactAICJEMonthlyStat,
+)
+from .models.fact_aic_monthly_accounting import FactAICMonthlyAccounting
+from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+from .models.dim_aic_snapshot_models import (
+    FactAICInputFileSnapshot,
+    FactAICInputFileAttributeSnapshot,
+    FactAICJETemplateHeaderSnapshot,
+    FactAICJETemplateAttributeSnapshot
 )
 
 @admin.register(DimAICAcctType)
@@ -349,3 +360,207 @@ class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
             obj.input_file_attribute = None
         
         super().save_model(request, obj, form, change)
+
+
+#############################################
+# Monthly Accounting Documents (Inline)
+#############################################
+class MonthlyAccountingDocumentInline(admin.TabularInline):
+    """Inline for documents under a Monthly Accounting session (read-only)."""
+    model = MonthlyAccountingDocument
+    extra = 0
+    can_delete = False
+    readonly_fields = ("doc_id", "doc_type", "upload_status", "file_link", "created_at", "updated_at")
+    fields = ("doc_id", "doc_type", "upload_status", "file_link", "created_at", "updated_at")
+
+    def file_link(self, obj):  # pragma: no cover - admin display helper
+        if obj.file:
+            return format_html('<a href="{}" target="_blank">file</a>', obj.file.url)
+        return "-"
+    file_link.short_description = "File"
+
+    def has_add_permission(self, request, obj=None):  # pragma: no cover
+        return False
+
+
+#############################################
+# Monthly Accounting Documents (Standalone)
+#############################################
+@admin.register(MonthlyAccountingDocument)
+class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
+    list_display = ("doc_id", "monthly_accounting", "doc_type", "upload_status", "file_link", "created_at")
+    list_filter = ("upload_status", "doc_type", "created_at")
+    search_fields = ("doc_id", "monthly_accounting__client__client_name")
+    readonly_fields = ("doc_id", "monthly_accounting", "input_file_snapshot", "created_at", "updated_at", "file_link")
+
+    def file_link(self, obj):  # pragma: no cover
+        if obj.file:
+            return format_html('<a href="{}" target="_blank">file</a>', obj.file.url)
+        return "-"
+    file_link.short_description = "File"
+
+    fieldsets = (
+        (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "upload_status", "file", "file_link", "created_at", "updated_at")}),
+    )
+
+#############################################
+# Monthly Accounting Sessions
+#############################################
+@admin.register(FactAICMonthlyAccounting)
+class FactAICMonthlyAccountingAdmin(admin.ModelAdmin):
+    list_display = ("id", "client", "month", "year", "status", "created_by", "created_at")
+    list_filter = ("status", "month", "year", "created_at")
+    search_fields = ("client__client_name",)
+    readonly_fields = ("created_at", "completed_at")
+    inlines = [MonthlyAccountingDocumentInline]
+    fieldsets = (
+        (None, {"fields": ("client", "month", "year", "status", "created_by", "created_at", "completed_at")}),
+    )
+
+    def save_model(self, request, obj, form, change):  # pragma: no cover
+        if not change and not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+class FactAICInputFileAttributeSnapshotInline(admin.TabularInline):
+    """
+    Inline admin for FactAICInputFileAttributeSnapshot
+    """
+    model = FactAICInputFileAttributeSnapshot
+    extra = 0
+    readonly_fields = ('original_attribute', 'name', 'gl_account', 'type', 'offset_gl_account', 'comments')
+    fields = ('name', 'gl_account', 'type', 'offset_gl_account', 'comments', 'original_attribute')
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(FactAICInputFileSnapshot)
+class FactAICInputFileSnapshotAdmin(admin.ModelAdmin):
+    """
+    Admin for FactAICInputFileSnapshot
+    """
+    list_display = ('id', 'name', 'monthly_accounting_link', 'file_type', 'file_link', 'original_created_at')
+    list_filter = ('file_type', 'monthly_accounting__month', 'monthly_accounting__year')
+    search_fields = ('name', 'monthly_accounting__client__client_name')
+    readonly_fields = ('monthly_accounting', 'original_input_file', 'client', 'file_link', 'original_created_at', 'original_updated_at')
+    inlines = [FactAICInputFileAttributeSnapshotInline]
+    
+    fieldsets = (
+        ('File Information', {
+            'fields': ('name', 'file_type', 'description', 'file', 'file_link')
+        }),
+        ('Relationships', {
+            'fields': ('monthly_accounting', 'original_input_file', 'client', 'input_user')
+        }),
+        ('Timestamps', {
+            'fields': ('original_created_at', 'original_updated_at')
+        }),
+    )
+    
+    def monthly_accounting_link(self, obj):
+        if obj.monthly_accounting:
+            url = f"/admin/account/factaicmonthlyaccounting/{obj.monthly_accounting.id}/change/"
+            return format_html('<a href="{}">{} - {} {}</a>', 
+                url, 
+                obj.monthly_accounting.client.client_name,
+                obj.monthly_accounting.get_month_name(),
+                obj.monthly_accounting.year
+            )
+        return "None"
+    monthly_accounting_link.short_description = 'Monthly Accounting'
+    
+    def file_link(self, obj):
+        if obj.file:
+            return format_html('<a href="{}" target="_blank">View File</a>', obj.file.url)
+        return "No file"
+    file_link.short_description = 'File'
+
+
+class FactAICJETemplateAttributeSnapshotInline(admin.TabularInline):
+    """
+    Inline admin for FactAICJETemplateAttributeSnapshot
+    """
+    model = FactAICJETemplateAttributeSnapshot
+    extra = 0
+    readonly_fields = ('original_attribute', 'gl_account', 'debit', 'credit', 'attribute_name', 'input_file_attribute')
+    fields = ('gl_account', 'debit', 'credit', 'attribute_name', 'input_file_attribute', 'original_attribute')
+    can_delete = False
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(FactAICJETemplateHeaderSnapshot)
+class FactAICJETemplateHeaderSnapshotAdmin(admin.ModelAdmin):
+    """
+    Admin for FactAICJETemplateHeaderSnapshot
+    """
+    list_display = ('id', 'je_name', 'monthly_accounting_link', 'je_type', 'is_object', 'original_created_at')
+    list_filter = ('je_type', 'is_object', 'monthly_accounting__month', 'monthly_accounting__year')
+    search_fields = ('je_name', 'monthly_accounting__client__client_name')
+    readonly_fields = ('monthly_accounting', 'original_template', 'client', 'customer', 'original_created_at', 'original_updated_at')
+    inlines = [FactAICJETemplateAttributeSnapshotInline]
+    
+    fieldsets = (
+        ('Template Information', {
+            'fields': ('je_name', 'je_refrence', 'je_freq', 'je_type', 'is_object', 'description')
+        }),
+        ('Relationships', {
+            'fields': ('monthly_accounting', 'original_template', 'client', 'customer', 'input_file')
+        }),
+        ('Timestamps', {
+            'fields': ('original_created_at', 'original_updated_at')
+        }),
+    )
+    
+    def monthly_accounting_link(self, obj):
+        if obj.monthly_accounting:
+            url = f"/admin/account/factaicmonthlyaccounting/{obj.monthly_accounting.id}/change/"
+            return format_html('<a href="{}">{} - {} {}</a>', 
+                url, 
+                obj.monthly_accounting.client.client_name,
+                obj.monthly_accounting.get_month_name(),
+                obj.monthly_accounting.year
+            )
+        return "None"
+    monthly_accounting_link.short_description = 'Monthly Accounting'
+
+#############################################
+# Snapshot Attribute Models (Standalone)
+#############################################
+@admin.register(FactAICInputFileAttributeSnapshot)
+class FactAICInputFileAttributeSnapshotAdmin(admin.ModelAdmin):
+    """Standalone view for input file attribute snapshots."""
+    list_display = (
+        'id', 'input_file_snapshot', 'name', 'gl_account', 'type', 'offset_gl_account', 'original_created_at'
+    )
+    list_filter = ('type', 'original_created_at')
+    search_fields = ('name', 'input_file_snapshot__name', 'gl_account__account_name')
+    readonly_fields = (
+        'input_file_snapshot', 'original_attribute', 'name', 'gl_account', 'type', 'offset_gl_account',
+        'comments', 'original_created_at', 'original_updated_at'
+    )
+    fieldsets = (
+        (None, { 'fields': ('input_file_snapshot', 'original_attribute', 'name', 'type', 'gl_account', 'offset_gl_account', 'comments') }),
+        ('Timestamps', { 'fields': ('original_created_at', 'original_updated_at'), 'classes': ('collapse',) }),
+    )
+
+@admin.register(FactAICJETemplateAttributeSnapshot)
+class FactAICJETemplateAttributeSnapshotAdmin(admin.ModelAdmin):
+    """Standalone view for JE template attribute snapshots."""
+    list_display = (
+        'id', 'je_template_snapshot', 'attribute_name', 'gl_account', 'debit', 'credit', 'original_created_at'
+    )
+    list_filter = ('je_template_snapshot__is_object', 'original_created_at')
+    search_fields = ('attribute_name', 'je_template_snapshot__je_name', 'gl_account__account_name')
+    readonly_fields = (
+        'je_template_snapshot', 'original_attribute', 'input_file_attribute', 'gl_account', 'debit', 'credit',
+        'attribute_name', 'input_user', 'original_created_at', 'original_updated_at'
+    )
+    fieldsets = (
+        (None, { 'fields': ('je_template_snapshot', 'original_attribute', 'input_file_attribute', 'attribute_name', 'gl_account', 'debit', 'credit', 'input_user') }),
+        ('Timestamps', { 'fields': ('original_created_at', 'original_updated_at'), 'classes': ('collapse',) }),
+    )

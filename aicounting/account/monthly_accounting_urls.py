@@ -15,6 +15,6 @@ monthly_accounting_url_patterns = [
     path('create/', MonthlyAccountingCreateView.as_view(), name='monthly-accounting-create'),
     # Retrieve, update, or delete specific monthly accounting session
     path('<int:accounting_id>/', MonthlyAccountingDetailView.as_view(), name='monthly-accounting-detail'),
-    # Upload a file for a specific document
-    path('documents/<uuid:doc_id>/upload/', MonthlyAccountingDocumentUploadView.as_view(), name='monthly-accounting-document-upload'),
+    # Upload a file for a specific document (requires accounting session id and document id)
+    path('<int:accounting_id>/documents/<int:document_id>/upload/', MonthlyAccountingDocumentUploadView.as_view(), name='monthly-accounting-document-upload'),
 ]

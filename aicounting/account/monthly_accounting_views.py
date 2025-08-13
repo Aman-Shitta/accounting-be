@@ -500,89 +500,82 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
 
 
 class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
-    """
-    Handle document uploads for monthly accounting extraction workflow
-    """
-    permission_classes = [IsAuthenticated]
+    """Upload a file for a specific monthly accounting document (by PK) within an accounting session."""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
-    def post(self, request, client_id, doc_id, *args, **kwargs):
-        """
-        Upload a file for a specific document
-        
-        POST /api/clients/{client_id}/accounting/documents/{doc_id}/upload/
-        
-        Body (multipart/form-data):
-        {
-            "file": <file>
-        }
-        """
-        try:
-            client_id = int(client_id)
-        except ValueError:
-            return create_api_response(
-                status.HTTP_400_BAD_REQUEST,
-                "Invalid client ID."
-            )
-
-        try:
-            # Import the document model
-            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
-            
-            # Get the document by doc_id (UUID)
+    def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
+        """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/upload/"""
+        # Validate integers
+        for var_name, value in [("client ID", client_id), ("accounting ID", accounting_id), ("document ID", document_id)]:
             try:
-                document = MonthlyAccountingDocument.objects.select_related(
-                    'monthly_accounting', 'monthly_accounting__client'
-                ).get(
-                    doc_id=doc_id,
-                    monthly_accounting__client_id=client_id
-                )
-            except MonthlyAccountingDocument.DoesNotExist:
-                return create_api_response(
-                    status.HTTP_404_NOT_FOUND,
-                    "Document not found or access denied."
-                )
-            
-            # Check if file is provided
-            if 'file' not in request.FILES:
+                int(value)
+            except ValueError:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
-                    "No file provided."
+                    f"Invalid {var_name}."
                 )
-            
+
+        try:
+            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+
+            # Authorize access similarly to other views
+            user = request.user
+            if hasattr(user, 'customer_profile'):
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=user.customer_profile
+                )
+            elif hasattr(user, 'accountant_profile'):
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=user.accountant_profile.customer,
+                    client__assigned_accountants=user.accountant_profile
+                )
+            else:
+                return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+
+            # Fetch the document by PK (document_id) and ensure it belongs to the session
+            try:
+                document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
+                    id=document_id,
+                    monthly_accounting=monthly_accounting
+                )
+            except MonthlyAccountingDocument.DoesNotExist:
+                return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
+
+            # Disallow re-upload if a file already exists (first upload is final)
+            if document.file:
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    "A file has already been uploaded for this document and cannot be replaced."
+                )
+
+            if 'file' not in request.FILES:
+                return create_api_response(status.HTTP_400_BAD_REQUEST, "No file provided.")
+
             uploaded_file = request.FILES['file']
-            
-            # Validate file type if needed (basic validation)
-            if document.file_type and hasattr(document.file_type, 'id'):
-                # Add any file type validation here if needed
-                pass
-            
-            # Update the document with the uploaded file
+
+            # Assign file and mark uploaded
             document.file = uploaded_file
-            document.mark_as_uploaded(request.user)  # Using the helper method
-            
-            # Prepare response data
+            document.mark_as_uploaded(request.user)
+
             data = {
-                "doc_id": str(document.doc_id),
+                "doc_uuid": str(document.doc_id),
                 "id": document.id,
-                "name": document.name,
                 "doc_type": document.doc_type,
                 "status": document.upload_status,
                 "upload_status": document.get_upload_status_display(),
-                "file_url": document.file.url,
+                "file_url": document.file_url,
                 "created_at": document.created_at.isoformat(),
                 "updated_at": document.updated_at.isoformat()
             }
-            
-            return create_api_response(
-                status.HTTP_200_OK,
-                "File uploaded successfully.",
-                data=data
-            )
+            return create_api_response(status.HTTP_200_OK, "File uploaded successfully.", data=data)
 
         except Exception as e:
-            logger.error(f"Error uploading file for document {doc_id} and client {client_id}: {str(e)}")
-            return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while uploading the file.",
-                data={"error": str(e)}
-            )
+            logger.error(f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
+            return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
