@@ -92,6 +92,14 @@ class MonthlyAccountingDocument(models.Model):
         verbose_name="Updated At"
     )
     
+    # Processing results
+    control_item = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Control Totals",
+        help_text="Control totals and summary information extracted from document"
+    )
+    
     class Meta:
         db_table = 'monthly_accounting_document'
         verbose_name = "Monthly Accounting Document"

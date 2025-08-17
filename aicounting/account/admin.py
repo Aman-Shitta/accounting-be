@@ -22,6 +22,11 @@ from .models import (
 )
 from .models.fact_aic_monthly_accounting import FactAICMonthlyAccounting
 from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+from .models.monthly_document_line_models import (
+    MonthlyDocumentBankKeyItem,
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentBankCheckItem
+)
 from .models.dim_aic_snapshot_models import (
     FactAICInputFileSnapshot,
     FactAICInputFileAttributeSnapshot,
@@ -384,6 +389,50 @@ class MonthlyAccountingDocumentInline(admin.TabularInline):
 
 
 #############################################
+# Monthly Document Line Items (Inlines)
+#############################################
+class MonthlyDocumentBankKeyItemInline(admin.TabularInline):
+    """Inline for document key items (summary data like balances)."""
+    model = MonthlyDocumentBankKeyItem
+    extra = 0
+    readonly_fields = ('page_number', 'key', 'value', 'created_at')
+    fields = ('page_number', 'key', 'value', 'created_at')
+    can_delete = False
+    classes = ['collapse']
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class MonthlyDocumentBankLineItemInline(admin.TabularInline):
+    """Inline for transaction line items."""
+    model = MonthlyDocumentBankLineItem
+    extra = 0
+    readonly_fields = ('page_number', 'line_number', 'date', 'description', 'formatted_amount', 
+                      'transaction_type', 'gl_account', 'offset_gl_account', 'created_at')
+    fields = ('page_number', 'line_number', 'date', 'description', 'formatted_amount', 
+             'transaction_type', 'gl_account', 'offset_gl_account')
+    can_delete = False
+    classes = ['collapse']
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
+    """Inline for check items extracted from document."""
+    model = MonthlyDocumentBankCheckItem
+    extra = 0
+    readonly_fields = ('page_number', 'amount', 'payee', 'check_number', 'memo', 'created_at')
+    fields = ('page_number', 'amount', 'payee', 'check_number', 'memo', 'related_line_item')
+    can_delete = False
+    classes = ['collapse']
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+#############################################
 # Monthly Accounting Documents (Standalone)
 #############################################
 @admin.register(MonthlyAccountingDocument)
@@ -392,6 +441,12 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
     list_filter = ("upload_status", "doc_type", "created_at")
     search_fields = ("doc_id", "monthly_accounting__client__client_name")
     readonly_fields = ("doc_id", "monthly_accounting", "input_file_snapshot", "created_at", "updated_at", "file_link")
+    
+    inlines = [
+        MonthlyDocumentBankKeyItemInline,
+        MonthlyDocumentBankLineItemInline,
+        MonthlyDocumentBankCheckItemInline,
+    ]
 
     def file_link(self, obj):  # pragma: no cover
         if obj.file:
@@ -400,7 +455,9 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
     file_link.short_description = "File"
 
     fieldsets = (
-        (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "upload_status", "file", "file_link", "created_at", "updated_at")}),
+        (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "upload_status", "file", "file_link")}),
+        ("Processing Results", {"fields": ("control_item",), "classes": ("collapse",)}),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
 
 #############################################
@@ -564,3 +621,81 @@ class FactAICJETemplateAttributeSnapshotAdmin(admin.ModelAdmin):
         (None, { 'fields': ('je_template_snapshot', 'original_attribute', 'input_file_attribute', 'attribute_name', 'gl_account', 'debit', 'credit', 'input_user') }),
         ('Timestamps', { 'fields': ('original_created_at', 'original_updated_at'), 'classes': ('collapse',) }),
     )
+
+
+#############################################
+# Monthly Document Line Items (Standalone)
+#############################################
+@admin.register(MonthlyDocumentBankKeyItem)
+class MonthlyDocumentBankKeyItemAdmin(admin.ModelAdmin):
+    """Admin for monthly document key items."""
+    list_display = ('id', 'document', 'page_number', 'key', 'value', 'created_at')
+    list_filter = ('page_number', 'key', 'created_at')
+    search_fields = ('document__doc_id', 'key', 'value')
+    readonly_fields = ('document', 'page_number', 'key', 'value', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        (None, {'fields': ('document', 'page_number', 'key', 'value')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+
+@admin.register(MonthlyDocumentBankLineItem)
+class MonthlyDocumentBankLineItemAdmin(admin.ModelAdmin):
+    """Admin for monthly document line items."""
+    list_display = ('id', 'document', 'page_number', 'line_number', 'date', 'description_short', 
+                   'formatted_amount', 'transaction_type', 'gl_account', 'created_at')
+    list_filter = ('transaction_type', 'page_number', 'is_check_transaction', 'created_at')
+    search_fields = ('document__doc_id', 'description', 'check_number')
+    readonly_fields = ('document', 'created_at', 'updated_at')
+    
+    fieldsets = (
+        ('Transaction Details', {
+            'fields': ('document', 'page_number', 'line_number', 'date', 'description', 
+                      'amount', 'transaction_type', 'debit_amount', 'credit_amount')
+        }),
+        ('Check Information', {
+            'fields': ('is_check_transaction', 'check_number'),
+            'classes': ('collapse',)
+        }),
+        ('GL Classification', {
+            'fields': ('gl_account', 'offset_gl_account'),
+            'description': 'GL accounts assigned through classification pipeline'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def description_short(self, obj):
+        return obj.description[:50] + "..." if len(obj.description) > 50 else obj.description
+    description_short.short_description = 'Description'
+
+
+@admin.register(MonthlyDocumentBankCheckItem)
+class MonthlyDocumentBankCheckItemAdmin(admin.ModelAdmin):
+    """Admin for monthly document check items."""
+    list_display = ('id', 'document', 'page_number', 'check_number', 'amount', 'payee_short', 'created_at')
+    list_filter = ('page_number', 'created_at')
+    search_fields = ('document__doc_id', 'check_number', 'payee', 'amount')
+    readonly_fields = ('document', 'created_at')
+    
+    fieldsets = (
+        ('Check Details', {
+            'fields': ('document', 'page_number', 'amount', 'payee', 'memo', 
+                      'check_number', 'clearing_date', 'passing_date')
+        }),
+        ('Relationship', {
+            'fields': ('related_line_item',),
+            'description': 'Link to corresponding transaction line item'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def payee_short(self, obj):
+        return obj.payee[:30] + "..." if obj.payee and len(obj.payee) > 30 else obj.payee
+    payee_short.short_description = 'Payee'

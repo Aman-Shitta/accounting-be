@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from django.db import transaction
+from django.db import transaction, models
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import generics, status, permissions
@@ -11,6 +11,7 @@ from user.models import DimAICClient
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
 from aicounting.response import create_api_response
+from rest_framework.parsers import JSONParser
 
 import logging
 logger = logging.getLogger(__name__)
@@ -564,6 +565,26 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.file = uploaded_file
             document.mark_as_uploaded(request.user)
 
+            if document.doc_type in ['bank_statement', 'credit_card']:
+                
+                from extractor.bank_statement.prompter import Configuration
+                config = Configuration(
+                    doc_type="bank_statement",
+                    extract_line_items=True,
+                    line_items=[
+                        "date: The date of the transaction.", 
+                        "description: A description of the transaction.",
+                        "debit amount: The debit amount of the transaction.",
+                        "credit amount: The credit amount of the transaction.",
+                    ],
+                    excluded_fields=[]
+                )
+                # Trigger document processing task
+                from .tasks import process_uploaded_document
+                process_uploaded_document.run(document, config)
+            else:
+                logger.info(f"Document type {document.doc_type} does not require processing.")
+
             data = {
                 "doc_uuid": str(document.doc_id),
                 "id": document.id,
@@ -579,3 +600,268 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
         except Exception as e:
             logger.error(f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
+
+
+class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
+    """List & Create line items for a processed monthly accounting document (bank_statement/credit_card)."""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+
+    def _get_document(self, client_id, accounting_id, document_id, request):
+        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+        user = request.user
+        if hasattr(user, 'customer_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.customer_profile
+            )
+        elif hasattr(user, 'accountant_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.accountant_profile.customer,
+                client__assigned_accountants=user.accountant_profile
+            )
+        else:
+            return None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+        document = get_object_or_404(
+            MonthlyAccountingDocument.objects.select_related('monthly_accounting'),
+            id=document_id,
+            monthly_accounting=monthly_accounting
+        )
+        if document.doc_type not in ['bank_statement', 'credit_card']:
+            return None, create_api_response(status.HTTP_400_BAD_REQUEST, "Document type does not support line items interface.")
+        return document, None
+
+    def get(self, request, client_id, accounting_id, document_id, *args, **kwargs):
+        """
+        Retrieve line items for a processed monthly accounting document.
+        
+        GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
+        """
+        try:
+            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            
+            document, error_response = self._get_document(client_id, accounting_id, document_id, request)
+            if error_response:
+                return error_response
+            
+            items = MonthlyDocumentBankLineItem.objects.filter(document=document).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
+            serializer = MonthlyDocumentBankLineItemSerializer(items, many=True, context={'request': request})
+            
+            return create_api_response(
+                status.HTTP_200_OK, 
+                "Line items retrieved successfully.", 
+                data={
+                    'document_id': document.id,
+                    'doc_uuid': str(document.doc_id),
+                    'doc_type': document.doc_type,
+                    'total_line_items': items.count(),
+                    'line_items': serializer.data
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error retrieving line items for document {document_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while retrieving line items.",
+                data={"error": str(e)}
+            )
+
+    def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
+        """
+        Create a new line item for a monthly accounting document.
+        
+        POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
+        
+        Body:
+        {
+            "page_number": 1,
+            "line_number": 5,  // optional - will append if not provided
+            "date": "2025-01-15",
+            "description": "Office supplies purchase",
+            "debit": "125.50",  // either debit OR credit, not both
+            "gl_account_id": 123
+        }
+        """
+        try:
+            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            
+            document, error_response = self._get_document(client_id, accounting_id, document_id, request)
+            if error_response:
+                return error_response
+            
+            serializer = MonthlyDocumentBankLineItemSerializer(
+                data=request.data, 
+                context={'request': request, 'document': document}
+            )
+            
+            if serializer.is_valid():
+                item = serializer.save()
+                output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                return create_api_response(
+                    status.HTTP_201_CREATED, 
+                    "Line item created successfully.", 
+                    data=output_serializer.data
+                )
+            
+            return create_api_response(
+                status.HTTP_400_BAD_REQUEST, 
+                "Validation failed.", 
+                data=serializer.errors
+            )
+        
+        except Exception as e:
+            logger.error(f"Error creating line item for document {document_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while creating line item.",
+                data={"error": str(e)}
+            )
+
+
+class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
+    """Retrieve, Update, or Delete a specific line item."""
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+
+    def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
+        """Helper method to get line item with proper authorization"""
+        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+        from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+        
+        user = request.user
+        if hasattr(user, 'customer_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.customer_profile
+            )
+        elif hasattr(user, 'accountant_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.accountant_profile.customer,
+                client__assigned_accountants=user.accountant_profile
+            )
+        else:
+            return None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+        
+        document = get_object_or_404(
+            MonthlyAccountingDocument, 
+            id=document_id, 
+            monthly_accounting=monthly_accounting
+        )
+        
+        if document.doc_type not in ['bank_statement', 'credit_card']:
+            return None, create_api_response(
+                status.HTTP_400_BAD_REQUEST, 
+                "Document type does not support line items interface."
+            )
+        
+        line_item = get_object_or_404(
+            MonthlyDocumentBankLineItem, 
+            id=line_item_id, 
+            document=document
+        )
+        return line_item, None
+
+    def patch(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
+        """
+        Update a specific line item.
+        
+        PATCH /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
+        
+        Body:
+        {
+            "description": "Updated description",
+            "credit": "150.00",  // will change from debit to credit
+            "gl_account_id": 456
+        }
+        """
+        try:
+            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            
+            line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
+            if error_response:
+                return error_response
+            
+            serializer = MonthlyDocumentBankLineItemSerializer(
+                line_item, 
+                data=request.data, 
+                partial=True, 
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                updated_item = serializer.save()
+                output_serializer = MonthlyDocumentBankLineItemSerializer(updated_item, context={'request': request})
+                return create_api_response(
+                    status.HTTP_200_OK, 
+                    "Line item updated successfully.", 
+                    data=output_serializer.data
+                )
+            
+            return create_api_response(
+                status.HTTP_400_BAD_REQUEST, 
+                "Validation failed.", 
+                data=serializer.errors
+            )
+        
+        except Exception as e:
+            logger.error(f"Error updating line item {line_item_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while updating line item.",
+                data={"error": str(e)}
+            )
+
+    def delete(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
+        """
+        Delete a specific line item and renumber subsequent lines.
+        
+        DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
+        """
+        try:
+            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+            
+            line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
+            if error_response:
+                return error_response
+            
+            page_number = line_item.page_number
+            document = line_item.document
+            deleted_line_number = line_item.line_number
+            
+            with transaction.atomic():
+                # Delete the line item
+                line_item.delete()
+                
+                # Renumber subsequent lines on the same page
+                # Use bulk update for efficiency - subtract 1 from all lines after the deleted line
+                updated_count = MonthlyDocumentBankLineItem.objects.filter(
+                    document=document, 
+                    page_number=page_number, 
+                    line_number__gt=deleted_line_number
+                ).update(line_number=models.F('line_number') - 1)
+                
+                logger.info(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
+            
+            return create_api_response(
+                status.HTTP_200_OK, 
+                f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
+            )
+        
+        except Exception as e:
+            logger.error(f"Error deleting line item {line_item_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while deleting line item.",
+                data={"error": str(e)}
+            )

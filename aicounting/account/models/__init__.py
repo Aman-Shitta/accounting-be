@@ -19,6 +19,11 @@ from .dim_aic_snapshot_models import(
     FactAICJETemplateAttributeSnapshot
 )
 from .monthly_accounting_document_model import MonthlyAccountingDocument
+from .monthly_document_line_models import (
+    MonthlyDocumentBankKeyItem,
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentBankCheckItem
+)
 
 
 __all__ = [
@@ -40,5 +45,8 @@ __all__ = [
     'FactAICInputFileAttributeSnapshot',
     'FactAICJETemplateHeaderSnapshot',
     'FactAICJETemplateAttributeSnapshot',
-    'MonthlyAccountingDocument'
+    'MonthlyAccountingDocument',
+    'MonthlyDocumentBankKeyItem',
+    'MonthlyDocumentBankLineItem',
+    'MonthlyDocumentBankCheckItem',
 ]
