@@ -661,7 +661,9 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                     'doc_uuid': str(document.doc_id),
                     'doc_type': document.doc_type,
                     'total_line_items': items.count(),
-                    'line_items': serializer.data
+                    'document': document.file_url if document.file else None,
+                    'line_items': serializer.data,
+                    'control_items': document.control_item
                 }
             )
         except Exception as e:
