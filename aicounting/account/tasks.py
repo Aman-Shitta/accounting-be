@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def process_uploaded_document(
-    doc: MonthlyAccountingDocument,
-    config: Configuration
+    doc_id: str,
+    config_params: dict
 ):
     """
     Process a document uploaded to Azure Blob Storage using the new MonthlyAccountingDocumentProcessor
@@ -34,6 +34,14 @@ def process_uploaded_document(
         config: Configuration for the document processor
     """
     try:
+        config = Configuration(**config_params)
+        doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
+        if not doc:
+            logger.error(f"Documentdoes not exist: {doc_id} invalid id")
+            doc.upload_status = "failed"
+            doc.save()
+            return 
+
         # Check if file exists
         from django.core.files.storage import default_storage
         file_path = doc.file.name if doc.file else None
@@ -64,7 +72,7 @@ def process_uploaded_document(
         logger.info(f"Document {doc.doc_id} processed successfully: {result['processing_stats']}")
 
         # Call GL classification pipeline asynchronously
-        classify_monthly_document_gl_accounts.run(str(doc.doc_id))
+        classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
 
 
     except Exception as e:

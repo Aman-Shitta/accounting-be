@@ -568,7 +568,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             if document.doc_type in ['bank_statement', 'credit_card']:
                 
                 from extractor.bank_statement.prompter import Configuration
-                config = Configuration(
+                config_params = dict(
                     doc_type="bank_statement",
                     extract_line_items=True,
                     line_items=[
@@ -581,7 +581,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 )
                 # Trigger document processing task
                 from .tasks import process_uploaded_document
-                process_uploaded_document.run(document, config)
+                process_uploaded_document.delay(str(document.id), config_params)
             else:
                 logger.info(f"Document type {document.doc_type} does not require processing.")
 
@@ -599,6 +599,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 
         except Exception as e:
             logger.error(f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
+
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
 
 
