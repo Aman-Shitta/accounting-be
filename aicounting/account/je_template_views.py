@@ -532,10 +532,6 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             )
             
             if serializer.is_valid():
-                # Delete all existing attributes for this template first
-                deleted_count = DimAICJETemplateAttribute.objects.filter(
-                    je_template_id=je_template
-                ).delete()[0]
                 
                 # Create new attributes
                 created_attributes = serializer.save()

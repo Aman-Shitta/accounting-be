@@ -92,13 +92,13 @@ class ClientCreateView(generics.GenericAPIView):
                 # Create the client and related objects
                 client = serializer.save()
 
-                # client_assistant = OpenAIAssistant(
-                #     api_key=settings.OPENAI_API_KEY,
-                #     client_id=client.client_id,
-                #     special_rules=serializer.validated_data.get('special_rules', None)
-                # )
+                client_assistant = OpenAIAssistant(
+                    api_key=settings.OPENAI_API_KEY,
+                    client_id=client.client_id,
+                    special_rules=serializer.validated_data.get('special_rules', None)
+                )
                 # Provision the client GPT assistant
-                # client_assistant.provison_client_assistant()
+                client_assistant.provison_client_assistant()
 
                 # Return success response with created client data
                 response_serializer = ClientRetrieveSerializer(client)

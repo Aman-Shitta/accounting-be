@@ -227,7 +227,7 @@ class AvailableAttributeSerializer(serializers.ModelSerializer):
         return None
 
 class JETemplateAttributeSerializer(serializers.ModelSerializer):
-    """Serializer for JE Template Attributes"""
+    """Serializer for JE Template Attributes with dynamic fields"""
     
     attribute = serializers.SerializerMethodField()
     gl_account_details = serializers.SerializerMethodField()
@@ -237,6 +237,31 @@ class JETemplateAttributeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'attribute', 'gl_account_details', 'debit', 'credit', 'attribute_name'
         ]
+
+    def to_representation(self, instance):
+        """Override to return dynamic fields based on template type"""
+        # Get the base representation
+        data = super().to_representation(instance)
+        
+        # Check if this is an object template (has input_file_attribute)
+        if instance.input_file_attribute:
+            # Object template - return only id and attribute
+            return {
+                'id': data['id'],
+                'attribute': data['attribute']
+            }
+        elif instance.gl_account:
+            # Non-object template - return id, gl_account_details, debit, credit, attribute_name
+            return {
+                'id': data['id'],
+                'gl_account_details': data['gl_account_details'],
+                'debit': data['debit'],
+                'credit': data['credit'],
+                'attribute_name': data['attribute_name']
+            }
+        else:
+            # Fallback - return all fields
+            return data
 
     def get_attribute(self, obj):
         """Return the attributes related to this JE Template Attribute for object templates"""
@@ -353,19 +378,19 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
         if template.is_object:
             # For object templates, expect payload: {"id": 1}
             # Check for duplicate attributes in the same template
-            existing_ids = set(
-                DimAICJETemplateAttribute.objects.filter(
-                    je_template_id=template,
-                    input_file_attribute__isnull=False
-                ).values_list('input_file_attribute__id', flat=True)
-            )
+            # existing_ids = set(
+            #     DimAICJETemplateAttribute.objects.filter(
+            #         je_template_id=template,
+            #         input_file_attribute__isnull=False
+            #     ).values_list('input_file_attribute__id', flat=True)
+            # )
             
             # Special handling for bank_statement and credit_card files
             if template.input_file and template.input_file.file_type in ['bank_statement', 'credit_card']:
-                if existing_ids:
-                    raise serializers.ValidationError(
-                        f"Templates with {template.input_file.file_type} files can only have one attribute and it's already configured"
-                    )
+                # if existing_ids:
+                #     raise serializers.ValidationError(
+                #         f"Templates with {template.input_file.file_type} files can only have one attribute and it's already configured"
+                #     )
                 if len(value) > 1:
                     raise serializers.ValidationError(
                         f"Templates with {template.input_file.file_type} files can only have one attribute configured at a time"
@@ -384,9 +409,9 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                 if object_serializer.is_valid():
                     attribute = object_serializer.validated_data['id']
                     
-                    # Check for duplicates in existing template attributes
-                    if attribute.id in existing_ids:
-                        raise serializers.ValidationError(f"Attribute {attribute.id} is already configured for this template")
+                    # # Check for duplicates in existing template attributes
+                    # if attribute.id in existing_ids:
+                    #     raise serializers.ValidationError(f"Attribute {attribute.id} is already configured for this template")
                     
                     # Check for duplicates in current request
                     if attribute.id in new_ids:
@@ -423,10 +448,10 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     )
                     
                     # Check if the combination of existing + new attributes matches another template
-                    current_template_attrs = set(existing_ids)
-                    current_template_attrs.update(new_ids)
+                    # current_template_attrs = set(existing_ids)
+                    # current_template_attrs.update(new_ids)
                     
-                    if current_template_attrs == other_ids:
+                    if new_ids == other_ids:
                         raise serializers.ValidationError(
                             f"Another object template '{other_template.je_name}' already has the same attribute configuration"
                         )
@@ -451,16 +476,19 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     
                     # Set attribute_name based on debit/credit values if they reference attribute IDs
                     attribute_name = None
+                    attribute_comment = None
                     if debit and str(debit).isdigit():
                         try:
                             attr = DimAicInputFileAttributes.objects.get(id=int(debit))
                             attribute_name = attr.name
+                            attribute_comment = attr.comments
                         except DimAicInputFileAttributes.DoesNotExist:
                             pass
                     elif credit and str(credit).isdigit():
                         try:
                             attr = DimAicInputFileAttributes.objects.get(id=int(credit))
                             attribute_name = attr.name
+                            attribute_comment = attr.comments
                         except DimAicInputFileAttributes.DoesNotExist:
                             pass
                     
@@ -469,7 +497,8 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                         'gl_account': gl_account,
                         'debit': debit,
                         'credit': credit,
-                        'attribute_name': attribute_name
+                        'attribute_name': attribute_name,
+                        'attribute_comment': attribute_comment
                     })
                 else:
                     raise serializers.ValidationError(f"Attribute at index {i}: {non_object_serializer.errors}")
@@ -500,7 +529,8 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     debit=attr_data['debit'],
                     credit=attr_data['credit'],
                     attribute_name=attr_data['attribute_name'],
-                    input_user=user
+                    input_user=user,
+                    attribute_comment=attr_data['attribute_comment']
                 )
             
             created_attributes.append(template_attribute)
