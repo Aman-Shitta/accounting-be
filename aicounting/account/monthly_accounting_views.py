@@ -325,6 +325,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 input_documents.append({
                     "id": document.id,
                     "doc_id": str(document.doc_id),
+                    "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     "doc_type": document.doc_type,
                     "status": document.upload_status,
                     "upload_status": document.get_upload_status_display(),
@@ -587,6 +588,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 
             data = {
                 "doc_uuid": str(document.doc_id),
+                "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None, 
                 "id": document.id,
                 "doc_type": document.doc_type,
                 "status": document.upload_status,
@@ -659,6 +661,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 "Line items retrieved successfully.", 
                 data={
                     'document_id': document.id,
+                    "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     'doc_uuid': str(document.doc_id),
                     'doc_type': document.doc_type,
                     'total_line_items': items.count(),

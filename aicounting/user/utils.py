@@ -348,7 +348,6 @@ class OpenAIAssistant(OpeAIClient):
                     
             if created or not assistant_config.assistant_id:
                 self.load_response_schema()
-                breakpoint()
                 assistant_config.response_schema = self.response_schema
                 # Create OpenAI assistant
                 assistant = self.create_assistant(
