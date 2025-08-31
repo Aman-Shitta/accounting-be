@@ -335,12 +335,11 @@ class InputFileDetailView(generics.GenericAPIView):
                     "Input file not found or access denied."
                 )
             
-            file_name = input_file.file_name
             input_file.delete()
             
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Input file '{file_name}' deleted successfully."
+                f"Input file deleted successfully."
             )
         
         except Exception as e:

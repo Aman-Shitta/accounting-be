@@ -116,12 +116,21 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
         if input_file.file_type in ['bank_statement', 'credit_card']:
             # Validate that the offset GL account exists
             from account.models.dim_aic_gl_acct_model import DimAICGLAcct
+            
+            # Build filter based on user type (customer or accountant)
+            gl_account_filter = {
+                'id': offset_gl_account_id,
+                'client_id': client,
+            }
+            
+            # Determine if user is customer or accountant
+            if hasattr(request_user, 'customer_profile'):
+                gl_account_filter['customer'] = request_user.customer_profile
+            elif hasattr(request_user, 'accountant_profile'):
+                gl_account_filter['customer'] = request_user.accountant_profile.customer
+            
             try:
-                offset_gl_account = DimAICGLAcct.objects.get(
-                    id=offset_gl_account_id,
-                    customer__system_user=request_user,
-                    client_id=client,   
-                )
+                offset_gl_account = DimAICGLAcct.objects.get(**gl_account_filter)
             except DimAICGLAcct.DoesNotExist:
                 raise serializers.ValidationError({
                     'offset_gl_account': 'Invalid offset GL account ID.'
