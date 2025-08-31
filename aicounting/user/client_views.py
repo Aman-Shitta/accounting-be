@@ -635,7 +635,7 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
 
     def get_object(self, client_id):
         """Get client instance for the authenticated customer or accountant"""
-        customer = self.request.user.customer_profile
+        customer = getattr(self.request.user, 'customer_profile', None)
         accountant = getattr(self.request.user, 'accountant_profile', None)
 
         if customer:
