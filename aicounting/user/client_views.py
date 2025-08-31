@@ -15,7 +15,7 @@ from .client_serializers import (
 )
 
 from authentication import authenticate
-from authentication.permissions import IsCustomer
+from authentication.permissions import IsCustomer, IsCustomerOrAccountant
 from aicounting.response import create_api_response
 
 from .utils import OpenAIAssistant
@@ -124,15 +124,19 @@ class ClientCreateView(generics.GenericAPIView):
             )
 
 class ClientListView(generics.GenericAPIView):
-    """List all clients for the authenticated customer"""
+    """List all clients for the authenticated customer or accountant"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = ClientRetrieveSerializer
 
     def get_queryset(self):
-        customer = self.request.user.customer_profile
+        customer = getattr(self.request.user, 'customer_profile', None)
+        accountant = getattr(self.request.user, 'accountant_profile', None)
         if customer:
             return DimAICClient.objects.filter(customer=customer)
+        elif accountant:
+            # Adjust this to your accountant-client relationship
+            return DimAICClient.objects.filter(assigned_accountants=accountant)
         return DimAICClient.objects.none()
 
     def get(self, request, *args, **kwargs):
@@ -151,13 +155,18 @@ class ClientListView(generics.GenericAPIView):
 class ClientRetrieveView(generics.GenericAPIView):
     """Retrieve a specific client by ID"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = ClientRetrieveSerializer
 
     def get_queryset(self, id):
-        customer = self.request.user.customer_profile
+        customer = getattr(self.request.user, 'customer_profile', None)
+        accountant = getattr(self.request.user, 'accountant_profile', None)
+        
         if customer:
             return DimAICClient.objects.filter(customer=customer, id=id)
+        elif accountant:
+            # Return clients assigned to this accountant
+            return DimAICClient.objects.filter(assigned_accountants=accountant, id=id)
         return DimAICClient.objects.none()
 
     def get(self, request, *args, **kwargs):
@@ -621,15 +630,23 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
 class ClientAssignedAccountantsView(generics.GenericAPIView):
     """Retrieve all accountants assigned to a specific client"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = DimAICAccountantSerializer
 
     def get_object(self, client_id):
-        """Get client instance for the authenticated customer"""
+        """Get client instance for the authenticated customer or accountant"""
         customer = self.request.user.customer_profile
+        accountant = getattr(self.request.user, 'accountant_profile', None)
+
         if customer:
             try:
                 return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        elif accountant:
+            try:
+                # Return client assigned to this accountant
+                return DimAICClient.objects.get(assigned_accountants=accountant, id=client_id)
             except DimAICClient.DoesNotExist:
                 return None
         return None
