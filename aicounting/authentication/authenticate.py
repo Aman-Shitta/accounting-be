@@ -11,7 +11,7 @@ from django.utils.translation import gettext as _
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 
-from user.models import DimAICCustomer
+from user.models import DimAICCustomer, DimAICAccountant
 User = get_user_model()
 
 
@@ -81,8 +81,6 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             logger.debug("Fetching public key for JWT verification")
             public_key, audience = msal_conf.get_public_key(jwt_token)
             
-            # Remove breakpoint for production
-            # breakpoint()
             # print(f"Public key: {public_key}")
             # print(f"Expected audience: {audience}")
             logger.debug(f"Expected audience: {audience}")
@@ -145,12 +143,13 @@ class JSONWebTokenAuthentication(BaseAuthentication):
 
             
             azure_id = decoded_token.get("oid")
-
             cust_id = DimAICCustomer.objects.filter(azure_id=azure_id).first()
 
             if not cust_id:
-                logger.warning(f"Unauthorized customer")
-                raise CustomAuthenticationFailed('error', _('Unauthorized Customer. Please contact admin.'))
+                accountant_id = DimAICAccountant.objects.filter(azure_id=azure_id)
+                if not accountant_id:
+                    logger.warning(f"Unauthorized customer")
+                    raise CustomAuthenticationFailed('error', _('Unauthorized User. Please contact admin.'))
 
             UserModel = get_user_model()    
             django_user, created = UserModel.objects.get_or_create(
