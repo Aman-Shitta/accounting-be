@@ -172,7 +172,6 @@ class AdminDashboardView(GenericAPIView):
             'statistics': statistics_data,
             'recent_customers': recent_customers_queryset
         }
-        # breakpoint()
         dashboard_serializer = AdminDashboardSerializer(dashboard_data)
 
         return create_api_response(

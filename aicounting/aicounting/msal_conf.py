@@ -16,6 +16,9 @@ class MsalConf:
     TENANT_ID = os.environ.get('AZURE_TENANT_ID')
     CLIENT_ID = os.environ.get('AZURE_CLIENT_ID')
     CLIENT_SECRET = os.environ.get('AZURE_CLIENT_SECRET')
+    REDIRECT_URI = os.environ.get('AUTH_REDIRECT_URI')
+
+    APP_REDIRECT_URI = os.environ.get('APP_REDIRECT_URI')
 
     AUTHORITY= f"https://login.microsoftonline.com/{TENANT_ID}"
     APP_URI= f"https://aicounting.onmicrosoft.com/{CLIENT_ID}"
@@ -31,12 +34,9 @@ class MsalConf:
     )
 
     GROUPS = {
-            'customer': 'e1c94e8c-0f95-4594-8961-8ca9a0d44dc6',
-            'accountant':'dbee5e23-aaed-4208-a261-37386dea6821'
+            'customer': os.environ.get('CUSTOMER_GROUP_ID'),
+            'accountant':os.environ.get('ACCOUNTANT_GROUP_ID'),
         }
-    
-    REDIRECT_URI = "https://firm-worm-evolved.ngrok-free.app/api/v1/auth/callback"
-    # REDIRECT_URI = "https://lively-renewing-monarch.ngrok-free.app/calback"
         
     def get_public_key(self, jwt_token):
         public_key = ""
@@ -110,7 +110,7 @@ class MsalGraphConf(MsalConf):
         invitation.invited_user_display_name = f"{first_name} {last_name}"
         invitation.invited_user_type = "Guest"
         # Use https://myapps.microsoft.com as default - Microsoft Graph doesn't accept localhost
-        invitation.invite_redirect_url = redirect_url or "https://myapps.microsoft.com"
+        invitation.invite_redirect_url = redirect_url or self.APP_REDIRECT_URI
         invitation.send_invitation_message = True
         invited_user_message_info = InvitedUserMessageInfo()
         invited_user_message_info.message_language = "en-US"
@@ -227,9 +227,6 @@ class MsalGraphConf(MsalConf):
         Send invitation without group assignment to test basic invitation functionality.
         """
         try:
-            # Use https://myapps.microsoft.com as default redirect URL
-            if not redirect_url:
-                redirect_url = "https://myapps.microsoft.com"
             
             invitation = self.create_invitation(email, first_name, last_name, redirect_url)
             response = self.send_invitation(invitation)
