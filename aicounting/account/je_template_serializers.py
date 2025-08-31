@@ -93,9 +93,9 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
         
         # Additional validation for bank_statement and credit_card files
         if input_file and input_file.file_type in ['bank_statement', 'credit_card']:
-            if not is_object:
+            if is_object:
                 raise serializers.ValidationError(
-                    f"Templates with {input_file.file_type} input files can only be configured as object templates (is_object=True)"
+                    f"Templates with {input_file.file_type} input files can only be configured as object templates (is_object=False)"
                 )
         
         return data
