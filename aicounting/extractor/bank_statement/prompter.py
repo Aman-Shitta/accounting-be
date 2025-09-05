@@ -22,7 +22,7 @@ class Configuration:
 
     def _get_default_base_prompt(self) -> str:
 
-        if self.doc_type == ["bank_statement", "credit_card"]:
+        if self.doc_type in ["bank_statement", "credit_card"]:
             return """
             You are an expert financial document parsing agent.
 
@@ -48,7 +48,7 @@ class Configuration:
             - Normalize all dates to MM/DD/YYYY format (e.g., "30 Sep 2024" → "09/30/2024")
             - Remove currency symbols and commas from amounts (e.g., "₹1,234.56" → "1234.56")
             - If a field is not found, return `null` or leave it as an empty string.
-            - The amounts for curreency should be absolute e.g (-123 -> 123, +123 -> 123)
+            - The amounts for currency should be absolute e.g (-123 -> 123, +123 -> 123)
 
             Focus strictly on daily account activity that reflects money movement.
             Skip everything else that is not a transactional statement.

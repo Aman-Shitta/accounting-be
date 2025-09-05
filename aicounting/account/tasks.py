@@ -71,9 +71,6 @@ def process_uploaded_document(
         
         logger.info(f"Document {doc.doc_id} processed successfully: {result['processing_stats']}")
 
-        # Call GL classification pipeline asynchronously
-        classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
-
 
     except Exception as e:
         if doc:
@@ -96,7 +93,6 @@ def classify_monthly_document_gl_accounts(document_id: str):
         document_id: UUID string of the MonthlyAccountingDocument
     """
     from .models import DimAICGLAcct
-    
     try:
         # Get the document
         doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
@@ -113,8 +109,8 @@ def classify_monthly_document_gl_accounts(document_id: str):
                 if attr_snapshot.gl_account:
                     # Map attribute name to GL account
                     gl_mapping[attr_snapshot.name] = attr_snapshot.gl_account
-                    if attr_snapshot.offset_gl_account:
-                        offset_mapping[attr_snapshot.name] = attr_snapshot.offset_gl_account
+                if attr_snapshot.offset_gl_account:
+                    offset_mapping[attr_snapshot.name] = attr_snapshot.offset_gl_account
         
         # Actual GL classification logic
         try:
@@ -125,11 +121,12 @@ def classify_monthly_document_gl_accounts(document_id: str):
             classified_pages_data = {}
             if assistant_id:
                 try:
-                    classified_pages_data = classify_document(
-                        doc_id=document_id,
+
+                    classifier_assistant = GLClassifier(
                         assistant_id=assistant_id,
                         vector_store_ids=vector_store_ids
-                    ) or {}
+                    )
+                    classified_pages_data = classifier_assistant.classify(document_id) or {}
                 except Exception as e:
                     logger.warning(f"Assistant classification call failed for document {document_id}: {e}")
             
@@ -196,7 +193,9 @@ def classify_monthly_document_gl_accounts(document_id: str):
                 logger.info(f"No line items classified for document {document_id}")
 
             # Save document (optionally could track a classification timestamp/flag)
+            doc.upload_status = "classified"
             doc.save()
+
             logger.info(f"GL classification completed for document {document_id}")
 
         except Exception as e:
@@ -208,23 +207,3 @@ def classify_monthly_document_gl_accounts(document_id: str):
     except Exception as e:
         logger.error(f"Error in GL classification for document {document_id}: {str(e)}")
         raise
-
-
-# @shared_task
-def classify_document(doc_id: str, assistant_id: str, vector_store_ids: list):
-
-    try:
-        classifier_assistant = GLClassifier(
-            api_key=settings.OPENAI_API_KEY, 
-            assistant_id=assistant_id,
-            vector_store_ids=vector_store_ids
-        )
-        classified_data = classifier_assistant.classify(doc_id)
-        return classified_data
-
-    except Exception as e:
-        print("Error: ",  {str(e)})
-        import os, sys
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)

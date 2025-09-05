@@ -1,10 +1,11 @@
 from openai import OpenAI
+from django.conf import settings
 
 class OpeAIClient:
     """Base OpenAI Client."""
-    def __init__(self, api_key, project_id="proj_gg8QzOxMs0eazoHjcjWugxyM", model="gpt-4o"):
+    def __init__(self, project_id="", model="gpt-4o"):
         self.client = OpenAI(
-            api_key=api_key, 
-            project=project_id
+            api_key=settings.OPENAI_API_KEY,
+            project=settings.OPENAI_PROJECT_ID
         )
         self.model = model

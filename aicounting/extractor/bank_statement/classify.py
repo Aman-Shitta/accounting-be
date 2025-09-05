@@ -107,8 +107,8 @@ class OpeAIThread(OpeAIClient):
 
 
 class GLClassifier(OpeAIThread):
-    def __init__(self, api_key, assistant_id, vector_store_ids=None):
-        super().__init__(api_key)
+    def __init__(self, assistant_id, vector_store_ids=None):
+        super().__init__()
         self.assistant_id = assistant_id
         self.vector_store_ids = vector_store_ids or []
         self.thread_id = None
@@ -229,7 +229,7 @@ class GLClassifier(OpeAIThread):
                 page_results = self.send_to_thread(payload)
 
                 print(f"[DEBUG] Page results for page {page_num}: {page_results}")
-
+                classified_data = []
                 if (
                     page_results
                     and isinstance(page_results, list)
