@@ -328,7 +328,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     "doc_type": document.doc_type,
                     "status": document.upload_status,
-                    "upload_status": document.get_upload_status_display(),
                     "file_url": document.file_url,
                     "created_at": document.created_at.isoformat(),
                     "updated_at": document.updated_at.isoformat()
@@ -336,7 +335,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
 
             # Get JE template snapshots (basic info only)
             je_template_snapshots = monthly_accounting.je_template_snapshots.select_related(
-                'original_template', 'je_type'
+                'original_template', 'input_file'
             )
             
             je_templates = []
@@ -344,7 +343,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 je_templates.append({
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
-                    "je_type": template_snapshot.je_type.je_type if template_snapshot.je_type else None,
+                    "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None
                 })

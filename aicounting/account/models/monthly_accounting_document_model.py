@@ -20,7 +20,7 @@ class MonthlyAccountingDocument(models.Model):
         ('extracting', 'Extracting'),
         ('extracted', 'Extracted'),
         ('classifying', 'Classifying'),
-        ('Classified', 'Classified'),
+        ('classified', 'Classified'),
         ('verified', 'Verified'),
         ('completed', 'Completed'),
         ('failed', 'Failed'),
