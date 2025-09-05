@@ -229,7 +229,7 @@ class GLClassifier(OpeAIThread):
                 page_results = self.send_to_thread(payload)
 
                 print(f"[DEBUG] Page results for page {page_num}: {page_results}")
-
+                classified_data = []
                 if (
                     page_results
                     and isinstance(page_results, list)
