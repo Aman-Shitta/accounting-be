@@ -17,7 +17,11 @@ class MonthlyAccountingDocument(models.Model):
     UPLOAD_STATUS_CHOICES = [
         ('pending', 'Pending Upload'),
         ('uploaded', 'Uploaded'),
-        ('processing', 'Processing'),
+        ('extracting', 'Extracting'),
+        ('extracted', 'Extracted'),
+        ('classifying', 'Classifying'),
+        ('Classified', 'Classified'),
+        ('verified', 'Verified'),
         ('completed', 'Completed'),
         ('failed', 'Failed'),
     ]

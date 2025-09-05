@@ -308,7 +308,7 @@ class DocumentProcessor:
         self.prompt = prepare_prompt(config)
         self.doc_config = config
         self.api_key = settings.GEMINI_API_KEY
-        self.model = "gemini-2.0-flash"
+        self.model = "gemini-2.5-flash"
         self.page_data = []
         self.control_totals = {}
 

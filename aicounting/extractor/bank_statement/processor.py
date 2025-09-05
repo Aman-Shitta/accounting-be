@@ -52,11 +52,11 @@ class MonthlyAccountingDocumentProcessor:
             mime_type: MIME type of the file
             
         Returns:
-            Dict containing processing results and statistics
+            Dict containing extracting results and statistics
         """
         try:
             # Update document status
-            self.monthly_document.upload_status = "processing"
+            self.monthly_document.upload_status = "extracting"
             self.monthly_document.save()
             
             # Process using base processor
@@ -74,8 +74,7 @@ class MonthlyAccountingDocumentProcessor:
             # Process and save extracted data
             processing_stats = self._save_extracted_data(page_data)
             
-            # Update document status
-            self.monthly_document.upload_status = "completed"
+            self.monthly_document.upload_status = "extracted"
             self.monthly_document.save()
             
             self.logger.info(f"Document {self.monthly_document.doc_id} processed successfully")

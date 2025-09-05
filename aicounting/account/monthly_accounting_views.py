@@ -11,7 +11,7 @@ from user.models import DimAICClient
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
 from aicounting.response import create_api_response
-from rest_framework.parsers import JSONParser
+from .models import MonthlyAccountingDocument
 
 import logging
 logger = logging.getLogger(__name__)
@@ -517,9 +517,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     status.HTTP_400_BAD_REQUEST,
                     f"Invalid {var_name}."
                 )
-
         try:
-            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
 
             # Authorize access similarly to other views
             user = request.user
@@ -580,9 +578,17 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     ],
                     excluded_fields=[]
                 )
-                # Trigger document processing task
-                from .tasks import process_uploaded_document
+
+                # Trigger document processing tasks
+                from .tasks import process_uploaded_document, classify_monthly_document_gl_accounts
                 process_uploaded_document.delay(str(document.id), config_params)
+
+                
+                # Update document status
+                document.upload_status = "classifying"
+                document.save()
+
+                classify_monthly_document_gl_accounts.delay(str(document.doc_id))
             else:
                 logger.info(f"Document type {document.doc_type} does not require processing.")
 
@@ -603,6 +609,70 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             logger.error(f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
 
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
+
+
+class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+
+    def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
+        """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
+        # Validate integers
+        for var_name, value in [("client ID", client_id), ("accounting ID", accounting_id), ("document ID", document_id)]:
+            try:
+                int(value)
+            except ValueError:
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Invalid {var_name}."
+                )
+            # Authorize access similarly to other views
+            user = request.user
+            if hasattr(user, 'customer_profile'):
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=user.customer_profile
+                )
+            elif hasattr(user, 'accountant_profile'):
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=user.accountant_profile.customer,
+                    client__assigned_accountants=user.accountant_profile
+                )
+            else:
+                return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+
+            # Fetch the document by PK (document_id) and ensure it belongs to the session
+            try:
+                document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
+                    id=document_id,
+                    monthly_accounting=monthly_accounting
+                )
+            except MonthlyAccountingDocument.DoesNotExist:
+                return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
+
+        if document.upload_status != 'completed':
+            return create_api_response(
+                message='Status can only be changed from completed to verified.',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.data.get('status') != "verified":
+            return create_api_response(
+                message='Status not provided.',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        document.upload_status = 'verified'
+        document.save(update_fields=['upload_status'])
+        return create_api_response(
+            message='Document verified. Please validate Journal Entries. ',
+            status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
