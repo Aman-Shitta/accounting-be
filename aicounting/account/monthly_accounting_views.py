@@ -580,15 +580,9 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 )
 
                 # Trigger document processing tasks
-                from .tasks import process_uploaded_document, classify_monthly_document_gl_accounts
+                from .tasks import process_uploaded_document
                 process_uploaded_document.delay(str(document.id), config_params)
 
-                
-                # Update document status
-                document.upload_status = "classifying"
-                document.save()
-
-                classify_monthly_document_gl_accounts.delay(str(document.doc_id))
             else:
                 logger.info(f"Document type {document.doc_type} does not require processing.")
 

@@ -60,6 +60,11 @@ def process_uploaded_document(
         processor = MonthlyAccountingDocumentProcessor(doc, config)
         result = processor.process_document(pdf_bytes)
 
+        # Update document status
+        doc.upload_status = "classifying"
+        doc.save()
+
+        classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
         
         # Save JSON output to Azure storage for reference
         import json
