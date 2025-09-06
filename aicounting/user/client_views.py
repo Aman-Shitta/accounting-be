@@ -30,14 +30,9 @@ class ClientCreateView(generics.GenericAPIView):
     Supports nested creation of contacts and documents in a single request.
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = ClientCreateUpdateSerializer
     queryset = DimAICClient.objects.all()
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context.update({"request": self.request})
-        return context
 
     
     def _parse_contacts_data(self, data):
@@ -80,7 +75,7 @@ class ClientCreateView(generics.GenericAPIView):
             with transaction.atomic():
                 parsed_data = self._parse_contacts_data(request.data)
 
-                serializer = self.get_serializer(data=parsed_data)
+                serializer = self.get_serializer(data=parsed_data, context={"request": self.request})
                 if not serializer.is_valid():
                     logger.error(f"Client creation validation failed: {serializer.errors}")
                     return create_api_response(
@@ -195,22 +190,20 @@ class ClientRetrieveView(generics.GenericAPIView):
 class ClientUpdateView(generics.GenericAPIView):
     """Update client information with support for contacts and documents"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = ClientCreateUpdateSerializer
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context.update({"request": self.request})
-        return context
-
     def get_object(self, client_id):
-        customer = self.request.user.customer_profile
-        if customer:
-            try:
-                return DimAICClient.objects.get(customer=customer, id=client_id)
-            except DimAICClient.DoesNotExist:
-                logger.error("Client not found for update.")
-                return None
+        customer = getattr(self.request.user, 'customer_profile', None)
+        accountant = getattr(self.request.user, 'accountant_profile', None)
+
+        if not customer:
+            customer = accountant.customer
+
+        try:
+            return DimAICClient.objects.get(customer=customer, id=client_id)
+        except DimAICClient.DoesNotExist:
+            logger.error("Client not found for update.")
         return None
 
     def _parse_contacts_data(self, data):
@@ -281,7 +274,7 @@ class ClientUpdateView(generics.GenericAPIView):
                     for key, file in request.FILES.items():
                         serializer_data[key] = file
                 
-                serializer = self.get_serializer(instance, data=serializer_data, partial=True)
+                serializer = self.get_serializer(instance, data=serializer_data, partial=True, context={"request": self.request})
                 
                 if not serializer.is_valid():
                     return create_api_response(
