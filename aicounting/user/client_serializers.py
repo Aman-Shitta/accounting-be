@@ -108,9 +108,13 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
         request_user = self.context['request'].user
         customer = getattr(request_user, 'customer_profile', None)
-
+        accountant = None
         if not customer:
-            raise serializers.ValidationError("User must have a customer profile.")
+            accountant = getattr(request_user, 'accountant_profile', None)
+            if accountant and accountant.customer:
+                customer = accountant.customer
+            else:
+                raise serializers.ValidationError("User must have a customer profile.")
 
         created_documents = []
         doc_process_results = {}
@@ -124,6 +128,9 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     input_user=request_user,
                     **validated_data
                 )
+
+                if accountant:
+                    client.assigned_accountants.add(accountant)
 
                 self.__validate_document__(documents, client, is_update=False)
 

@@ -21,7 +21,7 @@ class MsalConf:
     APP_REDIRECT_URI = os.environ.get('APP_REDIRECT_URI')
 
     AUTHORITY= f"https://login.microsoftonline.com/{TENANT_ID}"
-    APP_URI= f"https://aicounting.onmicrosoft.com/{CLIENT_ID}"
+    APP_URI= f""
     
     JWKS_URI= f"{AUTHORITY}/discovery/v2.0/keys"
 
@@ -58,31 +58,13 @@ class MsalConf:
             # Handle the case where a matching key was not found
             raise ValueError("Matching key not found in JWKS")
         
-        return public_key, self.APP_URI
+        return public_key
     
     def refresh_access_token(self, refresh_token):
         """
         This method is used to refresh an access token using a refresh token
         """
-
-        try:
-            # Acquire a new token using the refresh token
-            response = self.MSAL_APP.acquire_token_by_refresh_token(
-                refresh_token=refresh_token,
-                scopes=[f"{self.APP_URI}/user_impersonation"]
-            )
-
-            # Check if the response contains a new access token
-            if "access_token" in response:
-                access_token = response["access_token"]
-                return access_token
-            else:
-                return None
-
-        except Exception as e:
-            # Handle exceptions and errors
-            print(f"An error occurred while refreshing access token: {str(e)}")
-            return None
+        pass
 
 class MsalGraphConf(MsalConf):
     """

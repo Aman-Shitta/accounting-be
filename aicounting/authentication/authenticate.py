@@ -76,13 +76,13 @@ class JSONWebTokenAuthentication(BaseAuthentication):
                 
             except Exception as debug_error:
                 logger.warning(f"Could not inspect token: {debug_error}")
-
             # Get the public key and audience for verification
             logger.debug("Fetching public key for JWT verification")
-            public_key, audience = msal_conf.get_public_key(jwt_token)
+            public_key = msal_conf.get_public_key(jwt_token)
             
             # print(f"Public key: {public_key}")
-            # print(f"Expected audience: {audience}")
+            # print(f"Expected audience: {audience}"
+            audience = [msal_conf.CLIENT_ID]
             logger.debug(f"Expected audience: {audience}")
             
             # Try to decode with proper audience validation
@@ -92,7 +92,7 @@ class JSONWebTokenAuthentication(BaseAuthentication):
                     public_key,
                     algorithms=['RS256'],
                     audience=audience,
-                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"  # Add issuer validation
+                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"
                 )
                 logger.debug("JWT successfully decoded with full validation")
             except jwt.InvalidAudienceError as aud_error:
