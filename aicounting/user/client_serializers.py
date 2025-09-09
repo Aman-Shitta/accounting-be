@@ -97,14 +97,22 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
 
     def create(self, validated_data):
-        
         contacts_data = validated_data.pop('contacts', [])
-
         documents = {
             'chart_of_account': validated_data.pop('chart_of_account', None),
             'gl_history': validated_data.pop('gl_history', None),
             'vendor_list': validated_data.pop('vendor_list', None)
         }
+
+        # Validate COA before creating client
+        chart_of_account = documents.get('chart_of_account')
+        if not chart_of_account:
+            raise serializers.ValidationError({"chart_of_account": ["Chart Of Accounts file is required."]})
+        # Validate file type for COA
+        import os
+        ext = os.path.splitext(chart_of_account.name)[1].lower()
+        if ext not in ['.csv', '.xls', '.xlsx']:
+            raise serializers.ValidationError({"chart_of_account": ["Chart Of Accounts file must be CSV or Excel format (.csv, .xls, .xlsx)"]})
 
         request_user = self.context['request'].user
         customer = getattr(request_user, 'customer_profile', None)
@@ -121,6 +129,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         client = None
         # Use atomic transaction to ensure all or nothing
         with transaction.atomic():
+            client = None
             try:
                 # Create the client
                 client = DimAICClient.objects.create(
@@ -136,7 +145,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
                 # Create contacts
                 for contact_data in contacts_data:
-                    # Try creating the contact with explicit field assignment
                     contact = DimAICContact(
                         client_id=client,
                         contact_name=contact_data['contact_name'],
@@ -154,41 +162,31 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 file=file_obj,
                                 uploaded_by=request_user
                             )
-                                        
-                            # Create the document record
                             created_documents.append(document)
-                            
-                            # Process the document
-                            # Initialize the document processor
                             processor = ClientDocumentProcessor(
                                 customer=client.customer, 
                                 uploaded_by=request_user,
                                 client=client
                             )
-
-                            # For Azure storage, we need to download the file content
                             from django.core.files.storage import default_storage
                             with default_storage.open(document.file.name, 'rb') as azure_file:
-                                # Create a temporary file for processing
                                 import tempfile
                                 import os
-                                
                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
                                     temp_file.write(azure_file.read())
                                     temp_file_path = temp_file.name
-                                
                                 try:
                                     result = processor.process_document(temp_file_path, doc_type)
                                 except Exception as e:
-                                    raise e
-                                finally:
-                                    # Clean up temporary file
+                                    # Clean up temp file
                                     if os.path.exists(temp_file_path):
                                         os.remove(temp_file_path)
-
-                            # Check if processing failed
+                                    raise e
+                                finally:
+                                    if os.path.exists(temp_file_path):
+                                        os.remove(temp_file_path)
                             if not result['success']:
-                                # Processing failed - cleanup files and raise error to rollback transaction
+                                # Clean up uploaded files
                                 from django.core.files.storage import default_storage
                                 for doc in created_documents:
                                     if doc.file:
@@ -197,37 +195,56 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                             logger.info(f"Cleaned up file from Azure: {doc.file.name}")
                                         except Exception as cleanup_error:
                                             logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
-                                
-                                raise Exception(f"Processing failed for {doc_type}: {result.get('error', 'Unknown error')}")
-                            
+                                # Delete client record
+                                if client:
+                                    client.delete()
+                                raise serializers.ValidationError({doc_type: result.get('error', 'Unknown error')})
                             doc_process_results[doc_type] = {
                                 'document_id': document.id,
                                 'processing_result': result,
                                 'success': result['success']
                             }
-                            
-                            # Log processing results
                             logger.info(f"Successfully processed {doc_type} document. "
                                       f"Processed {result['processed_count']} records.")
                             if result['errors']:
                                 logger.warning(f"Processing completed with {len(result['errors'])} errors: {result['errors']}")
-                                
+                        except serializers.ValidationError:
+                            raise
                         except Exception as e:
-                            # Processing error - cleanup files and raise error to rollback transaction
                             logger.error(f"Error processing {doc_type} document: {str(e)}")
-                            import os, sys
-                            exc_type, exc_obj, exc_tb = sys.exc_info()
-                            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                            print(exc_type, fname, exc_tb.tb_lineno)
-                            raise e
-
-
+                            # Clean up uploaded files
+                            from django.core.files.storage import default_storage
+                            for doc in created_documents:
+                                if doc.file:
+                                    try:
+                                        default_storage.delete(doc.file.name)
+                                        logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                    except Exception as cleanup_error:
+                                        logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
+                            # Delete client record
+                            if client:
+                                client.delete()
+                            raise serializers.ValidationError({doc_type: str(e)})
+            except serializers.ValidationError:
+                raise
             except Exception as e:
                 import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
-
+                # Clean up uploaded files
+                from django.core.files.storage import default_storage
+                for doc in created_documents:
+                    if doc.file:
+                        try:
+                            default_storage.delete(doc.file.name)
+                            logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                        except Exception as cleanup_error:
+                            logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
+                # Delete client record
+                if client:
+                    client.delete()
+                raise serializers.ValidationError({"non_field_errors": [str(e)]})
         return client
 
     def update(self, instance, validated_data):
