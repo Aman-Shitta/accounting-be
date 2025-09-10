@@ -629,14 +629,16 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
             filename = "je_template.csv"
             # Prepare CSV content
             csv_content = []
-            csv_content.append(['gl_account', 'debit', 'credit'])
+            csv_content.append(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
             for row in template_attributes:
                 attribute_gl = row.get('gl_account') or dict()
                 
                 csv_content.append([
-                    f"{attribute_gl.get('account_number', '')} - {attribute_gl.get('account_name', '')}",
-                    row.get('debit', ''),
-                    row.get('credit', '')
+                    attribute_gl.get('account_number', ''),
+                    attribute_gl.get('account_name', ''),
+                    row.get('description', ''),
+                    row.get('debit', None),
+                    row.get('credit', None)
                 ])
             # Write CSV to memory
             csv_buffer = []

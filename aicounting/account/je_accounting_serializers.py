@@ -54,6 +54,8 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 attributes_data.append({
                     "gl_account": item.gl_account,
                     "offset_gl_account": item.offset_gl_account,
+                    "description": item.description,
+                    "date": item.date,
                     "debit": item.debit_amount,
                     "credit": item.credit_amount,
                 })
