@@ -340,12 +340,14 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             
             je_templates = []
             for template_snapshot in je_template_snapshots:
+
                 je_templates.append({
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
                     "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
-                    "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None
+                    "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
+                    "is_ready": all(status == 'verified' for status in template_snapshot.input_file.extraction_documents.all().values_list('upload_status', flat=True))
                 })
 
             # Build the response data
@@ -648,9 +650,9 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
             except MonthlyAccountingDocument.DoesNotExist:
                 return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
 
-        if document.upload_status != 'completed':
+        if document.upload_status != 'classified':
             return create_api_response(
-                message='Status can only be changed from completed to verified.',
+                message='Status can only be changed from classified to verified.',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
@@ -664,7 +666,7 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
         document.save(update_fields=['upload_status'])
         return create_api_response(
             message='Document verified. Please validate Journal Entries. ',
-            status_code=status.HTTP_400_BAD_REQUEST
+            status_code=status.HTTP_200_OK
             )
 
 
@@ -730,6 +732,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                     'total_line_items': items.count(),
                     'document': document.file_url if document.file else None,
                     'line_items': serializer.data,
+                    'status': document.upload_status,
                     'control_items': document.control_item
                 }
             )
