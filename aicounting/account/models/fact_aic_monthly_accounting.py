@@ -349,7 +349,7 @@ class FactAICMonthlyAccounting(models.Model):
                 monthly_accounting=self,
                 input_file_snapshot=snapshot,
                 doc_type=snapshot.file_type if hasattr(snapshot, 'file_type') else 'bank_statement',
-                upload_status='pending'
+                status='pending'
             )
             created_documents.append(document)
         

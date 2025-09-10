@@ -62,11 +62,11 @@ class MonthlyAccountingDocument(models.Model):
         help_text="Type of document (same as input file type)"
     )
     
-    upload_status = models.CharField(
+    status = models.CharField(
         max_length=20,
         choices=UPLOAD_STATUS_CHOICES,
         default='pending',
-        verbose_name="Upload Status"
+        verbose_name="Document Status"
     )
     
     file = models.FileField(
@@ -112,7 +112,7 @@ class MonthlyAccountingDocument(models.Model):
         unique_together = ('monthly_accounting', 'input_file_snapshot')
     
     def __str__(self):
-        return f"Document {self.doc_id} - {self.get_doc_type_display()} ({self.upload_status})"
+        return f"Document {self.doc_id} - {self.get_doc_type_display()} ({self.status})"
     
     @property
     def file_url(self):
@@ -125,6 +125,6 @@ class MonthlyAccountingDocument(models.Model):
     
     def mark_as_uploaded(self, uploaded_by_user):
         """Mark document as uploaded and set the user"""
-        self.upload_status = 'uploaded'
+        self.status = 'uploaded'
         self.uploaded_by = uploaded_by_user
         self.save()

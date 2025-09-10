@@ -38,7 +38,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
             bank_document = bank_documents.first()
 
-            if bank_document.upload_status != 'verified':
+            if bank_document.status != 'verified':
                 raise ValidationError(
                     {'detail': 'Extracted data needs to be verified to get the template data.'}
                 )

@@ -38,7 +38,7 @@ def process_uploaded_document(
         doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
         if not doc:
             logger.error(f"Documentdoes not exist: {doc_id} invalid id")
-            doc.upload_status = "failed"
+            doc.status = "failed"
             doc.save()
             return 
 
@@ -48,7 +48,7 @@ def process_uploaded_document(
 
         if not file_path or not default_storage.exists(file_path):
             logger.error(f"File does not exist in Azure storage: {file_path}")
-            doc.upload_status = "failed"
+            doc.status = "failed"
             doc.save()
             return
 
@@ -61,7 +61,7 @@ def process_uploaded_document(
         result = processor.process_document(pdf_bytes)
 
         # Update document status
-        doc.upload_status = "classifying"
+        doc.status = "classifying"
         doc.save()
 
         classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
@@ -79,7 +79,7 @@ def process_uploaded_document(
 
     except Exception as e:
         if doc:
-            doc.upload_status = "failed"
+            doc.status = "failed"
             doc.save()
             logger.error(f"Error processing document {doc.doc_id}: {str(e)}")
             import os, sys
@@ -198,7 +198,7 @@ def classify_monthly_document_gl_accounts(document_id: str):
                 logger.info(f"No line items classified for document {document_id}")
 
             # Save document (optionally could track a classification timestamp/flag)
-            doc.upload_status = "classified"
+            doc.status = "classified"
             doc.save()
 
             logger.info(f"GL classification completed for document {document_id}")

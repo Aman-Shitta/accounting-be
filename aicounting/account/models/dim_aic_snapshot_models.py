@@ -4,6 +4,7 @@ from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
 
 User = get_user_model()
 
+from aicounting.model_file_upload_helper import upload_to_je_export_folder
 
 class FactAICInputFileSnapshot(models.Model):
     """
@@ -297,6 +298,14 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
         blank=True,
         verbose_name="Description",
         help_text="Additional description or comments about the Template"
+    )
+
+    je_export_file = models.FileField(
+        upload_to=upload_to_je_export_folder,
+        null=True,
+        blank=True,
+        verbose_name="JE Export File",
+        help_text="Exported JE template file (e.g., CSV)"
     )
     
     # Original timestamps
