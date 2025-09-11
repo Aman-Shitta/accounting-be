@@ -8,6 +8,8 @@ from account.serializers import DimAICGLAcctSerializer
 class BankTemplateDataSerializer(serializers.Serializer):
     gl_account = DimAICGLAcctSerializer(allow_null=True)
     offset_gl_account = DimAICGLAcctSerializer(allow_null=True)
+    description = serializers.CharField()
+    date = serializers.CharField()
     debit = serializers.CharField()
     credit = serializers.CharField()
 
