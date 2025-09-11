@@ -49,6 +49,14 @@ def upload_to_customer_client_folder(instance, filename):
     
     return f"customer_{customer_id}/{client_name}/client_documents/{timestamped_filename}"
 
+def upload_to_je_export_folder(instance, filename):
+
+    customer_id = instance.customer.id
+    client_name = instance.client.client_name
+    timestamped_filename = _add_timestamp_to_filename(filename)
+    
+    return f"customer_{customer_id}/{client_name}/je_exports/{timestamped_filename}"
+
 
 def upload_to_input_files_folder(instance, filename):
     """

@@ -327,7 +327,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "doc_id": str(document.doc_id),
                     "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     "doc_type": document.doc_type,
-                    "status": document.upload_status,
+                    "status": document.status,
                     "file_url": document.file_url,
                     "created_at": document.created_at.isoformat(),
                     "updated_at": document.updated_at.isoformat()
@@ -340,12 +340,15 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             
             je_templates = []
             for template_snapshot in je_template_snapshots:
+
                 je_templates.append({
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
                     "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
-                    "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None
+                    "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
+                    "is_ready": all(status == 'verified' for status in template_snapshot.input_file.extraction_documents.all().values_list('status', flat=True)),
+                    "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })
 
             # Build the response data
@@ -590,8 +593,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None, 
                 "id": document.id,
                 "doc_type": document.doc_type,
-                "status": document.upload_status,
-                "upload_status": document.get_upload_status_display(),
+                "status": document.status,
                 "file_url": document.file_url,
                 "created_at": document.created_at.isoformat(),
                 "updated_at": document.updated_at.isoformat()
@@ -607,6 +609,45 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+
+    @staticmethod
+    def generate_export_file(document):
+        if document.doc_type in ['bank_statement', 'credit_card']:
+            from .je_accounting_serializers import  JETemplateDataSerializer
+            from django.core.files.base import ContentFile
+
+            bank_template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
+            bank_template = bank_template_qs.first() if bank_template_qs.exists() else None
+            if not bank_template:
+                return create_api_response(
+                    message='No JE Template associated with this document.',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            template_attributes = JETemplateDataSerializer(bank_template).data['attributes']
+
+            filename = "je_template.csv"
+            # Prepare CSV content
+            csv_content = []
+            csv_content.append(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
+            for row in template_attributes:
+                attribute_gl = row.get('gl_account') or dict()
+                
+                csv_content.append([
+                    attribute_gl.get('account_number', ''),
+                    attribute_gl.get('account_name', ''),
+                    row.get('description', ''),
+                    row.get('debit', None),
+                    row.get('credit', None)
+                ])
+            # Write CSV to memory
+            csv_buffer = []
+            for csv_row in csv_content:
+                csv_buffer.append(','.join(map(str, csv_row)))
+            csv_data = '\n'.join(csv_buffer)
+
+            bank_template.je_export_file.save(filename, content=ContentFile(csv_data))
+
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
@@ -648,9 +689,9 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
             except MonthlyAccountingDocument.DoesNotExist:
                 return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
 
-        if document.upload_status != 'completed':
+        if document.status != 'classified':
             return create_api_response(
-                message='Status can only be changed from completed to verified.',
+                message='Status can only be changed from classified to verified.',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
@@ -660,11 +701,14 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        document.upload_status = 'verified'
-        document.save(update_fields=['upload_status'])
+        document.status = 'verified'
+        document.save(update_fields=['status'])
+
+        self.generate_export_file(document)
+
         return create_api_response(
             message='Document verified. Please validate Journal Entries. ',
-            status_code=status.HTTP_400_BAD_REQUEST
+            status_code=status.HTTP_200_OK
             )
 
 
@@ -730,6 +774,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                     'total_line_items': items.count(),
                     'document': document.file_url if document.file else None,
                     'line_items': serializer.data,
+                    'status': document.status,
                     'control_items': document.control_item
                 }
             )

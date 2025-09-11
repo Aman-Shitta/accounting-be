@@ -375,8 +375,8 @@ class MonthlyAccountingDocumentInline(admin.TabularInline):
     model = MonthlyAccountingDocument
     extra = 0
     can_delete = False
-    readonly_fields = ("doc_id", "doc_type", "upload_status", "file_link", "created_at", "updated_at")
-    fields = ("doc_id", "doc_type", "upload_status", "file_link", "created_at", "updated_at")
+    readonly_fields = ("doc_id", "doc_type", "status", "file_link", "created_at", "updated_at")
+    fields = ("doc_id", "doc_type", "status", "file_link", "created_at", "updated_at")
 
     def file_link(self, obj):  # pragma: no cover - admin display helper
         if obj.file:
@@ -437,8 +437,8 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
 #############################################
 @admin.register(MonthlyAccountingDocument)
 class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
-    list_display = ("doc_id", "monthly_accounting", "doc_type", "upload_status", "file_link", "created_at")
-    list_filter = ("upload_status", "doc_type", "created_at")
+    list_display = ("doc_id", "monthly_accounting", "doc_type", "status", "file_link", "created_at")
+    list_filter = ("status", "doc_type", "created_at")
     search_fields = ("doc_id", "monthly_accounting__client__client_name")
     readonly_fields = ("doc_id", "monthly_accounting", "input_file_snapshot", "created_at", "updated_at", "file_link")
     
@@ -455,7 +455,7 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
     file_link.short_description = "File"
 
     fieldsets = (
-        (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "upload_status", "file", "file_link")}),
+        (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "status", "file", "file_link")}),
         ("Processing Results", {"fields": ("control_item",), "classes": ("collapse",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )

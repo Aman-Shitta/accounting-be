@@ -1,20 +1,18 @@
+import uuid
 from django.shortcuts import get_object_or_404
-from django.db import transaction, models
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.utils import timezone
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
 
-from .models import FactAICMonthlyAccounting
-from user.models import DimAICClient
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
 from aicounting.response import create_api_response
-from rest_framework.parsers import JSONParser
 from .je_accounting_serializers import JETemplateDataSerializer
 
 from .models import FactAICJETemplateHeaderSnapshot
+
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage as system_storage
+from django.core.files.base import ContentFile
 
 import logging
 logger = logging.getLogger(__name__)
