@@ -58,8 +58,8 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                     "offset_gl_account": item.offset_gl_account,
                     "description": item.description,
                     "date": item.date,
-                    "debit": item.debit_amount,
-                    "credit": item.credit_amount,
+                    "debit": item.amount if item.transaction_type == "debit" else "",
+                    "credit": item.amount if item.transaction_type == "credit" else "",
                 })
 
             ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data

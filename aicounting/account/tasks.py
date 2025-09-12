@@ -38,8 +38,6 @@ def process_uploaded_document(
         doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
         if not doc:
             logger.error(f"Documentdoes not exist: {doc_id} invalid id")
-            doc.status = "failed"
-            doc.save()
             return 
 
         # Check if file exists

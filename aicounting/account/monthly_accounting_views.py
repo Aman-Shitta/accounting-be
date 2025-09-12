@@ -327,7 +327,9 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "doc_id": str(document.doc_id),
                     "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     "doc_type": document.doc_type,
+                    "doc_type_display": document.get_doc_type_display(),
                     "status": document.status,
+                    "status_display": document.get_status_display(),
                     "file_url": document.file_url,
                     "created_at": document.created_at.isoformat(),
                     "updated_at": document.updated_at.isoformat()
@@ -345,6 +347,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
                     "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
+                    "type_display": template_snapshot.input_file.get_file_type_display() if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
                     "is_ready": all(status == 'verified' for status in template_snapshot.input_file.extraction_documents.all().values_list('status', flat=True)),
@@ -357,6 +360,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 "month": monthly_accounting.get_month_name(),
                 "year": monthly_accounting.year,
                 "status": monthly_accounting.status,
+                "status_display": monthly_accounting.get_status_display(),
                 "created_by": monthly_accounting.created_by.username if monthly_accounting.created_by else None,
                 "created_at": monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
                 "completed_at": monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None,
@@ -613,8 +617,11 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
     @staticmethod
     def generate_export_file(document):
         if document.doc_type in ['bank_statement', 'credit_card']:
-            from .je_accounting_serializers import  JETemplateDataSerializer
+            import io
+            import csv
             from django.core.files.base import ContentFile
+
+            from .je_accounting_serializers import JETemplateDataSerializer
 
             bank_template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
             bank_template = bank_template_qs.first() if bank_template_qs.exists() else None
@@ -622,32 +629,30 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
                 return create_api_response(
                     message='No JE Template associated with this document.',
                     status_code=status.HTTP_400_BAD_REQUEST
-                    )
-            
+                )
             template_attributes = JETemplateDataSerializer(bank_template).data['attributes']
 
             filename = "je_template.csv"
-            # Prepare CSV content
-            csv_content = []
-            csv_content.append(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
+            output = io.StringIO()
+            writer = csv.writer(output)
+
+            writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
             for row in template_attributes:
                 attribute_gl = row.get('gl_account') or dict()
-                
-                csv_content.append([
-                    attribute_gl.get('account_number', ''),
-                    attribute_gl.get('account_name', ''),
-                    row.get('description', ''),
-                    row.get('debit', None),
-                    row.get('credit', None)
+                writer.writerow([
+                    attribute_gl.get('account_number', '') or '',
+                    attribute_gl.get('account_name', '') or '',
+                    row.get('description', '') or '',
+                    row.get('debit', '') or '',
+                    row.get('credit', '') or ''
                 ])
-            # Write CSV to memory
-            csv_buffer = []
-            for csv_row in csv_content:
-                csv_buffer.append(','.join(map(str, csv_row)))
-            csv_data = '\n'.join(csv_buffer)
 
-            bank_template.je_export_file.save(filename, content=ContentFile(csv_data))
+            csv_data = output.getvalue()
+            output.close()
 
+            bank_template.je_export_file.save(filename, ContentFile(csv_data))
+        else:
+            raise ValueError("Unsupported document type for export generation.")
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
@@ -704,7 +709,18 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
         document.status = 'verified'
         document.save(update_fields=['status'])
 
-        self.generate_export_file(document)
+        try:
+            self.generate_export_file(document)
+        except Exception as e:
+            document.status = 'classified'
+            document.save(update_fields=['status'])
+            logger.error(f"Error generating export file for document {document_id}: {str(e)}")
+            return create_api_response(
+                message='Error generating export file.',
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                data={"error": str(e)}
+            )
+
 
         return create_api_response(
             message='Document verified. Please validate Journal Entries. ',
