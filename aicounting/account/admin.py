@@ -571,6 +571,9 @@ class FactAICJETemplateHeaderSnapshotAdmin(admin.ModelAdmin):
         ('Timestamps', {
             'fields': ('original_created_at', 'original_updated_at')
         }),
+        ('Export Item', {
+            'fields': ('je_export_file',),
+        })
     )
     
     def monthly_accounting_link(self, obj):

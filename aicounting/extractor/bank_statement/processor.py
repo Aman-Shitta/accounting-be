@@ -56,7 +56,7 @@ class MonthlyAccountingDocumentProcessor:
         """
         try:
             # Update document status
-            self.monthly_document.upload_status = "extracting"
+            self.monthly_document.status = "extracting"
             self.monthly_document.save()
             
             # Process using base processor
@@ -74,7 +74,7 @@ class MonthlyAccountingDocumentProcessor:
             # Process and save extracted data
             processing_stats = self._save_extracted_data(page_data)
             
-            self.monthly_document.upload_status = "extracted"
+            self.monthly_document.status = "extracted"
             self.monthly_document.save()
             
             self.logger.info(f"Document {self.monthly_document.doc_id} processed successfully")
@@ -87,7 +87,7 @@ class MonthlyAccountingDocumentProcessor:
             }
             
         except Exception as e:
-            self.monthly_document.upload_status = "failed"
+            self.monthly_document.status = "failed"
             self.monthly_document.save()
             self.logger.error(f"Failed to process document {self.monthly_document.doc_id}: {str(e)}")
             raise
