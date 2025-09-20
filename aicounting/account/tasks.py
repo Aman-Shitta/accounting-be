@@ -10,7 +10,7 @@ from django.conf import settings
 # Local imports
 from extractor.bank_statement.classify import GLClassifier
 from extractor.bank_statement.processor import MonthlyAccountingDocumentProcessor
-from extractor.bank_statement.prompter import Configuration
+from extractor.prompter import Configuration
 
 from .models.monthly_accounting_document_model import MonthlyAccountingDocument
 from .models.monthly_document_line_models import (
@@ -52,17 +52,22 @@ def process_uploaded_document(
 
         # Get file content from Azure storage
         with default_storage.open(file_path, 'rb') as azure_file:
-            pdf_bytes = azure_file.read()
+            file_bytes = azure_file.read()
+
+        file_path = doc.file.name if doc.file else None
 
         # Use the new MonthlyAccountingDocumentProcessor
         processor = MonthlyAccountingDocumentProcessor(doc, config)
-        result = processor.process_document(pdf_bytes)
+        processor.set_doc_processor(doc.doc_type)
+        result = processor.start_process(file_bytes)
 
         # Update document status
         doc.status = "classifying"
         doc.save()
 
-        classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
+        if doc.doc_type in ['bank_statement', 'credit_card']:
+            # Trigger GL account classification task
+            classify_monthly_document_gl_accounts.run(str(doc.doc_id))
         
         # Save JSON output to Azure storage for reference
         import json

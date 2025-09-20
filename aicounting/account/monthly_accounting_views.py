@@ -572,9 +572,8 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 
             if document.doc_type in ['bank_statement', 'credit_card']:
                 
-                from extractor.bank_statement.prompter import Configuration
                 config_params = dict(
-                    doc_type="bank_statement",
+                    doc_type=document.doc_type,
                     extract_line_items=True,
                     line_items=[
                         "date: The date of the transaction.", 
@@ -584,10 +583,23 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     ],
                     excluded_fields=[]
                 )
+            elif document.doc_type in ['sales']:
+                
+                attributes = document.input_file_snapshot.attribute_snapshots.all()
+                key_items =[attri.name for attri in attributes]
+                key_items_formatted =[f"{attri.name}" + f": {attri.comments}" for attri in attributes]
+                
+                config_params = dict(
+                    doc_type=document.doc_type,
+                    extract_key_items=True,
+                    key_items=key_items,
+                    key_items_formatted=key_items_formatted,
+                    excluded_fields=[]
+                )
 
                 # Trigger document processing tasks
                 from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
+                process_uploaded_document.run(str(document.id), config_params)
 
             else:
                 logger.info(f"Document type {document.doc_type} does not require processing.")

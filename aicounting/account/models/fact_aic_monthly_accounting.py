@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 
@@ -146,13 +146,15 @@ class FactAICMonthlyAccounting(models.Model):
             # Create input files snapshots
             input_files = DimAicInputFiles.objects.filter(client=self.client)
             for input_file in input_files:
-                self._create_input_file_snapshot(input_file)
+                if input_file.dimaicjetemplateheader_set.exists():
+                    self._create_input_file_snapshot(input_file)
             
             # Create template snapshots (only monthly frequency)
             if monthly_freq:
                 templates = DimAICJETemplateHeader.objects.filter(
                     client=self.client,
-                    je_freq=monthly_freq
+                    je_freq=monthly_freq,
+                    input_file__isnull=False
                 )
                 for template in templates:
                     self._create_template_snapshot(template)
@@ -231,7 +233,6 @@ class FactAICMonthlyAccounting(models.Model):
             client=input_file.client,
             name=input_file.name,
             file_type=input_file.file_type,
-            file=snapshot_file,
             description=input_file.description,
             input_user=input_file.input_user,
             original_created_at=input_file.created_at,
@@ -252,77 +253,86 @@ class FactAICMonthlyAccounting(models.Model):
                 original_created_at=attribute.created_at,
                 original_updated_at=attribute.updated_at
             )
+
         
         return file_snapshot
     
     def _create_template_snapshot(self, template):
         """Create snapshot of a JE template and its attributes"""
-        # Get snapshot models
-        models_dict = get_snapshot_models()
-        FactAICInputFileSnapshot = models_dict['FactAICInputFileSnapshot']
-        FactAICInputFileAttributeSnapshot = models_dict['FactAICInputFileAttributeSnapshot']
-        FactAICJETemplateHeaderSnapshot = models_dict['FactAICJETemplateHeaderSnapshot']
-        FactAICJETemplateAttributeSnapshot = models_dict['FactAICJETemplateAttributeSnapshot']
-        
-        # Find the corresponding input file snapshot if exists
-        input_file_snapshot = None
-        if template.input_file:
+        with transaction.atomic():
             try:
-                input_file_snapshot = FactAICInputFileSnapshot.objects.get(
+                # Get snapshot models
+                models_dict = get_snapshot_models()
+                FactAICInputFileSnapshot = models_dict['FactAICInputFileSnapshot']
+                FactAICInputFileAttributeSnapshot = models_dict['FactAICInputFileAttributeSnapshot']
+                FactAICJETemplateHeaderSnapshot = models_dict['FactAICJETemplateHeaderSnapshot']
+                FactAICJETemplateAttributeSnapshot = models_dict['FactAICJETemplateAttributeSnapshot']
+                
+                # Find the corresponding input file snapshot if exists
+                input_file_snapshot = None
+                if template.input_file:
+                    try:
+                        input_file_snapshot = FactAICInputFileSnapshot.objects.get(
+                            monthly_accounting=self,
+                            original_input_file=template.input_file
+                        )
+                    except FactAICInputFileSnapshot.DoesNotExist:
+                        pass
+                
+                # Create template snapshot
+                template_snapshot = FactAICJETemplateHeaderSnapshot.objects.create(
                     monthly_accounting=self,
-                    original_input_file=template.input_file
+                    original_template=template,
+                    customer=template.customer,
+                    client=template.client,
+                    je_name=template.je_name,
+                    je_refrence=template.je_refrence,
+                    je_freq=template.je_freq,
+                    je_type=template.je_type,
+                    is_object=template.is_object,
+                    input_file=input_file_snapshot,
+                    description=template.description,
+                    original_created_at=template.created_at,
+                    original_updated_at=template.updated_at
                 )
-            except FactAICInputFileSnapshot.DoesNotExist:
-                pass
-        
-        # Create template snapshot
-        template_snapshot = FactAICJETemplateHeaderSnapshot.objects.create(
-            monthly_accounting=self,
-            original_template=template,
-            customer=template.customer,
-            client=template.client,
-            je_name=template.je_name,
-            je_refrence=template.je_refrence,
-            je_freq=template.je_freq,
-            je_type=template.je_type,
-            is_object=template.is_object,
-            input_file=input_file_snapshot,
-            description=template.description,
-            original_created_at=template.created_at,
-            original_updated_at=template.updated_at
-        )
-        
-        # Create template attribute snapshots
-        for attribute in template.template_attributes.all():
-            # Find corresponding input file attribute snapshot if exists
-            input_file_attribute_snapshot = None
-            if attribute.input_file_attribute:
-                try:
-                    # Find the input file snapshot first
-                    input_file_snap = FactAICInputFileSnapshot.objects.get(
-                        monthly_accounting=self,
-                        original_input_file=attribute.input_file_attribute.input_file
+                
+                # Create template attribute snapshots
+                for attribute in template.template_attributes.all():
+                    # Find corresponding input file attribute snapshot if exists
+                    input_file_attribute_snapshot = None
+                    if attribute.input_file_attribute:
+                        try:
+                            # Find the input file snapshot first
+                            input_file_snap = FactAICInputFileSnapshot.objects.get(
+                                monthly_accounting=self,
+                                original_input_file=attribute.input_file_attribute.input_file
+                            )
+                            # Find the attribute snapshot
+                            input_file_attribute_snapshot = FactAICInputFileAttributeSnapshot.objects.get(
+                                input_file_snapshot=input_file_snap,
+                                original_attribute=attribute.input_file_attribute
+                            )
+                        except (FactAICInputFileSnapshot.DoesNotExist, FactAICInputFileAttributeSnapshot.DoesNotExist):
+                            pass
+                    
+                    FactAICJETemplateAttributeSnapshot.objects.create(
+                        je_template_snapshot=template_snapshot,
+                        original_attribute=attribute,
+                        input_file_attribute=input_file_attribute_snapshot,
+                        gl_account=attribute.gl_account,
+                        debit=attribute.debit,
+                        credit=attribute.credit,
+                        attribute_name=attribute.attribute_name,
+                        input_user=attribute.input_user,
+                        original_created_at=attribute.created_at,
+                        original_updated_at=attribute.updated_at
                     )
-                    # Find the attribute snapshot
-                    input_file_attribute_snapshot = FactAICInputFileAttributeSnapshot.objects.get(
-                        input_file_snapshot=input_file_snap,
-                        original_attribute=attribute.input_file_attribute
-                    )
-                except (FactAICInputFileSnapshot.DoesNotExist, FactAICInputFileAttributeSnapshot.DoesNotExist):
-                    pass
-            
-            FactAICJETemplateAttributeSnapshot.objects.create(
-                je_template_snapshot=template_snapshot,
-                original_attribute=attribute,
-                input_file_attribute=input_file_attribute_snapshot,
-                gl_account=attribute.gl_account,
-                debit=attribute.debit,
-                credit=attribute.credit,
-                attribute_name=attribute.attribute_name,
-                input_user=attribute.input_user,
-                original_created_at=attribute.created_at,
-                original_updated_at=attribute.updated_at
-            )
+            except Exception as e:
+                import os, sys
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
+                template_snapshot = None
         
         return template_snapshot
     
@@ -337,11 +347,15 @@ class FactAICMonthlyAccounting(models.Model):
         FactAICInputFileSnapshot = models_dict['FactAICInputFileSnapshot']
         
         created_documents = []
-        
+
         # Get all input file snapshots for this monthly accounting session
         input_file_snapshots = FactAICInputFileSnapshot.objects.filter(
             monthly_accounting=self
         )
+
+        if not input_file_snapshots.exists():
+            self.delete()
+            raise ValidationError("No input file snapshots found. Monthly accounting session deleted.")
         
         for snapshot in input_file_snapshots:
             # Create a document for each snapshot

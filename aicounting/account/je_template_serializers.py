@@ -373,24 +373,23 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Template not found")
         
         validated_attributes = []
-        
         # Validate for object templates (expecting id)
         if template.is_object:
             # For object templates, expect payload: {"id": 1}
             # Check for duplicate attributes in the same template
-            # existing_ids = set(
-            #     DimAICJETemplateAttribute.objects.filter(
-            #         je_template_id=template,
-            #         input_file_attribute__isnull=False
-            #     ).values_list('input_file_attribute__id', flat=True)
-            # )
+            existing_ids = set(
+                DimAICJETemplateAttribute.objects.filter(
+                    je_template_id=template,
+                    input_file_attribute__isnull=False
+                ).values_list('input_file_attribute__id', flat=True)
+            )
             
             # Special handling for bank_statement and credit_card files
             if template.input_file and template.input_file.file_type in ['bank_statement', 'credit_card']:
-                # if existing_ids:
-                #     raise serializers.ValidationError(
-                #         f"Templates with {template.input_file.file_type} files can only have one attribute and it's already configured"
-                #     )
+                if existing_ids:
+                    raise serializers.ValidationError(
+                        f"Templates with {template.input_file.file_type} files can only have one attribute and it's already configured"
+                    )
                 if len(value) > 1:
                     raise serializers.ValidationError(
                         f"Templates with {template.input_file.file_type} files can only have one attribute configured at a time"
@@ -517,11 +516,20 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
         
         for attr_data in validated_attributes:
             if attr_data['type'] == 'object':
-                template_attribute = DimAICJETemplateAttribute.objects.create(
+                # For object templates, only create if not already exists for this template
+                input_file_attribute = attr_data['input_file_attribute']
+                existing = DimAICJETemplateAttribute.objects.filter(
                     je_template_id=template,
-                    input_file_attribute=attr_data['input_file_attribute'],
-                    input_user=user
-                )
+                    input_file_attribute=input_file_attribute
+                ).first()
+                if existing:
+                    template_attribute = existing
+                else:
+                    template_attribute = DimAICJETemplateAttribute.objects.create(
+                        je_template_id=template,
+                        input_file_attribute=input_file_attribute,
+                        input_user=user
+                    )
             else:  # non_object
                 template_attribute = DimAICJETemplateAttribute.objects.create(
                     je_template_id=template,
