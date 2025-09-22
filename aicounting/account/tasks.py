@@ -61,11 +61,10 @@ def process_uploaded_document(
         processor.set_doc_processor(doc.doc_type)
         result = processor.start_process(file_bytes)
 
-        # Update document status
-        doc.status = "classifying"
-        doc.save()
-
         if doc.doc_type in ['bank_statement', 'credit_card']:
+            # Update document status
+            doc.status = "classifying"
+            doc.save()
             # Trigger GL account classification task
             classify_monthly_document_gl_accounts.run(str(doc.doc_id))
         

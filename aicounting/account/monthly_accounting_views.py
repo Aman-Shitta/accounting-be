@@ -628,20 +628,17 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
 
     @staticmethod
     def generate_export_file(document):
+        import io
+        import csv
+        from django.core.files.base import ContentFile
+        from .je_accounting_serializers import JETemplateDataSerializer
+
         if document.doc_type in ['bank_statement', 'credit_card']:
-            import io
-            import csv
-            from django.core.files.base import ContentFile
-
-            from .je_accounting_serializers import JETemplateDataSerializer
-
             bank_template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
             bank_template = bank_template_qs.first() if bank_template_qs.exists() else None
             if not bank_template:
-                return create_api_response(
-                    message='No JE Template associated with this document.',
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
+                raise ValueError('No JE Template associated with this document.')
+                
             template_attributes = JETemplateDataSerializer(bank_template).data['attributes']
 
             filename = "je_template.csv"
@@ -664,7 +661,58 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
 
             bank_template.je_export_file.save(filename, ContentFile(csv_data))
         else:
-            raise ValueError("Unsupported document type for export generation.")
+            # Handle non-bank document types (sales, etc.)
+            template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
+            if not template_qs:
+                raise ValueError('No JE Template associated with this document.')
+
+            for template in template_qs:
+                if template.is_object:
+                    # For is_object templates, use data from extracted attribute items
+                    template_attributes = JETemplateDataSerializer(template).data['attributes']
+
+                    filename = "je_template.csv"
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+
+                    writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
+                    for row in template_attributes:
+                        attribute_gl = row.get('gl_account') or dict()
+                        writer.writerow([
+                            attribute_gl.get('account_number', '') or '',
+                            attribute_gl.get('account_name', '') or '',
+                            row.get('description', '') or '',
+                            row.get('debit', '') or '',
+                            row.get('credit', '') or ''
+                        ])
+
+                    csv_data = output.getvalue()
+                    output.close()
+
+                    template.je_export_file.save(filename, ContentFile(csv_data))
+                else:
+                    # For non-is_object templates, use GL accounts from JE template with attribute values
+                    template_attributes = JETemplateDataSerializer(template).data['attributes']
+
+                    filename = "je_template.csv"
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+
+                    writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
+                    for row in template_attributes:
+                        attribute_gl = row.get('gl_account') or dict()
+                        writer.writerow([
+                            attribute_gl.get('account_number', '') or '',
+                            attribute_gl.get('account_name', '') or '',
+                            row.get('description', '') or '',
+                            row.get('debit', '') or '',
+                            row.get('credit', '') or ''
+                        ])
+
+                    csv_data = output.getvalue()
+                    output.close()
+
+                    template.je_export_file.save(filename, ContentFile(csv_data))
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
@@ -770,26 +818,47 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             id=document_id,
             monthly_accounting=monthly_accounting
         )
-        if document.doc_type not in ['bank_statement', 'credit_card']:
-            return None, create_api_response(status.HTTP_400_BAD_REQUEST, "Document type does not support line items interface.")
+        # Remove the document type restriction - now we support all document types
         return document, None
 
     def get(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """
         Retrieve line items for a processed monthly accounting document.
+        Supports both bank statement/credit card line items and attribute items for other document types.
         
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
-            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
-            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+            from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
             
             document, error_response = self._get_document(client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
             
-            items = MonthlyDocumentBankLineItem.objects.filter(document=document).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
-            serializer = MonthlyDocumentBankLineItemSerializer(items, many=True, context={'request': request})
+            # Determine which type of line items to retrieve based on document type
+            if document.doc_type in ['bank_statement', 'credit_card']:
+                # Use BankLineItem for bank statements and credit cards
+                items = MonthlyDocumentBankLineItem.objects.filter(
+                    document=document
+                ).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
+                
+                total_count = items.count()
+            else:
+                # Use AttributeItem for other document types (like sales)
+                attribute_items = MonthlyDocumentAttributeItem.objects.filter(
+                    document=document
+                ).select_related('attribute', 'gl_account', 'offset_gl_account').order_by('page_number', 'id')
+                
+                # Add line numbers to attribute items (1-indexed)
+                items = []
+                for i, item in enumerate(attribute_items, 1):
+                    item._line_number = i  # Set line number for serializer
+                    items.append(item)
+                
+                total_count = len(items)
+            
+            serializer = MonthlyDocumentLineItemSerializer(items, many=True, context={'request': request})
             
             return create_api_response(
                 status.HTTP_200_OK, 
@@ -799,7 +868,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                     "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     'doc_uuid': str(document.doc_id),
                     'doc_type': document.doc_type,
-                    'total_line_items': items.count(),
+                    'total_line_items': total_count,
                     'document': document.file_url if document.file else None,
                     'line_items': serializer.data,
                     'status': document.status,
@@ -817,6 +886,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """
         Create a new line item for a monthly accounting document.
+        Only supports bank statement and credit card documents for creation.
         
         POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         
@@ -831,20 +901,20 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            from .monthly_document_line_item_serializers import MonthlyDocumentUnifiedLineItemSerializer
             
             document, error_response = self._get_document(client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentBankLineItemSerializer(
+            serializer = MonthlyDocumentUnifiedLineItemSerializer(
                 data=request.data, 
                 context={'request': request, 'document': document}
             )
             
             if serializer.is_valid():
                 item = serializer.save()
-                output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                output_serializer = MonthlyDocumentUnifiedLineItemSerializer(item, context={'request': request})
                 return create_api_response(
                     status.HTTP_201_CREATED, 
                     "Line item created successfully.", 
@@ -872,7 +942,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
-        """Helper method to get line item with proper authorization"""
+        """Helper method to get line item with proper authorization - only supports BankLineItem for updates"""
         from .models.monthly_accounting_document_model import MonthlyAccountingDocument
         from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
         
@@ -901,10 +971,11 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             monthly_accounting=monthly_accounting
         )
         
+        # Only allow line item updates for bank statements and credit cards
         if document.doc_type not in ['bank_statement', 'credit_card']:
             return None, create_api_response(
                 status.HTTP_400_BAD_REQUEST, 
-                "Document type does not support line items interface."
+                "Line item updates are only supported for bank statements and credit cards."
             )
         
         line_item = get_object_or_404(
@@ -916,7 +987,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
     def patch(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
         """
-        Update a specific line item.
+        Update a specific line item. Only supports bank statement and credit card line items.
         
         PATCH /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         
@@ -928,13 +999,13 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            from .monthly_document_line_item_serializers import MonthlyDocumentUnifiedLineItemSerializer
             
             line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentBankLineItemSerializer(
+            serializer = MonthlyDocumentUnifiedLineItemSerializer(
                 line_item, 
                 data=request.data, 
                 partial=True, 
@@ -943,7 +1014,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             
             if serializer.is_valid():
                 updated_item = serializer.save()
-                output_serializer = MonthlyDocumentBankLineItemSerializer(updated_item, context={'request': request})
+                output_serializer = MonthlyDocumentUnifiedLineItemSerializer(updated_item, context={'request': request})
                 return create_api_response(
                     status.HTTP_200_OK, 
                     "Line item updated successfully.", 
