@@ -22,7 +22,8 @@ from .monthly_accounting_document_model import MonthlyAccountingDocument
 from .monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
-    MonthlyDocumentBankCheckItem
+    MonthlyDocumentBankCheckItem,
+    MonthlyDocumentAttributeItem
 )
 
 
@@ -49,4 +50,5 @@ __all__ = [
     'MonthlyDocumentBankKeyItem',
     'MonthlyDocumentBankLineItem',
     'MonthlyDocumentBankCheckItem',
+    'MonthlyDocumentAttributeItem'
 ]

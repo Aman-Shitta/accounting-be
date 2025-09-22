@@ -5,7 +5,11 @@ These models are specifically designed for bank statement and credit card docume
 
 from django.db import models
 from django.contrib.auth import get_user_model
-from .monthly_accounting_document_model import MonthlyAccountingDocument
+
+from account.models import (
+    MonthlyAccountingDocument,
+    FactAICInputFileAttributeSnapshot
+)
 
 User = get_user_model()
 
@@ -292,3 +296,89 @@ class MonthlyDocumentBankCheckItem(models.Model):
 
     def __str__(self):
         return f"{self.document.doc_id} - Check #{self.check_number}: {self.payee} - {self.amount}"
+
+
+class MonthlyDocumentAttributeItem(models.Model):
+    """
+    Model to store extracted attributes from a monthly document.
+    Attributes can be any key-value pairs relevant to the document processing.
+    """
+    TRANSACTION_TYPE_CHOICES = [
+        ('debit', 'Debit'),
+        ('credit', 'Credit'),
+    ]
+
+    document = models.ForeignKey(
+        MonthlyAccountingDocument,
+        on_delete=models.CASCADE,
+        related_name="attribute_items",
+        verbose_name="Monthly Document"
+    )
+
+    attribute = models.ForeignKey(
+        FactAICInputFileAttributeSnapshot,
+        on_delete=models.CASCADE,
+        related_name="monthly_document_attributes",
+        verbose_name="Input File Attribute"
+    )
+
+    page_number = models.IntegerField(
+        verbose_name="Page Number",
+        help_text="Page number where this attribute item was found"
+    )
+    
+    value = models.CharField(
+        max_length=1000,
+        verbose_name="Attribute Value",
+        null=True,
+        blank=True,
+        help_text="Value associated with the attribute"
+    )
+    
+    transaction_type = models.CharField(
+        max_length=10,
+        choices=TRANSACTION_TYPE_CHOICES,
+        verbose_name="Transaction Type",
+        null=True,
+        blank=True,
+        help_text="Whether this is a debit or credit transaction"
+    )
+
+    gl_account = models.ForeignKey(
+        'DimAICGLAcct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="GL Account",
+        related_name="monthly_document_attribute_items",
+        help_text="GL account assigned through classification pipeline"
+    )
+    
+    offset_gl_account = models.ForeignKey(
+        'DimAICGLAcct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Offset GL Account",
+        related_name="monthly_document_offset_attribute_items",
+        help_text="Offset GL account for double-entry booking"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Created At"
+    )
+    
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Updated At"
+    )
+
+    class Meta:
+        db_table = 'monthly_document_attribute_item'
+        verbose_name = "Monthly Document Attribute Item"
+        verbose_name_plural = "Monthly Document Attribute Items"
+        unique_together = ('document', 'attribute', 'page_number')
+
+    def __str__(self):
+        return f"{self.document.doc_id} - Page {self.page_number} - {self.attribute.name}: {self.value}"
