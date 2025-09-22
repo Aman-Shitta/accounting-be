@@ -66,7 +66,10 @@ def process_uploaded_document(
             doc.status = "classifying"
             doc.save()
             # Trigger GL account classification task
-            classify_monthly_document_gl_accounts.run(str(doc.doc_id))
+            classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
+        else:
+            doc.status = "classified"
+            doc.save()
         
         # Save JSON output to Azure storage for reference
         import json

@@ -599,7 +599,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 
                 # Trigger document processing tasks
                 from .tasks import process_uploaded_document
-                process_uploaded_document.run(str(document.id), config_params)
+                process_uploaded_document.delay(str(document.id), config_params)
 
             else:
                 logger.info(f"Document type {document.doc_type} does not require processing.")
