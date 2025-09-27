@@ -25,13 +25,14 @@ from .models.monthly_accounting_document_model import MonthlyAccountingDocument
 from .models.monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
-    MonthlyDocumentBankCheckItem
+    MonthlyDocumentBankCheckItem,
+    MonthlyDocumentAttributeItem
 )
 from .models.dim_aic_snapshot_models import (
     FactAICInputFileSnapshot,
     FactAICInputFileAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,
-    FactAICJETemplateAttributeSnapshot
+    FactAICJETemplateAttributeSnapshot,
 )
 
 @admin.register(DimAICAcctType)
@@ -702,3 +703,21 @@ class MonthlyDocumentBankCheckItemAdmin(admin.ModelAdmin):
     def payee_short(self, obj):
         return obj.payee[:30] + "..." if obj.payee and len(obj.payee) > 30 else obj.payee
     payee_short.short_description = 'Payee'
+
+
+@admin.register(MonthlyDocumentAttributeItem)
+class MonthlyDocumentAttributeItemAdmin(admin.ModelAdmin):
+    """Admin for monthly document attribute items."""
+    list_display = ('id', 'document', 'page_number', 'attribute_name', 'value_short', 
+                   'transaction_type', 'gl_account', 'created_at')
+    list_filter = ('transaction_type', 'page_number', 'created_at')
+    search_fields = ('document__doc_id', 'attribute__name', 'value')
+    readonly_fields = ('document', 'created_at', 'updated_at')
+    
+    def attribute_name(self, obj):
+        return obj.attribute.name if obj.attribute else 'N/A'
+    attribute_name.short_description = 'Attribute Name'
+    
+    def value_short(self, obj):
+        return (obj.value[:50] + '...') if obj.value and len(obj.value) > 50 else obj.value
+    value_short.short_description = 'Value'

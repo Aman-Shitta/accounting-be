@@ -70,6 +70,8 @@ class MonthlyAccountingDocument(models.Model):
     )
     
     file = models.FileField(
+		max_length=500,
+
         upload_to=upload_to_montly_accounting_folder,
         null=True,
         blank=True,

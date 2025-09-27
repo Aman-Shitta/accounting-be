@@ -39,6 +39,8 @@ class DimAicInputFiles(models.Model):
     )
     
     file = models.FileField(
+		max_length=500,
+
         upload_to=upload_to_input_files_folder,
         verbose_name="File",
         help_text="Upload the input file"

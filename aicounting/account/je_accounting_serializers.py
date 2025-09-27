@@ -23,14 +23,18 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
 
-        if instance.attribute_snapshots.count() != 1:
+        # For bank statements and credit cards that have multiple attributes
+        if instance.attribute_snapshots.count() == 1:
+            star_attribute_snapshot = instance.attribute_snapshots.first()
+            input_file_attribute = star_attribute_snapshot.input_file_attribute
+            input_file_snapshot = input_file_attribute.input_file_snapshot
+        else:
+            # For templates with multiple attributes, use the input_file directly
+            input_file_snapshot = instance.input_file
+
+        if not input_file_snapshot:
             ret['attributes'] = []
             return ret
-
-        star_attribute_snapshot = instance.attribute_snapshots.first()
-
-        input_file_attribute = star_attribute_snapshot.input_file_attribute
-        input_file_snapshot = input_file_attribute.input_file_snapshot
 
         if input_file_snapshot.file_type in ['bank_statement', 'credit_card']:
             bank_documents = input_file_snapshot.extraction_documents.all()
@@ -64,8 +68,76 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
             ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
         else:
-            raise ValidationError(
-                    {'detail': 'Document Type not yet supported.'}
+            # Handle non-bank document types (sales, etc.)
+            documents = input_file_snapshot.extraction_documents.all()
+            if not documents.exists():
+                ret['attributes'] = []
+                return ret
+
+            document = documents.first()
+
+            if document.status != 'verified':
+                raise ValidationError(
+                    {'detail': 'Extracted data needs to be verified to get the template data.'}
                 )
+
+            # Check if the JE template is_object
+            if instance.is_object:
+                # For is_object templates, get values from extracted attribute items
+                from .models.monthly_document_line_models import MonthlyDocumentAttributeItem
+                
+                attribute_items = MonthlyDocumentAttributeItem.objects.filter(
+                    document=document
+                ).select_related('attribute', 'gl_account', 'offset_gl_account')
+
+                attributes_data = []
+                for item in attribute_items:
+                    attributes_data.append({
+                        "gl_account": item.gl_account,
+                        "offset_gl_account": item.offset_gl_account, 
+                        "description": item.attribute.name if item.attribute else 'Unknown Attribute',
+                        "date": None,  # Attributes don't have dates
+                        "debit": item.value if item.transaction_type == "debit" else "",
+                        "credit": item.value if item.transaction_type == "credit" else "",
+                    })
+
+                ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
+            else:
+                # For non-is_object templates, get attribute values but use GL account from JE template
+                from .models.monthly_document_line_models import MonthlyDocumentAttributeItem
+                
+                # Get all template attribute snapshots
+                template_attributes = instance.attribute_snapshots.all()
+                
+                attributes_data = []
+                for template_attr in template_attributes:
+                    # Find corresponding attribute item value
+                    attribute_value = ""
+                    attribute_offset_gl = None
+                    if template_attr.input_file_attribute:
+                        # Find the extracted attribute item
+                        try:
+                            attr_item = MonthlyDocumentAttributeItem.objects.get(
+                                document=document,
+                                attribute=template_attr.input_file_attribute
+                            )
+
+                            attribute_value = attr_item.value or ""
+                            attribute_offset_gl = attr_item.offset_gl_account
+                        except MonthlyDocumentAttributeItem.DoesNotExist:
+                            attribute_value = ""
+                            attribute_offset_gl = None
+
+                    # Use GL account from JE template, not from attribute item
+                    attributes_data.append({
+                        "gl_account": template_attr.gl_account,
+                        "offset_gl_account": attribute_offset_gl,
+                        "description": template_attr.attribute_name or (template_attr.input_file_attribute.name if template_attr.input_file_attribute else '<Manual>'),
+                        "date": None,  # Attributes don't have dates
+                        "debit": attribute_value if template_attr.debit else "",
+                        "credit": attribute_value if template_attr.credit else "",
+                    })
+
+                ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
 
         return ret

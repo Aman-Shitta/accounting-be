@@ -61,7 +61,8 @@ class FactAICInputFileSnapshot(models.Model):
         null=True,
         blank=True,
         verbose_name="File",
-        help_text="Snapshot copy of the input file"
+        help_text="Snapshot copy of the input file",
+        max_length=500
     )
     
     description = models.TextField(
@@ -301,6 +302,8 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
     )
 
     je_export_file = models.FileField(
+		max_length=500,
+
         upload_to=upload_to_je_export_folder,
         null=True,
         blank=True,
