@@ -60,6 +60,7 @@ def process_uploaded_document(
         processor = MonthlyAccountingDocumentProcessor(doc, config)
         processor.set_doc_processor(doc.doc_type)
         result = processor.start_process(file_bytes)
+        processor.__release_resources__()
 
         if doc.doc_type in ['bank_statement', 'credit_card']:
             # Update document status

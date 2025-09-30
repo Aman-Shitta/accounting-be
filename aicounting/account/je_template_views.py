@@ -492,7 +492,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
         }
         
         Special Restrictions:
-        - Templates with bank_statement or credit_card input files can only be object templates
+        - Templates with bank_statement or credit_card input files can only be gl templates
         - Bank_statement and credit_card templates automatically get default attributes and cannot have additional attributes
         - For object templates, id must reference an attribute from the template's selected input file
         - Object templates (except bank_statement/credit_card) cannot have duplicate configurations across templates for the same client

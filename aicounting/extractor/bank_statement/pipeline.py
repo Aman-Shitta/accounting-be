@@ -10,6 +10,8 @@ import unicodedata
 # Third-party imports
 from google.genai import types
 
+from decimal import Decimal, InvalidOperation
+
 # Local imports
 from extractor.prompter import (
     Configuration,
@@ -26,10 +28,36 @@ from account.models import (
 
 from django.db import transaction
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+from agentic_doc.parse import parse
+from agentic_doc.config import ParseConfig
+
+class LandingAIService:
+    def __init__(self):
+        self.config = ParseConfig(
+            api_key=os.getenv("LANDING_AI_API_KEY"),
+        )
+
+    def extract_markdown(self, page_bytes):
+        """
+        Send page bytes to Landing AI OCR to get markdown.
+        Adjust this method to match the actual Landing AI SDK signature.
+        """
+        try:
+            result = parse(
+                file_bytes=page_bytes,
+                config=self.config
+            )
+            return result.markdown  # adjust to actual return value
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Landing AI OCR failed: {e}")
+            return ""
 
 class PageClassifier:
     
@@ -57,25 +85,25 @@ class PageClassifier:
         """
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-            classification_prompt
         ]
-        config = {
+        gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.0,
             "top_p": 0.8,
             "top_k": 20,
+            "system_instruction": [classification_prompt]
         }
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
             raw = ""
             for resp in stream_response:
                 raw += resp.text
             try:
-                clean_json_str = JSONCleaner.clean(raw)
+                clean_json_str = JSONCleaner.updated_json_repair(raw)
                 try:
                     parsed = json.loads(clean_json_str)
                 except Exception:
@@ -103,17 +131,18 @@ class TransactionExtractor:
     def extract(self, page_bytes, mime_type, previous_page_context):
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-            f"{self.prompt}\n**Previous page context: {previous_page_context}\nExtract data from current page only."
+            f"\n**Previous page context: {previous_page_context}\nExtract data from current page only."
         ]
-        config = {
+        gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.2,
+            "system_instruction": [self.prompt]
         }
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
             raw = ""
             for resp in stream_response:
@@ -125,7 +154,7 @@ class TransactionExtractor:
             return {}
 
         try:
-            clean_json_str = JSONCleaner.clean(raw)
+            clean_json_str = JSONCleaner.updated_json_repair(raw)
             parsed_data = json.loads(clean_json_str)
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -188,17 +217,17 @@ class CheckImageExtractor:
 
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-            check_image_prompt
         ]
-        config = {
+        gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.1,
+            "system_instruction": [check_image_prompt]
         }
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
             raw = ""
                 
@@ -276,20 +305,20 @@ class BankStatementSummarizer:
                 data=file_bytes,
                 mime_type="application/pdf",
             ),
-            summary_prompt
         ]
 
 
-        config: types.GenerateContentConfigDict = {
+        gemini_config: types.GenerateContentConfigDict = {
             "response_schema": self.response_schema,
             "response_mime_type":"application/json",
             "temperature": 0.2,
+            "system_instruction": [summary_prompt]
         }
 
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
 
             raw = ""
@@ -333,12 +362,11 @@ class BankStatementSummarizer:
 class DocumentProcessor(BaseDocumentProcessor):
 
     def __init__(self, config: Configuration, doc: MonthlyAccountingDocument):
-
         super().__init__(config, doc)
         self.page_data = []
         self.control_totals = {}
 
-        # Define the transaction extraction schema
+        # Define the transaction extraction schema (used for each page)
         self.ai_schema = types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -359,32 +387,32 @@ class DocumentProcessor(BaseDocumentProcessor):
             required=["line_items"]
         )
 
-        # AI Client and helpers
-        self.page_classifier = PageClassifier(self)
-        self.transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
-        self.check_image_extractor = CheckImageExtractor(self)
-
     def process_document(self, file_bytes: bytes, mime_type: str):
         from document.pipeline.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
         previous_page_context = ""
-    
+
+        page_classifier = PageClassifier(self)
+        transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
+        check_image_extractor = CheckImageExtractor(self)
+        summarizer = None
+
         for i, page_bytes in enumerate(page_bytes_list):
             try:
                 # 1. Classify the page
-                page_types = self.page_classifier.classify(page_bytes, mime_type)
+                page_types = page_classifier.classify(page_bytes, mime_type)
                 print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 
                 # 2. Extract data based on classification
                 if "transaction_table" in page_types:
-                    parsed_data = self.transaction_extractor.extract(page_bytes, mime_type, previous_page_context)
+                    parsed_data = transaction_extractor.extract(page_bytes, mime_type, previous_page_context)
                     page_result["transactions"] = parsed_data
                     previous_page_context = str(parsed_data)
 
                 if "check_images" in page_types:
-                    parsed_data = self.check_image_extractor.extract(page_bytes, mime_type)
+                    parsed_data = check_image_extractor.extract(page_bytes, mime_type)
                     page_result["check_data"] = parsed_data
 
                 if "summary_table" in page_types and not self.control_totals:
@@ -397,6 +425,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 print(f"[DEBUG] Page {i+1} data is: {page_result}")
                 time.sleep(3)
 
+
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -404,10 +433,16 @@ class DocumentProcessor(BaseDocumentProcessor):
                 print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
                 continue
         
+        del page_classifier
+        del transaction_extractor
+        del check_image_extractor
+        if summarizer:
+            del summarizer
+
         self._save_contorl_totals()
         # Process and save extracted data
         processing_stats = self._save_extracted_data()
-        
+
         return {
             "status": "success",
             "control_totals": self.control_totals,
@@ -478,6 +513,35 @@ class DocumentProcessor(BaseDocumentProcessor):
         logger.info(f"Saved extracted data: {stats}")
         return stats
 
+    def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
+        """
+        Parse amount string to Decimal.
+        
+        Args:
+            amount_str: Amount string from extraction
+            
+        Returns:
+            Parsed Decimal amount or None if parsing fails
+        """
+        if not amount_str or str(amount_str).strip() in ['', 'null', 'none', '-']:
+            return None
+        
+        try:
+            # Clean the amount string
+            clean_amount = str(amount_str).replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
+            
+            # Handle parentheses for negative amounts
+            if clean_amount.startswith('-'):
+                clean_amount = clean_amount[1:]
+                return -Decimal(clean_amount)
+            
+            return Decimal(clean_amount)
+            
+        except (InvalidOperation, ValueError, TypeError) as e:
+            logger.warning(f"Failed to parse amount '{amount_str}': {e}")
+            return None
+
+
     def _save_line_item(self, page_number: int, line_number: int, line_data: Dict) -> MonthlyDocumentBankLineItem:
         """
         Save a transaction line item to the database.
@@ -516,7 +580,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         # Create line item
         line_item = MonthlyDocumentBankLineItem.objects.create(
-            document=self.monthly_document,
+            document=self.document,
             page_number=page_number,
             line_number=line_number,
             date=date,
@@ -546,7 +610,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             Created MonthlyDocumentBankCheckItem instance
         """
         check_item = MonthlyDocumentBankCheckItem.objects.create(
-            document=self.monthly_document,
+            document=self.document,
             page_number=page_number,
             amount=str(check_data.get("amount", "")),
             payee=check_data.get("payee", ""),
@@ -571,7 +635,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         # Look for line item with matching check number
         matching_line_item = MonthlyDocumentBankLineItem.objects.filter(
-            document=self.monthly_document,
+            document=self.document,
             check_number=check_item.check_number,
             is_check_transaction=True
         ).first()

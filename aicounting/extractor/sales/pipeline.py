@@ -30,17 +30,17 @@ class TransactionExtractor:
     def extract(self, page_bytes, mime_type):
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-            f"{self.prompt}"
         ]
-        config = {
+        gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.2,
+            "system_instruction": [self.prompt]
         }
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
             raw = ""
             for resp in stream_response:

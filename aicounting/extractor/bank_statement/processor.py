@@ -51,6 +51,12 @@ class MonthlyAccountingDocumentProcessor:
         else:
             raise ValueError(f"Unsupported document type: {doc_type}")
 
+    def __release_resources__(self):
+        """Release resources held by the processor."""
+        if self.doc_processor:
+            del self.doc_processor
+            self.doc_processor = None
+
     def start_process(self, file_bytes: str, mime_type: str = "application/pdf") -> Dict[str, Any]:
         """
         Process the document and save results to database.

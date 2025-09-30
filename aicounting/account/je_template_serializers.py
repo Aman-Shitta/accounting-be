@@ -511,9 +511,13 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
         
         template = DimAICJETemplateHeader.objects.get(id=template_id)
         validated_attributes = validated_data['attributes']
-        
+
         created_attributes = []
-        
+
+        if not template.is_object:
+            # clear existing attribites.
+            DimAICJETemplateAttribute.objects.filter(je_template_id=template).delete()
+
         for attr_data in validated_attributes:
             if attr_data['type'] == 'object':
                 # For object templates, only create if not already exists for this template

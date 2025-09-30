@@ -583,6 +583,11 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     ],
                     excluded_fields=[]
                 )
+
+                # Trigger document processing tasks
+                from .tasks import process_uploaded_document
+                process_uploaded_document.delay(str(document.id), config_params)
+
             elif document.doc_type in ['sales']:
                 
                 attributes = document.input_file_snapshot.attribute_snapshots.all()
