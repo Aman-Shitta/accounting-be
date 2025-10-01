@@ -1,7 +1,7 @@
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
-from aicounting.model_file_upload_helper import upload_to_customer_client_folder
+from aicounting.file_upload_helper import upload_to_customer_client_folder
 
 class DimAICClient(models.Model):
     """
