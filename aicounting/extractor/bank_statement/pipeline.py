@@ -1,5 +1,4 @@
 # System imports
-import importlib
 import json
 import os
 import re
@@ -11,7 +10,11 @@ import unicodedata
 from google.genai import types
 
 from decimal import Decimal, InvalidOperation
+from django.db import transaction
 
+from typing import List, Dict, Optional
+from agentic_doc.parse import parse
+from agentic_doc.config import ParseConfig
 # Local imports
 from extractor.prompter import (
     Configuration,
@@ -25,16 +28,14 @@ from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyAccountingDocument
 )
+from document.pipeline.utils import split_pdf_to_pages
 
-from django.db import transaction
 
-from typing import List, Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-from agentic_doc.parse import parse
-from agentic_doc.config import ParseConfig
+
 
 class LandingAIService:
     def __init__(self):
