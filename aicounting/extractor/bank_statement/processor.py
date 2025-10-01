@@ -57,7 +57,7 @@ class MonthlyAccountingDocumentProcessor:
             del self.doc_processor
             self.doc_processor = None
 
-    def start_process(self, file_bytes: str, mime_type: str = "application/pdf") -> Dict[str, Any]:
+    def start_process(self, file_bytes: str, mime_type: str = "application/pdf", md=False) -> Dict[str, Any]:
         """
         Process the document and save results to database.
         
@@ -77,7 +77,7 @@ class MonthlyAccountingDocumentProcessor:
             self._clear_existing_data()
 
             # Process using base processor
-            return_data = self.doc_processor.process_document(file_bytes, mime_type)
+            return_data = self.doc_processor.process_document(file_bytes, mime_type, md)
             
             self.monthly_document.status = "extracted"
             self.monthly_document.save()
