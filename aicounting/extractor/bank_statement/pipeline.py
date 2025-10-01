@@ -30,6 +30,8 @@ from account.models import (
 )
 from document.pipeline.utils import split_pdf_to_pages
 
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 import logging
 
