@@ -1,6 +1,7 @@
 import os
 from django.conf import settings
 
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

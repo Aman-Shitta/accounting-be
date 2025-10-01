@@ -4,7 +4,7 @@ import uuid
 # Third-party imports
 from django.contrib.auth import get_user_model
 from django.db import models
-from aicounting.model_file_upload_helper import upload_to_documents_folder
+from aicounting.file_upload_helper import upload_to_documents_folder
 
 class DimAICDocument(models.Model):
     """

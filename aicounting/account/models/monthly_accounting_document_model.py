@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
 from .dim_aic_snapshot_models import FactAICInputFileSnapshot
 
-from aicounting.model_file_upload_helper import upload_to_montly_accounting_folder
+from aicounting.file_upload_helper import upload_to_montly_accounting_folder
 User = get_user_model()
 
 
@@ -16,6 +16,8 @@ class MonthlyAccountingDocument(models.Model):
     
     UPLOAD_STATUS_CHOICES = [
         ('pending', 'Pending Upload'),
+        ('pre_processing', 'Pre-processing'),
+        ('pre_processed', 'Pre-processed'),
         ('uploaded', 'Uploaded'),
         ('extracting', 'Extracting'),
         ('extracted', 'Extracted'),
@@ -104,6 +106,14 @@ class MonthlyAccountingDocument(models.Model):
         blank=True,
         verbose_name="Control Totals",
         help_text="Control totals and summary information extracted from document"
+    )
+    
+    # Pre-processed markdown metadata
+    markdown_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Markdown Metadata",
+        help_text="Metadata about pre-generated markdown files (page count, Azure paths, URLs)"
     )
     
     class Meta:

@@ -1,11 +1,15 @@
 # System imports
-import json
 import logging
-from pathlib import Path
+import os
+import sys, traceback
+import time
+import json
+from datetime import datetime
 
 # Third-party imports
 from celery import shared_task
-from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 # Local imports
 from extractor.bank_statement.classify import GLClassifier
@@ -14,12 +18,145 @@ from extractor.prompter import Configuration
 
 from .models.monthly_accounting_document_model import MonthlyAccountingDocument
 from .models.monthly_document_line_models import (
-    MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
-    MonthlyDocumentBankCheckItem
 )
+from .models import DimAICGLAcct
+
+from agentic_doc.parse import parse
+from agentic_doc.config import ParseConfig
+from document.pipeline.utils import split_pdf_to_pages
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task
+def preprocess_document_markdown(doc_id: str):
+    """
+    Pre-process document by generating markdown for all pages and storing in Azure.
+    This runs before actual extraction to prepare markdown files.
+    
+    Args:
+        doc_id: MonthlyAccountingDocument ID
+    """
+    
+    
+    doc = None
+    try:
+        doc = MonthlyAccountingDocument.objects.get(id=doc_id)
+        
+        # Only pre-process bank statements and credit cards
+        if doc.doc_type not in ['bank_statement', 'credit_card']:
+            logger.info(f"Document type {doc.doc_type} doesn't require markdown pre-processing")
+            doc.status = 'uploaded'
+            doc.save()
+            return {"status": "skipped", "reason": "Document type doesn't require markdown"}
+        
+        logger.info(f"Starting markdown pre-processing for document {doc.doc_id}")
+        doc.status = 'pre_processing'
+        doc.save()
+        
+        # Get file from Azure storage
+        file_path = doc.file.name if doc.file else None
+        if not file_path or not default_storage.exists(file_path):
+            logger.error(f"File does not exist in Azure storage: {file_path}")
+            doc.status = 'failed'
+            doc.save()
+            return {"status": "failed", "error": "File not found"}
+        
+        with default_storage.open(file_path, 'rb') as azure_file:
+            file_bytes = azure_file.read()
+        
+        # Split PDF into pages
+        page_bytes_list = split_pdf_to_pages(file_bytes)
+        logger.info(f"Split PDF into {len(page_bytes_list)} pages")
+        
+        # Initialize Landing AI parser
+        landing_ai_key = os.getenv("LANDING_AI_API_KEY")
+        landing_ai_config = ParseConfig(
+            api_key=landing_ai_key,
+        )
+        
+        # Prepare storage paths
+        doc_folder = f"monthly_accounting/{doc.monthly_accounting.client_id}/{doc.monthly_accounting.id}/documents/{doc.doc_id}"
+        markdown_folder = f"{doc_folder}/markdown"
+        
+        # Generate markdown for each page
+        markdown_pages = []
+        for i, page_bytes in enumerate(page_bytes_list):
+            page_num = i + 1
+            try:
+                logger.info(f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
+                
+                # Parse page with Landing AI
+                result = parse(
+                    documents=page_bytes,
+                    config=landing_ai_config
+                )
+                page_markdown = result[0].markdown
+                
+                # Save markdown to Azure
+                markdown_filename = f"page_{page_num}.md"
+                markdown_path = f"{markdown_folder}/{markdown_filename}"
+                
+                markdown_content = ContentFile(page_markdown.encode("utf-8"))
+                saved_path = default_storage.save(markdown_path, markdown_content)
+                
+                
+                markdown_url = default_storage.url(saved_path, expire_minutes=10)
+                
+                markdown_pages.append({
+                    "page_number": page_num,
+                    "path": saved_path,
+                    "url": markdown_url,
+                    "size": len(page_markdown)
+                })
+                
+                logger.info(f"Saved markdown for page {page_num} to {saved_path}")
+                
+            except Exception as e:
+                logger.error(f"Failed to process page {page_num}: {str(e)}")
+                markdown_pages.append({
+                    "page_number": page_num,
+                    "path": None,
+                    "url": None,
+                    "error": str(e)
+                })
+        
+        # Save metadata
+        markdown_metadata = {
+            "total_pages": len(page_bytes_list),
+            "processed_pages": len([p for p in markdown_pages if p.get("path")]),
+            "markdown_folder": markdown_folder,
+            "pages": markdown_pages,
+            "generated_at": datetime.now().isoformat(),
+            "sas_expiry_hours": 24
+        }
+        
+        doc.markdown_metadata = markdown_metadata
+        doc.status = 'pre_processed'
+        doc.save()
+        
+        logger.info(f"Markdown pre-processing complete for document {doc.doc_id}")
+        return {
+            "status": "success",
+            "total_pages": len(page_bytes_list),
+            "processed_pages": markdown_metadata["processed_pages"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in markdown pre-processing for document {doc_id}: {str(e)}")
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
+        
+        if doc:
+            doc.status = 'failed'
+            doc.save()
+        
+        return {
+            "status": "error",
+        } 
+
 
 @shared_task
 def process_uploaded_document(
@@ -41,7 +178,6 @@ def process_uploaded_document(
             return 
 
         # Check if file exists
-        from django.core.files.storage import default_storage
         file_path = doc.file.name if doc.file else None
 
         if not file_path or not default_storage.exists(file_path):
@@ -59,7 +195,10 @@ def process_uploaded_document(
         # Use the new MonthlyAccountingDocumentProcessor
         processor = MonthlyAccountingDocumentProcessor(doc, config)
         processor.set_doc_processor(doc.doc_type)
-        result = processor.start_process(file_bytes)
+        start_time = time.time()
+        result = processor.start_process(file_bytes, md=True)
+        print(f"Document processing time: {time.time() - start_time} seconds")
+        processor.__release_resources__()
 
         if doc.doc_type in ['bank_statement', 'credit_card']:
             # Update document status
@@ -71,9 +210,7 @@ def process_uploaded_document(
             doc.status = "classified"
             doc.save()
         
-        # Save JSON output to Azure storage for reference
-        import json
-        from django.core.files.base import ContentFile
+        
         
         output_json = json.dumps(result, indent=2, default=str)
         output_path = f"processed_output/{doc.doc_id}/processing_result.json"
@@ -87,25 +224,91 @@ def process_uploaded_document(
             doc.status = "failed"
             doc.save()
             logger.error(f"Error processing document {doc.doc_id}: {str(e)}")
-            import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
         raise
 
 
+def enrich_check_transaction_descriptions(document_id: str) -> int:
+    """
+    Enrich check transaction descriptions with payee and memo information from linked check items.
+    This provides better context for GL classification.
+    
+    Args:
+        document_id: UUID string of the MonthlyAccountingDocument
+        
+    Returns:
+        Number of descriptions enriched
+    """
+    try:
+        doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
+        enriched_count = 0
+        
+        # Get all check items with related line items
+        check_items = doc.check_items.filter(
+            related_line_item__isnull=False
+        ).select_related('related_line_item')
+        
+        for check_item in check_items:
+            line_item = check_item.related_line_item
+            
+            # Build enriched description
+            description_parts = [line_item.description or ""]
+            
+            # Add payee information
+            if check_item.payee and check_item.payee.strip():
+                payee_info = f"Payee: {check_item.payee.strip()}"
+                if payee_info not in description_parts[0]:  # Avoid duplicates
+                    description_parts.append(payee_info)
+            
+            # Add memo information
+            if check_item.memo and check_item.memo.strip():
+                memo_info = f"Memo: {check_item.memo.strip()}"
+                if memo_info not in description_parts[0]:  # Avoid duplicates
+                    description_parts.append(memo_info)
+            
+            # Only update if we added new information
+            if len(description_parts) > 1:
+                original_desc = line_item.description
+                enriched_description = " | ".join(description_parts)
+                
+                line_item.description = enriched_description
+                line_item.save(update_fields=['description'])
+                
+                enriched_count += 1
+                logger.info(
+                    f"Enriched check #{check_item.check_number} description: "
+                    f"'{original_desc}' -> '{enriched_description}'"
+                )
+        
+        logger.info(f"Enriched {enriched_count} check transaction descriptions for document {document_id}")
+        return enriched_count
+        
+    except Exception as e:
+        logger.error(f"Error enriching check descriptions for document {document_id}: {str(e)}")
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
+        return 0
+
+
 @shared_task
 def classify_monthly_document_gl_accounts(document_id: str):
     """
-    Classify GL accounts for line items in a MonthlyAccountingDocument
+    Classify GL accounts for line items in a MonthlyAccountingDocument.
+    First enriches check transaction descriptions with payee/memo info.
     
     Args:
         document_id: UUID string of the MonthlyAccountingDocument
     """
-    from .models import DimAICGLAcct
     try:
         # Get the document
         doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
+        
+        # First, enrich check transaction descriptions with payee and memo info
+        logger.info(f"Enriching check descriptions for document {document_id}")
+        enrich_check_transaction_descriptions(document_id)
         
         # Get the input file configuration for GL mapping
         input_file_snapshot = doc.input_file_snapshot

@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from aicounting.model_file_upload_helper import upload_to_input_files_folder
+from aicounting.file_upload_helper import upload_to_input_files_folder
 
 User = get_user_model()
 

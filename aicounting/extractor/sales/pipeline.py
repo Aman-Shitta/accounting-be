@@ -30,17 +30,17 @@ class TransactionExtractor:
     def extract(self, page_bytes, mime_type):
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-            f"{self.prompt}"
         ]
-        config = {
+        gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.2,
+            "system_instruction": [self.prompt]
         }
         try:
-            stream_response = self.processor.generate_content_stream(
+            stream_response = self.processor._generate_content_stream(
                 contents=[content],
-                config=config
+                config=gemini_config
             )
             raw = ""
             for resp in stream_response:
@@ -105,7 +105,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         self.extracted_attributes = set()  # Track already extracted attributes to avoid duplicates
         self.transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
 
-    def process_document(self, file_bytes: bytes, mime_type: str):
+    def process_document(self, file_bytes: bytes, mime_type: str, md: bool) -> Dict[str, any]:
         from document.pipeline.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)

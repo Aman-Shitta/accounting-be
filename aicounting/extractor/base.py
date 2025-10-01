@@ -6,6 +6,7 @@ from django.conf import settings
 from google import genai
 from django.conf import settings
 
+from google.genai import types
 from extractor.prompter import prepare_prompt
 
 class BaseDocumentProcessor:
@@ -31,10 +32,24 @@ class BaseDocumentProcessor:
                 data["warning"] = "Expected single page output, but got multiple pages in Gemini response."
         return data
     
-    def generate_content_stream(self, **kwargs):
+    def _generate_content_stream(self, **kwargs):
         model = kwargs.get("model", None)
         contents = kwargs.get("contents", [])
         config =  kwargs.get("config", {})
+
+        # Create a new config dict instead of mutating the original
+        # Increased max_output_tokens to handle large transaction tables
+        # Removed stop_sequences to prevent premature JSON termination
+        default_config = types.GenerateContentConfigDict({
+            "max_output_tokens": 8000,  # Increased from 1500
+            "top_p": 0.95,
+            "top_k": 40,
+            "temperature": 0.2,
+            # Removed stop_sequences that can break JSON
+        })
+        
+        # Merge configs without mutating the original
+        final_config = {**default_config, **config}
 
         if not model:
             model = self.model
@@ -45,7 +60,7 @@ class BaseDocumentProcessor:
                 return self.ai_client.models.generate_content_stream(
                     model=model,
                     contents=contents,
-                    config=config,
+                    config=final_config,
                 )
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -95,4 +110,17 @@ class JSONCleaner:
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Extracting first JSON: {e}")
             print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+        return raw
+    
+    @staticmethod
+    def updated_json_repair(raw: str) -> str:
+        from json_repair import repair_json
+        try:
+            raw  = repair_json(raw)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] JSON REPAIR : {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+        
         return raw

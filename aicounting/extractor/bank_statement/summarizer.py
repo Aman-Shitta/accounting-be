@@ -68,17 +68,18 @@ class BankStatementSummarizer:
         ]
 
 
-        config: types.GenerateContentConfigDict = {
+        gemini_config: types.GenerateContentConfigDict = {
             "response_schema": self.response_schema,
             "response_mime_type":"application/json",
             "temperature": 0.2,
+            "system_instruction": [summary_prompt]
         }
 
         try:
-            stream_response = self.client.models.generate_content_stream(
+            stream_response = self.client.models._generate_content_stream(
                 model=self.model,
                 contents=[content],
-                config=config
+                config=gemini_config
             )
 
             raw = ""
