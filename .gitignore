@@ -59,3 +59,4 @@ pylint-report.txt
 *.cnf
 uploads
 uploads/
+*/static/
