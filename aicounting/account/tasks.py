@@ -258,13 +258,13 @@ def enrich_check_transaction_descriptions(document_id: str) -> int:
             
             # Add payee information
             if check_item.payee and check_item.payee.strip():
-                payee_info = f"Payee: {check_item.payee.strip()}"
+                payee_info = f"Payee: {check_item.payee.strip()}" if check_item.payee.strip() else ""
                 if payee_info not in description_parts[0]:  # Avoid duplicates
                     description_parts.append(payee_info)
             
             # Add memo information
             if check_item.memo and check_item.memo.strip():
-                memo_info = f"Memo: {check_item.memo.strip()}"
+                memo_info = f"Memo: {check_item.memo.strip()}" if check_item.memo.strip() else ""
                 if memo_info not in description_parts[0]:  # Avoid duplicates
                     description_parts.append(memo_info)
             
