@@ -77,27 +77,66 @@ class PageClassifier:
             required=["page_types"]
         )
 
-    def classify(self, page_bytes, mime_type):
-        classification_prompt = """
-        Classify this page as one or more of the following types (return a JSON array in 'page_types' key):
-        - transaction_table
-        - check_images
-        - summary_table
-        - other
-        If multiple types are present, include all. Example output: {\"page_types\": [\"transaction_table\", \"check_images\"]}
+    def classify(self, md_bytes, page_bytes=None, mime_type=None):
         """
-        content = [
-            types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
-        ]
+        Classify page content using markdown text for better LLM understanding.
+        Falls back to PDF if markdown is not available.
+        
+        Args:
+            md_bytes: Markdown content bytes (preferred)
+            page_bytes: PDF page bytes (fallback)
+            mime_type: MIME type for PDF fallback
+        """
+        classification_prompt = """
+        You are analyzing a bank statement page. Based on the content, classify this page into one or more categories:
+
+        **Page Types:**
+        - transaction_table: Contains transaction listings with dates, descriptions, amounts, debits/credits
+        - check_images: Contains images or details of cleared checks with check numbers, payees, amounts
+        - summary_table: Contains account summaries, beginning/ending balances, totals, or statement overview
+        - other: Any other content not fitting the above categories
+
+        **Analysis Guidelines:**
+        - Look for table structures, headers, repeated patterns
+        - Transaction tables have columns like Date, Description, Debit, Credit, Balance
+        - Check images have check numbers, payee names, amounts, memo fields
+        - Summary tables have totals, balances, account information
+        - A page can have multiple types (e.g., both transactions and summary)
+
+        **Output Format:**
+        Return JSON with:
+        - page_types: Array of detected types
+
+        Example: {"page_types": ["transaction_table"]}
+        """
+        
+        # Prefer markdown over PDF for classification
+        if md_bytes:
+            print(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
+            content = [
+                types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"),
+                "Analyze the above markdown content from a bank statement page."
+            ]
+        elif page_bytes and mime_type:
+            print(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
+            content = [
+                types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
+                "Analyze the above PDF page content from a bank statement."
+            ]
+        else:
+            print(f"[ERROR] No content provided for page classification")
+            return ["other"]
+
         gemini_config = {
             "response_schema": self.schema,
             "response_mime_type": "application/json",
-            "temperature": 0.0,
+            "temperature": 0.1,
             "top_p": 0.8,
-            "top_k": 20,
+            "top_k": 15,  # Reduced from 20 to 15 for more focused, cost-effective classification
             "system_instruction": [classification_prompt],
             "max_output_tokens": 500,  # Classification needs minimal output
         }
+        
         try:
             stream_response = self.processor._generate_content_stream(
                 contents=content,
@@ -106,6 +145,9 @@ class PageClassifier:
             raw = ""
             for resp in stream_response:
                 raw += resp.text
+                
+            print(f"[DEBUG] Classification raw response: {raw[:200]}...")
+            
             try:
                 clean_json_str = JSONCleaner.updated_json_repair(raw)
                 try:
@@ -113,16 +155,28 @@ class PageClassifier:
                 except Exception:
                     fallback_json = JSONCleaner.extract_first_json(clean_json_str)
                     parsed = json.loads(fallback_json)
-                return parsed.get("page_types", [])
+                
+                page_types = parsed.get("page_types", ["other"])
+                confidence = parsed.get("confidence", 0.5)
+                elements = parsed.get("detected_elements", [])
+                
+                print(f"[DEBUG] Classification result: {page_types} (confidence: {confidence})")
+                if elements:
+                    print(f"[DEBUG] Detected elements: {elements}")
+                
+                return page_types
+                
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification failed: {e} :: for \n -------------------------\n{raw}\n -------------------------\n")
+                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
+                print(f"[ERROR] Raw response: {raw}")
                 return ["other"]
+                
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in classify: {e}")
+            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
             return ["other"]
 
 class TransactionExtractor:
@@ -153,6 +207,8 @@ class TransactionExtractor:
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.2,
+            "top_p": 0.9,  # Slightly higher for transaction diversity
+            "top_k": 25,   # Moderate value for transaction extraction balance
             "system_instruction": [self.prompt],
             "max_output_tokens": 6000,  # Explicit limit for transaction extraction
         }
@@ -257,6 +313,8 @@ class CheckImageExtractor:
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.1,
+            "top_p": 0.8,
+            "top_k": 15,   # Low value for precise check data extraction
             "system_instruction": [check_image_prompt],
             "max_output_tokens": 4000,  # Explicit limit for check extraction
         }
@@ -348,6 +406,8 @@ class BankStatementSummarizer:
             "response_schema": self.response_schema,
             "response_mime_type":"application/json",
             "temperature": 0.2,
+            "top_p": 0.85,
+            "top_k": 20,   # Moderate value for summary extraction
             "system_instruction": [summary_prompt],
             "max_output_tokens": 1000,  # Summary needs minimal output
         }
@@ -515,11 +575,18 @@ class DocumentProcessor(BaseDocumentProcessor):
                     if md_bytes is None and parser:
                         logger.info(f"Generating markdown in real-time for page {page_num}")
                         page_markdown = parser.extract_markdown(page_bytes=page_bytes)
-                        file_obj = ContentFile(page_markdown.encode("utf-8"), name="example.txt")
-                        md_bytes = file_obj.read()
+                        if page_markdown:
+                            md_bytes = page_markdown.encode("utf-8")
+                            logger.info(f"Generated markdown for page {page_num} ({len(md_bytes)} bytes)")
+                        else:
+                            logger.warning(f"Failed to generate markdown for page {page_num}")
+                            md_bytes = None
 
-                # 1. Classify the page
-                page_types = page_classifier.classify(page_bytes, mime_type)
+                # 1. Classify the page using markdown first, fallback to PDF
+                if md_bytes:
+                    page_types = page_classifier.classify(md_bytes=md_bytes)
+                else:
+                    page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
                 print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 

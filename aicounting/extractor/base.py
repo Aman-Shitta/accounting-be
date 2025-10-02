@@ -41,11 +41,10 @@ class BaseDocumentProcessor:
         # Increased max_output_tokens to handle large transaction tables
         # Removed stop_sequences to prevent premature JSON termination
         default_config = types.GenerateContentConfigDict({
-            "max_output_tokens": 8000,  # Increased from 1500
-            "top_p": 0.95,
-            "top_k": 40,
-            "temperature": 0.2,
-            # Removed stop_sequences that can break JSON
+            "max_output_tokens": config.get("max_output_tokens", 8000),
+            "top_p": config.get("top_p", 0.95),
+            "top_k": config.get("top_k", 25),  # Reduced from 40 to 25 for cost efficiency
+            "temperature": config.get("temperature", 0.2),
         })
         
         # Merge configs without mutating the original
