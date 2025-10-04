@@ -1003,20 +1003,20 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentUnifiedLineItemSerializer
+            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
             
             document, error_response = self._get_document(client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentUnifiedLineItemSerializer(
+            serializer = MonthlyDocumentBankLineItemSerializer(
                 data=request.data, 
                 context={'request': request, 'document': document}
             )
             
             if serializer.is_valid():
                 item = serializer.save()
-                output_serializer = MonthlyDocumentUnifiedLineItemSerializer(item, context={'request': request})
+                output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
                 return create_api_response(
                     status.HTTP_201_CREATED, 
                     "Line item created successfully.", 
@@ -1101,13 +1101,13 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentUnifiedLineItemSerializer
+            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
             
             line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentUnifiedLineItemSerializer(
+            serializer = MonthlyDocumentBankLineItemSerializer(
                 line_item, 
                 data=request.data, 
                 partial=True, 
@@ -1116,7 +1116,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             
             if serializer.is_valid():
                 updated_item = serializer.save()
-                output_serializer = MonthlyDocumentUnifiedLineItemSerializer(updated_item, context={'request': request})
+                output_serializer = MonthlyDocumentBankLineItemSerializer(updated_item, context={'request': request})
                 return create_api_response(
                     status.HTTP_200_OK, 
                     "Line item updated successfully.", 
