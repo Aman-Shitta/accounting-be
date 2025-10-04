@@ -10,6 +10,7 @@ from datetime import datetime
 from celery import shared_task
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.conf import settings
 
 # Local imports
 from extractor.bank_statement.classify import GLClassifier
@@ -71,7 +72,7 @@ def preprocess_document_markdown(doc_id: str):
         logger.info(f"Split PDF into {len(page_bytes_list)} pages")
         
         # Initialize Landing AI parser
-        landing_ai_key = os.getenv("LANDING_AI_API_KEY")
+        landing_ai_key = settings.LANDING_AI_API_KEY
         landing_ai_config = ParseConfig(
             api_key=landing_ai_key,
         )

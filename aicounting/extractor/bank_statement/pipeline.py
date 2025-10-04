@@ -11,6 +11,7 @@ from google.genai import types
 
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from django.conf import settings
 
 from typing import List, Dict, Optional
 from agentic_doc.parse import parse
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 class LandingAIService:
     def __init__(self):
         self.config = ParseConfig(
-            api_key=os.getenv("LANDING_AI_API_KEY"),
+            api_key=settings.LANDING_AI_API_KEY,
         )
 
     def extract_markdown(self, page_bytes):
