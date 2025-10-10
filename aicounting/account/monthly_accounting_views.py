@@ -337,20 +337,66 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
 
             # Get JE template snapshots (basic info only)
             je_template_snapshots = monthly_accounting.je_template_snapshots.select_related(
-                'original_template', 'input_file'
-            )
+                'original_template'
+                ).prefetch_related(
+                    'input_files'
+                )
+            
+            # Get monthly accounting documents for status checking
+            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+            documents_map = {}
+            
+            # Create map of input file snapshot ID to document for quick lookup
+            monthly_docs = MonthlyAccountingDocument.objects.filter(
+                monthly_accounting=monthly_accounting
+            ).select_related('input_file_snapshot')
+            
+            for doc in monthly_docs:
+                if doc.input_file_snapshot:
+                    documents_map[doc.input_file_snapshot.id] = doc
             
             je_templates = []
             for template_snapshot in je_template_snapshots:
-
+                # Get all input files associated with this template
+                input_files = []
+                all_verified = True
+                
+                for input_file in template_snapshot.input_files.all():
+                    # Find the document status for this input file
+                    is_verified = False
+                    doc_status = None
+                    doc_id = None
+                    
+                    if input_file.id in documents_map:
+                        doc = documents_map[input_file.id]
+                        doc_status = doc.status
+                        doc_id = doc.id
+                        is_verified = doc.status == 'verified'
+                    
+                    # If any input file is not verified, the template is not fully verified
+                    if not is_verified:
+                        all_verified = False
+                    
+                    input_files.append({
+                        "file_name": input_file.name,
+                        "type": input_file.file_type if hasattr(input_file, 'file_type') else None,
+                        "type_display": input_file.get_file_type_display() if hasattr(input_file, 'get_file_type_display') else None,
+                        "verified": is_verified,
+                        "document_id": doc_id,
+                        "document_status": doc_status
+                    })
+                
+                # Check if the template has an export file generated (which happens after verification)
+                has_export = template_snapshot.je_export_file is not None
+                
                 je_templates.append({
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
-                    "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
-                    "type_display": template_snapshot.input_file.get_file_type_display() if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
+                    "input_files": input_files,  # List of associated input files with verification status
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
-                    "is_ready": all(status == 'verified' for status in template_snapshot.input_file.extraction_documents.all().values_list('status', flat=True)),
+                    "is_ready": all_verified,  # Ready only if all input files are verified
+                    "is_verified": all_verified and has_export,  # Verified if all files are verified and export exists
                     "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })
 

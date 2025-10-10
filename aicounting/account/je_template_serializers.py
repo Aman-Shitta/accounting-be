@@ -23,8 +23,8 @@ class JEFreqListSerializer(serializers.ModelSerializer):
 class JETemplateListSerializer(serializers.ModelSerializer):
     """Serializer for listing JE Templates"""
 
-    input_file = serializers.SerializerMethodField()
-    file_type = serializers.CharField(source='input_file.file_type', read_only=True)
+    input_files = serializers.SerializerMethodField()
+    file_type = serializers.SerializerMethodField()
     attributes_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -33,45 +33,53 @@ class JETemplateListSerializer(serializers.ModelSerializer):
             'id', 'je_name', 'je_refrence',
             'je_freq', 'file_type',
             'attributes_count', 'is_object',
-            'input_file'
+            'input_files'
         ]
     
     def get_attributes_count(self, obj):
         """Get count of configured attributes for this template"""
         return obj.template_attributes.count()
 
-    def get_input_file(self, obj):
-        """Return the input file name if available"""
-        if obj.input_file:
-            return {
-                'id': obj.input_file.id,
-                'name': obj.input_file.name,
-                'file_type': obj.input_file.file_type
-            }
+    def get_input_files(self, obj):
+        """Return the input files if available"""
+        files = obj.input_files.all()
+        if files:
+            return [{
+                'id': file.id,
+                'name': file.name,
+                'file_type': file.file_type
+            } for file in files]
+        return []
+        
+    def get_file_type(self, obj):
+        """Get the file type of the first input file if any"""
+        files = obj.input_files.all()
+        if files:
+            return files[0].file_type
         return None
 
 class JETemplateDetailSerializer(serializers.ModelSerializer):
     """Serializer for detailed JE Template view"""
     
-    input_file = serializers.SerializerMethodField()
-    file_type = serializers.CharField(source='input_file.file_type', read_only=True)
-   
+    input_files = serializers.SerializerMethodField(source='get_input_files')
+
     class Meta:
         model = DimAICJETemplateHeader
         fields = [
-            'id', 'je_name', 'je_refrence', 'je_freq', 'is_object', 'input_file', 
-            'file_type', "description"
+            'id', 'je_name', 'je_refrence', 'je_freq', 'is_object', 'input_files', 
+            'description'
         ]
 
-    def get_input_file(self, obj):
-        """Return the input file details if available"""
-        if obj.input_file:
-            return {
-                'id': obj.input_file.id,
-                'name': obj.input_file.name,
-                'file_type': obj.input_file.file_type
-            }
-        return None
+    def get_input_files(self, obj):
+        """Return the input files if available"""
+        files = obj.input_files.all()
+        if files:
+            return [{
+                'id': file.id,
+                'name': file.name,
+                'file_type': file.file_type
+            } for file in files]
+        return []
 
 class JETemplateCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating JE Templates"""
@@ -80,32 +88,48 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
         model = DimAICJETemplateHeader
         fields = [
             'je_name', 'je_refrence', 'je_freq', 'je_type',
-            'is_object', 'input_file', 'description'
+            'is_object', 'input_files', 'description'
         ]
     
     def validate(self, data):
         """Custom validation for the template creation"""
         is_object = data.get('is_object', False)
-        input_file = data.get('input_file')
+        input_files = data.get('input_files', [])
         
-        if is_object and not input_file:
-            raise serializers.ValidationError("input_file is required when is_object is true")
+        if is_object and not input_files:
+            raise serializers.ValidationError({"input_files": "At least one input file is required for Object view template."})
         
-        # Additional validation for bank_statement and credit_card files
-        if input_file and input_file.file_type in ['bank_statement', 'credit_card']:
-            if is_object:
-                raise serializers.ValidationError(
-                    f"Templates with {input_file.file_type} input files can only be configured as object templates (is_object=False)"
-                )
-        
+        # Check file types and apply restrictions
+        if input_files:
+            bank_or_credit_files = [f for f in input_files if f.file_type in ['bank_statement', 'credit_card']]
+            other_files = [f for f in input_files if f.file_type not in ['bank_statement', 'credit_card']]
+            
+            # If there are bank/credit files, ensure only one is selected and no other file types
+            if bank_or_credit_files:
+                if len(bank_or_credit_files) > 1:
+                    raise serializers.ValidationError(
+                        "Only one bank statement or credit card file can be selected at a time"
+                    )
+                
+                if other_files:
+                    raise serializers.ValidationError(
+                        "Bank statement or credit card files cannot be combined with other file types"
+                    )
+                
+                if is_object is False:
+                    raise serializers.ValidationError(
+                        f"Templates with {bank_or_credit_files[0].file_type} input files must be configured as object templates (is_object=True)"
+                    )
+            
         return data
     
-    def validate_input_file(self, value):
-        """Validate that the input file belongs to the client"""
+    def validate_input_files(self, value):
+        """Validate that the input files belong to the client"""
         if value:
             client_id = self.context.get('client_id')
-            if value.client.id != client_id:
-                raise serializers.ValidationError("Input file does not belong to the specified client")
+            for file in value:
+                if file.client.id != client_id:
+                    raise serializers.ValidationError(f"Input file {file.name} does not belong to the specified client")
         return value
     
     def create(self, validated_data):
@@ -132,10 +156,14 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
         template = super().create(validated_data)
         
         # Auto-create default attributes for bank_statement and credit_card files
-        if template.input_file and template.input_file.file_type in ['bank_statement', 'credit_card']:
+        bank_cc_files = [f for f in template.input_files.all() 
+                        if f.file_type in ['bank_statement', 'credit_card']]
+        
+        if bank_cc_files:
+            input_file = bank_cc_files[0]  # We've already validated there's only one
             # Get all attributes for this input file
             input_file_attributes = DimAicInputFileAttributes.objects.filter(
-                input_file=template.input_file
+                input_file=input_file
             )
             
             # Create template attributes for all available attributes in the file
@@ -287,7 +315,7 @@ class JETemplateAttributeObjectSerializer(serializers.Serializer):
     id = serializers.IntegerField(help_text="Input file attribute ID")
     
     def validate_id(self, value):
-        """Validate that the attribute exists and belongs to the template's input file"""
+        """Validate that the attribute exists and belongs to the template's input files"""
         template_id = self.context.get('template_id')
         
         try:
@@ -296,18 +324,24 @@ class JETemplateAttributeObjectSerializer(serializers.Serializer):
             if not template.is_object:
                 raise serializers.ValidationError("This template is not an object template")
             
-            if not template.input_file:
-                raise serializers.ValidationError("Template must have an input file for object attributes")
+            if not template.input_files.exists():
+                raise serializers.ValidationError("Template must have input files for object attributes")
             
-            # Check if the attribute exists and belongs to the template's input file
+            # Get all input file IDs for this template
+            template_file_ids = template.input_files.values_list('id', flat=True)
+            
+            # Check if the attribute exists and belongs to any of the template's input files
             try:
                 attribute = DimAicInputFileAttributes.objects.get(
                     id=value,
-                    input_file=template.input_file
+                    input_file__in=template_file_ids
                 )
                 
                 # Additional restriction for bank_statement and credit_card files
-                if template.input_file.file_type in ['bank_statement', 'credit_card']:
+                bank_cc_files = [f for f in template.input_files.all() 
+                               if f.file_type in ['bank_statement', 'credit_card']]
+                
+                if bank_cc_files:
                     # Check if this template already has any attributes configured
                     existing_attrs_count = DimAICJETemplateAttribute.objects.filter(
                         je_template_id=template,
@@ -317,12 +351,12 @@ class JETemplateAttributeObjectSerializer(serializers.Serializer):
                     # For bank_statement and credit_card, only allow one attribute
                     if existing_attrs_count > 0:
                         raise serializers.ValidationError(
-                            f"Templates with {template.input_file.file_type} files can only have one attribute configured"
+                            f"Templates with {bank_cc_files[0].file_type} files can only have one attribute configured"
                         )
                 
                 return attribute
             except DimAicInputFileAttributes.DoesNotExist:
-                raise serializers.ValidationError(f"Attribute with ID {value} not found in template's input file")
+                raise serializers.ValidationError(f"Attribute with ID {value} not found in any of the template's input files")
                 
         except DimAICJETemplateHeader.DoesNotExist:
             raise serializers.ValidationError("Template not found")
@@ -373,60 +407,45 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Template not found")
         
         validated_attributes = []
-        # Validate for object templates (expecting id)
-        if template.is_object:
-            # For object templates, expect payload: {"id": 1}
-            # Check for duplicate attributes in the same template
-            existing_ids = set(
-                DimAICJETemplateAttribute.objects.filter(
-                    je_template_id=template,
-                    input_file_attribute__isnull=False
-                ).values_list('input_file_attribute__id', flat=True)
-            )
-            
-            # Special handling for bank_statement and credit_card files
-            if template.input_file and template.input_file.file_type in ['bank_statement', 'credit_card']:
-                if existing_ids:
-                    raise serializers.ValidationError(
-                        f"Templates with {template.input_file.file_type} files can only have one attribute and it's already configured"
-                    )
-                if len(value) > 1:
-                    raise serializers.ValidationError(
-                        f"Templates with {template.input_file.file_type} files can only have one attribute configured at a time"
-                    )
-            
-            new_ids = []
-            for i, attr_data in enumerate(value):
-                # Validate that attr_data contains id
-                if 'id' not in attr_data:
-                    raise serializers.ValidationError(f"Attribute at index {i}: 'id' field is required for object templates")
+        if not template.is_object:
+            # Validate for non-object templates
+            validated_attributes =  self._validate_manual_attributes(value, template)
+        else:
+            # Templates without input files can only have manual attributes
+            if not template.input_files.exists():
+                raise serializers.ValidationError("Cannot create Object based JE template without files.")
                 
-                object_serializer = JETemplateAttributeObjectSerializer(
-                    data=attr_data, 
-                    context={'template_id': template_id}
-                )
-                if object_serializer.is_valid():
-                    attribute = object_serializer.validated_data['id']
+            # Validate for object templates (expecting id)
+            elif template.is_object:
+            
+                new_ids = []
+                for i, attr_data in enumerate(value):
+                    # Validate that attr_data contains id
+                    if 'id' not in attr_data:
+                        raise serializers.ValidationError(f"Attribute at index {i}: 'id' field is required for object templates")
                     
-                    # # Check for duplicates in existing template attributes
-                    # if attribute.id in existing_ids:
-                    #     raise serializers.ValidationError(f"Attribute {attribute.id} is already configured for this template")
-                    
-                    # Check for duplicates in current request
-                    if attribute.id in new_ids:
-                        raise serializers.ValidationError(f"Duplicate attribute ID {attribute.id} in request")
-                    
-                    new_ids.append(attribute.id)
-                    validated_attributes.append({
-                        'type': 'object',
-                        'input_file_attribute': attribute
-                    })
-                else:
-                    raise serializers.ValidationError(f"Attribute at index {i}: {object_serializer.errors}")
+                    object_serializer = JETemplateAttributeObjectSerializer(
+                        data=attr_data, 
+                        context={'template_id': template_id}
+                    )
+                    if object_serializer.is_valid():
+                        attribute = object_serializer.validated_data['id']
+                        
+                        # Check for duplicates in current request
+                        if attribute.id in new_ids:
+                            raise serializers.ValidationError(f"Duplicate attribute ID {attribute.id} in request")
+                        
+                        new_ids.append(attribute.id)
+                        validated_attributes.append({
+                            'type': 'object',
+                            'input_file_attribute': attribute
+                        })
+                    else:
+                        raise serializers.ValidationError(f"Attribute at index {i}: {object_serializer.errors}")
             
             # Additional validation: for object templates (except bank_statement and credit_card), 
             # no two templates for the same client can have the exact same attributes
-            if new_ids and template.input_file and template.input_file.file_type not in ['bank_statement', 'credit_card']:
+            if new_ids:
                 # Find other object templates for the same client with the same attributes
                 client = template.client
                 other_templates = DimAICJETemplateHeader.objects.filter(
@@ -436,7 +455,13 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                 
                 for other_template in other_templates:
                     # Skip bank_statement and credit_card templates in this check
-                    if other_template.input_file and other_template.input_file.file_type in ['bank_statement', 'credit_card']:
+                    other_has_bank_cc = False
+                    for input_file in other_template.input_files.all():
+                        if input_file.file_type in ['bank_statement', 'credit_card']:
+                            other_has_bank_cc = True
+                            break
+                    
+                    if other_has_bank_cc:
                         continue
                         
                     other_ids = set(
@@ -446,63 +471,71 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                         ).values_list('input_file_attribute__id', flat=True)
                     )
                     
-                    # Check if the combination of existing + new attributes matches another template
-                    # current_template_attrs = set(existing_ids)
-                    # current_template_attrs.update(new_ids)
-                    
                     if new_ids == other_ids:
                         raise serializers.ValidationError(
                             f"Another object template '{other_template.je_name}' already has the same attribute configuration"
                         )
+
+        return validated_attributes
         
-        # Validate for non-object templates (expecting gl_account, debit, credit)
-        else:
-            # For non-object templates, expect payload: {"gl_account": 1, "debit": "1", "credit": null}
-            for i, attr_data in enumerate(value):
-                # Validate that attr_data contains required fields for non-object templates
-                required_fields = ['gl_account']
-                missing_fields = [field for field in required_fields if field not in attr_data]
-                if missing_fields:
+
+    def _validate_manual_attributes(self, value, template):
+        """Validate manual attributes (non-object attributes)"""
+        validated_attributes = []
+
+        # For manual attributes, expect payload: {"gl_account": 1, "debit": "1", "credit": null}
+        for i, attr_data in enumerate(value):
+            # Validate that attr_data contains required fields for non-object templates
+            required_fields = ['gl_account']
+            missing_fields = [field for field in required_fields if field not in attr_data]
+            if missing_fields:
+                raise serializers.ValidationError(
+                    f"Attribute at index {i}: Missing required fields for manual attributes: {missing_fields}"
+                )
+
+            if not template.input_files.exists():
+                if any([i for i in attr_data if i in ['debit', 'credit'] and str(attr_data[i]).isdigit()]):
                     raise serializers.ValidationError(
-                        f"Attribute at index {i}: Missing required fields for non-object templates: {missing_fields}"
+                        f"Manual attributes cannot reference attribute without  input files"
                     )
+            
+            non_object_serializer = JETemplateAttributeNonObjectSerializer(data=attr_data)
+            if non_object_serializer.is_valid():
+                gl_account = non_object_serializer.validated_data['gl_account']
+                debit = non_object_serializer.validated_data.get('debit')
+                credit = non_object_serializer.validated_data.get('credit')
                 
-                non_object_serializer = JETemplateAttributeNonObjectSerializer(data=attr_data)
-                if non_object_serializer.is_valid():
-                    gl_account = non_object_serializer.validated_data['gl_account']
-                    debit = non_object_serializer.validated_data.get('debit')
-                    credit = non_object_serializer.validated_data.get('credit')
-                    
-                    # Set attribute_name based on debit/credit values if they reference attribute IDs
-                    attribute_name = None
-                    attribute_comment = None
-                    if debit and str(debit).isdigit():
-                        try:
-                            attr = DimAicInputFileAttributes.objects.get(id=int(debit))
-                            attribute_name = attr.name
-                            attribute_comment = attr.comments
-                        except DimAicInputFileAttributes.DoesNotExist:
-                            pass
-                    elif credit and str(credit).isdigit():
-                        try:
-                            attr = DimAicInputFileAttributes.objects.get(id=int(credit))
-                            attribute_name = attr.name
-                            attribute_comment = attr.comments
-                        except DimAicInputFileAttributes.DoesNotExist:
-                            pass
-                    
-                    validated_attributes.append({
-                        'type': 'non_object',
-                        'gl_account': gl_account,
-                        'debit': debit,
-                        'credit': credit,
-                        'attribute_name': attribute_name,
-                        'attribute_comment': attribute_comment
-                    })
-                else:
-                    raise serializers.ValidationError(f"Attribute at index {i}: {non_object_serializer.errors}")
+                # Set attribute_name based on debit/credit values if they reference attribute IDs
+                attribute_name = None
+                attribute_comment = None
+                if debit and str(debit).isdigit():
+                    try:
+                        attr = DimAicInputFileAttributes.objects.get(id=int(debit))
+                        attribute_name = attr.name
+                        attribute_comment = attr.comments
+                    except DimAicInputFileAttributes.DoesNotExist:
+                        pass
+                elif credit and str(credit).isdigit():
+                    try:
+                        attr = DimAicInputFileAttributes.objects.get(id=int(credit))
+                        attribute_name = attr.name
+                        attribute_comment = attr.comments
+                    except DimAicInputFileAttributes.DoesNotExist:
+                        pass
+                
+                validated_attributes.append({
+                    'type': 'non_object',
+                    'gl_account': gl_account,
+                    'debit': debit,
+                    'credit': credit,
+                    'attribute_name': attribute_name,
+                    'attribute_comment': attribute_comment
+                })
+            else:
+                raise serializers.ValidationError(f"Attribute at index {i}: {non_object_serializer.errors}")
         
         return validated_attributes
+        
     
     def create(self, validated_data):
         """Create JE Template Attributes based on template type"""
@@ -513,9 +546,10 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
         validated_attributes = validated_data['attributes']
 
         created_attributes = []
-
-        if not template.is_object:
-            # clear existing attribites.
+        # If this is a non-object template or object template without input files, 
+        # we'll use manual attributes and clear existing ones
+        if not template.is_object or (template.is_object and not template.input_files.exists()):
+            # Clear existing attributes
             DimAICJETemplateAttribute.objects.filter(je_template_id=template).delete()
 
         for attr_data in validated_attributes:
@@ -534,7 +568,7 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                         input_file_attribute=input_file_attribute,
                         input_user=user
                     )
-            else:  # non_object
+            else:  # non_object or manual attributes
                 template_attribute = DimAICJETemplateAttribute.objects.create(
                     je_template_id=template,
                     gl_account=attr_data['gl_account'],
@@ -542,7 +576,7 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     credit=attr_data['credit'],
                     attribute_name=attr_data['attribute_name'],
                     input_user=user,
-                    attribute_comment=attr_data['attribute_comment']
+                    attribute_comment=attr_data.get('attribute_comment')
                 )
             
             created_attributes.append(template_attribute)
