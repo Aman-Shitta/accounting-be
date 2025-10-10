@@ -284,13 +284,11 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
         help_text="Indicates if the template is an object template or not"
     )
     
-    input_file = models.ForeignKey(
-        FactAICInputFileSnapshot,  # Reference to snapshot instead of original
-        on_delete=models.CASCADE,
+    input_files = models.ManyToManyField(
+        FactAICInputFileSnapshot,
         null=True,
         blank=True,
         verbose_name="Input File Snapshot",
-        db_column='input_file_id',
         help_text="The input file snapshot associated with this JE template"
     )
     

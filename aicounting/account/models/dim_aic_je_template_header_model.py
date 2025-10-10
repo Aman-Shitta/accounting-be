@@ -52,13 +52,11 @@ class DimAICJETemplateHeader(models.Model):
         verbose_name="Is Object",
         help_text="Indicates if the template is an object template or not"
     )
-    input_file = models.ForeignKey(
+    input_files = models.ManyToManyField(
         'DimAicInputFiles',
-        on_delete=models.CASCADE,
         null=True,
         blank=True,
         verbose_name="Input File",
-        db_column='input_file_id',
         help_text="The input file associated with this JE template"
     )
     description = models.TextField(
