@@ -581,21 +581,12 @@ class MonthlyAccountingDocumentStartExtractionView(generics.GenericAPIView):
                 from .tasks import process_uploaded_document
                 process_uploaded_document.delay(str(document.id), config_params)
                 
-            elif document.doc_type in ['sales']:
-                attributes = document.input_file_snapshot.attribute_snapshots.all()
-                key_items = [attri.name for attri in attributes]
-                key_items_formatted = [f"{attri.name}: {attri.comments}" for attri in attributes]
-                
-                config_params = dict(
-                    doc_type=document.doc_type,
-                    extract_key_items=True,
-                    key_items=key_items,
-                    key_items_formatted=key_items_formatted,
-                    excluded_fields=[]
-                )
-                
-                from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
+            else:
+                return create_api_response(
+                status.HTTP_400_BAD_REQUEST,
+                "This does not support extract.",
+                data={"error": str(e)}
+            )
             
             return create_api_response(
                 status.HTTP_200_OK,

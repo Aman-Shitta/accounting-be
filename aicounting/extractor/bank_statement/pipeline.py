@@ -584,10 +584,10 @@ class DocumentProcessor(BaseDocumentProcessor):
                             md_bytes = None
 
                 # 1. Classify the page using markdown first, fallback to PDF
-                if md_bytes:
-                    page_types = page_classifier.classify(md_bytes=md_bytes)
-                else:
-                    page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
+                # if md_bytes:
+                #     page_types = page_classifier.classify(md_bytes=md_bytes)
+                # else:
+                page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
                 print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 
