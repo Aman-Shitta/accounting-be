@@ -650,7 +650,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         except Exception as cleanup_error:
             logger.warning(f"Error during cleanup: {cleanup_error}")
 
-        self._save_contorl_totals()
+        self._save_control_totals()
         # Process and save extracted data
         processing_stats = self._save_extracted_data()
 
@@ -661,7 +661,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             "page_count": len(self.page_data)
         }
 
-    def _save_contorl_totals(self):
+    def _save_control_totals(self):
         # Save control totals to document
         self.document.control_item = self.control_totals
         self.document.save()
@@ -683,6 +683,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             "pages_processed": 0
         }
         page_data = self.page_data
+        checks_linked = dict()
         with transaction.atomic():
             for page_idx, page_item in enumerate(page_data):
                 page_key = f"page_{page_idx + 1}"
@@ -706,7 +707,19 @@ class DocumentProcessor(BaseDocumentProcessor):
                 # Save line items (transactions)
                 line_items_data = transactions.get("line_items", [])
                 for line_idx, line_item in enumerate(line_items_data):
-                    self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+
+                    # check if check related transaction already exists
+                    if line_item.get("line_item") in checks_linked:
+                        if len(checks_linked[line_item.get("line_item")].description) > len(line_item.get("description", "")):
+                            continue
+                        else:
+                            checks_linked[line_item.get("line_item")].description = line_item.get("description", "")
+                            continue
+
+                    line_item = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    if line_item.is_check_transaction and line_item.check_number:
+                        checks_linked[line_item.check_number] = line_item
+
                     stats["line_items"] += 1
                 
                 # Save check data
@@ -720,7 +733,8 @@ class DocumentProcessor(BaseDocumentProcessor):
                     self._link_check_to_line_item(check_obj)
                 
                 stats["pages_processed"] += 1
-
+        # cleanup
+        del(checks_linked)
         logger.info(f"Saved extracted data: {stats}")
         return stats
 
