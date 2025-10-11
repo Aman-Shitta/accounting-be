@@ -218,6 +218,12 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
     Snapshot model that mirrors DimAICJETemplateHeader exactly
     """
     
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('failed', 'Failed'),
+    ]
+
     id = models.AutoField(primary_key=True, verbose_name="JE Template Snapshot ID")
     
     # Link to monthly accounting session
@@ -276,6 +282,15 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
         blank=True,
         verbose_name="JE Type ID",
         db_column='je_type_id',
+    )
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="JE Template Status",
+        null=True,
+        blank=True
     )
     
     is_object = models.BooleanField(
