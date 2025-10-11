@@ -395,8 +395,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "input_files": input_files,  # List of associated input files with verification status
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
-                    "is_ready": all_verified,  # Ready only if all input files are verified
-                    "is_verified": all_verified and has_export,  # Verified if all files are verified and export exists
+                    "is_ready": all_verified,
+                    "is_verified": template_snapshot.status and all_verified and has_export,  # Verified if all files are verified and export exists
                     "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })
 
@@ -761,7 +761,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
 
 
-class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
+class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
@@ -802,14 +802,24 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
         else:
             # Handle non-bank document types (sales, etc.)
             template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
-            if not template_qs:
+            if not template_qs.exists():
                 raise ValueError('No JE Template associated with this document.')
 
             for template in template_qs:
-                if template.is_object:
-                    # For is_object templates, use data from extracted attribute items
+                # Check if template should be processed:
+                # 1. Process if template.is_object is True
+                # 2. Process if this is the only document attached to the template
+                # 3. Skip otherwise - manual verification needed
+                
+                # Get all input files for this template
+                template_input_files = template.input_files.all()
+                input_file_count = template_input_files.count()
+                
+                # Check if this is the only document or if is_object is True
+                if template.is_object or input_file_count == 1:
+                    # Generate export file for the template
                     template_attributes = JETemplateDataSerializer(template).data['attributes']
-
+                    
                     filename = "je_template.csv"
                     output = io.StringIO()
                     writer = csv.writer(output)
@@ -829,29 +839,33 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
                     output.close()
 
                     template.je_export_file.save(filename, ContentFile(csv_data))
-                else:
+                
+                # Skip for templates with multiple documents attached that are not is_object
+                # User needs to verify these entries manually
+
+                # else:
                     # For non-is_object templates, use GL accounts from JE template with attribute values
-                    template_attributes = JETemplateDataSerializer(template).data['attributes']
+                    # template_attributes = JETemplateDataSerializer(template).data['attributes']
 
-                    filename = "je_template.csv"
-                    output = io.StringIO()
-                    writer = csv.writer(output)
+                    # filename = "je_template.csv"
+                    # output = io.StringIO()
+                    # writer = csv.writer(output)
 
-                    writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
-                    for row in template_attributes:
-                        attribute_gl = row.get('gl_account') or dict()
-                        writer.writerow([
-                            attribute_gl.get('account_number', '') or '',
-                            attribute_gl.get('account_name', '') or '',
-                            row.get('description', '') or '',
-                            row.get('debit', '') or '',
-                            row.get('credit', '') or ''
-                        ])
+                    # writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
+                    # for row in template_attributes:
+                    #     attribute_gl = row.get('gl_account') or dict()
+                    #     writer.writerow([
+                    #         attribute_gl.get('account_number', '') or '',
+                    #         attribute_gl.get('account_name', '') or '',
+                    #         row.get('description', '') or '',
+                    #         row.get('debit', '') or '',
+                    #         row.get('credit', '') or ''
+                    #     ])
 
-                    csv_data = output.getvalue()
-                    output.close()
+                    # csv_data = output.getvalue()
+                    # output.close()
 
-                    template.je_export_file.save(filename, ContentFile(csv_data))
+                    # template.je_export_file.save(filename, ContentFile(csv_data))
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
@@ -864,34 +878,35 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
                     status.HTTP_400_BAD_REQUEST,
                     f"Invalid {var_name}."
                 )
-            # Authorize access similarly to other views
-            user = request.user
-            if hasattr(user, 'customer_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.customer_profile
-                )
-            elif hasattr(user, 'accountant_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
-                )
-            else:
-                return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
 
-            # Fetch the document by PK (document_id) and ensure it belongs to the session
-            try:
-                document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
-                    id=document_id,
-                    monthly_accounting=monthly_accounting
-                )
-            except MonthlyAccountingDocument.DoesNotExist:
-                return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
+        # Authorize access similarly to other views
+        user = request.user
+        if hasattr(user, 'customer_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.customer_profile
+            )
+        elif hasattr(user, 'accountant_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.accountant_profile.customer,
+                client__assigned_accountants=user.accountant_profile
+            )
+        else:
+            return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+
+        # Fetch the document by PK (document_id) and ensure it belongs to the session
+        try:
+            document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
+                id=document_id,
+                monthly_accounting=monthly_accounting
+            )
+        except MonthlyAccountingDocument.DoesNotExist:
+            return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
 
         if document.status != 'classified':
             return create_api_response(

@@ -8,7 +8,7 @@ from .monthly_accounting_views import (
     MonthlyAccountingDocumentStartExtractionView,
     MonthlyAccountingDocumentLineItemListCreateView,
     MonthlyAccountingDocumentLineItemDetailView,
-    MonthlyAccountingDocumentUpdateView
+    MonthlyAccountingDocumentStatusUpdateView
 )
 
 from .je_accounting_views import (
@@ -27,7 +27,7 @@ monthly_accounting_url_patterns = [
     path('<int:accounting_id>/documents/<int:document_id>/upload/', MonthlyAccountingDocumentUploadView.as_view(), name='monthly-accounting-document-upload'),
     # Start extraction after pre-processing is complete
     path('<int:accounting_id>/documents/<int:document_id>/extract/', MonthlyAccountingDocumentStartExtractionView.as_view(), name='monthly-accounting-document-extract'),
-    path('<int:accounting_id>/documents/<int:document_id>/', MonthlyAccountingDocumentUpdateView.as_view(), name='monthly-accounting-document-update'),
+    path('<int:accounting_id>/documents/<int:document_id>/', MonthlyAccountingDocumentStatusUpdateView.as_view(), name='monthly-accounting-document-update-status'),
 
     path('<int:accounting_id>/documents/<int:document_id>/items/', MonthlyAccountingDocumentLineItemListCreateView.as_view(), name='monthly-accounting-document-lineitems'),
     path('<int:accounting_id>/documents/<int:document_id>/items/<int:line_item_id>/', MonthlyAccountingDocumentLineItemDetailView.as_view(), name='monthly-accounting-document-lineitem-detail'),

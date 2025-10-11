@@ -34,7 +34,7 @@ class RecentCustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = DimAICCustomer
         fields = [
-            'customer_id', 'customer_name', 'email', 'is_active',
+            'id', 'customer_name', 'email', 'is_active',
             'date_joined', 'verification_status'
         ]
 

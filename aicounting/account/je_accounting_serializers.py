@@ -101,6 +101,18 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                         "credit": item.value if item.transaction_type == "credit" else "",
                     })
 
+                    # balance the transaction by adding an offset entry
+                    # for object data is always coming from attribure items
+                    # so we can safely add the offset entry here
+                    attributes_data.append({
+                        "gl_account": item.offset_gl_account,
+                        "offset_gl_account": item.gl_account, 
+                        "description": item.attribute.name if item.attribute else 'Unknown Attribute',
+                        "date": None,  # Attributes don't have dates
+                        "credit": item.value if item.transaction_type == "debit" else "",
+                        "debit": item.value if item.transaction_type == "credit" else "",
+                    })
+
                 ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
             else:
                 # For non-is_object templates, get attribute values but use GL account from JE template
@@ -141,3 +153,24 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
 
         return ret
+
+
+class ManualValueItem(serializers.Serializer):
+    """Individual manual value entry"""
+    attribute_id = serializers.IntegerField(required=True)
+    value = serializers.FloatField(required=True)
+
+class ManualValueUpdateSerializer(serializers.Serializer):
+    """Serializer for updating multiple manual values in JE templates at once"""
+    values = serializers.ListField(
+        child=ManualValueItem(),
+        required=True,
+        allow_empty=False
+    )
+
+class JETemplateStatusUpdateSerializer(serializers.Serializer):
+    """Serializer for updating JE template status"""
+    status = serializers.ChoiceField(
+        choices=[('verified', 'Verified')],
+        required=True
+    )
