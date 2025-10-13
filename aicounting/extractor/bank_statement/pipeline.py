@@ -703,17 +703,16 @@ class DocumentProcessor(BaseDocumentProcessor):
                             value=str(value) if value is not None else ""
                         )
                         stats["key_items"] += 1
-                
-                # Save line items (transactions)
                 line_items_data = transactions.get("line_items", [])
+                # Save line items (transactions)
+                
                 for line_idx, line_item in enumerate(line_items_data):
-
                     # check if check related transaction already exists
-                    if line_item.get("line_item") in checks_linked:
-                        if len(checks_linked[line_item.get("line_item")].description) > len(line_item.get("description", "")):
+                    if line_item.get("check_number").strip() and (line_item.get("check_number") in checks_linked):
+                        if len(checks_linked[line_item.get("check_number")].description) > len(line_item.get("description", "")):
                             continue
                         else:
-                            checks_linked[line_item.get("line_item")].description = line_item.get("description", "")
+                            checks_linked[line_item.get("check_number")].description = line_item.get("description", "")
                             continue
 
                     line_item = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
