@@ -118,7 +118,7 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
                 
                 if is_object:
                     raise serializers.ValidationError(
-                        f"Templates with {bank_or_credit_files[0].file_type} input files must be configured as object templates (is_object=True)"
+                        f"Templates with {bank_or_credit_files[0].file_type} input files must be configured as object templates (is_object=False)"
                     )
             
         return data

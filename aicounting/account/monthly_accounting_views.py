@@ -360,7 +360,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 # Get all input files associated with this template
                 input_files = []
                 all_verified = True
-                
                 for input_file in template_snapshot.input_files.all():
                     # Find the document status for this input file
                     is_verified = False
@@ -396,6 +395,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
                     "is_ready": all_verified,
+                    "verified_count": sum(1 for f in input_files if f['verified']),
                     "is_verified": template_snapshot.status and all_verified and has_export,  # Verified if all files are verified and export exists
                     "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })

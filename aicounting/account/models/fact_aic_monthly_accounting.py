@@ -135,27 +135,35 @@ class FactAICMonthlyAccounting(models.Model):
         from .dim_aic_je_template_header_model import DimAICJETemplateHeader
         from .dim_aic_input_files import DimAicInputFiles
         from .dim_aic_je_freq_model import DimAICJEFreq
+        
         # Get monthly frequency templates
         try:
             monthly_freq = DimAICJEFreq.objects.get(je_freq__icontains='monthly')
         except DimAICJEFreq.DoesNotExist:
             monthly_freq = None
-        
-        try:
-            # Create input files snapshots
-            input_files = DimAicInputFiles.objects.filter(client=self.client)
-            for input_file in input_files:
-                # Include all active input files, as they might be used in M2M relationships
-                self._create_input_file_snapshot(input_file)
             
-            # Create template snapshots (only monthly frequency)
+        try:
+            # First, get all templates with monthly frequency
             if monthly_freq:
                 templates = DimAICJETemplateHeader.objects.filter(
                     client=self.client,
                     je_freq=monthly_freq
                 )
+                
+                # Create a set of input files referenced by these templates
+                relevant_input_files = set()
+                for template in templates:
+                    # Add all input files used by this template
+                    relevant_input_files.update(template.input_files.all())
+                
+                # Create snapshots only for relevant input files
+                for input_file in relevant_input_files:
+                    self._create_input_file_snapshot(input_file)
+                
+                # Create template snapshots
                 for template in templates:
                     self._create_template_snapshot(template)
+                    
         except Exception as e:
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -264,7 +272,7 @@ class FactAICMonthlyAccounting(models.Model):
                 FactAICInputFileAttributeSnapshot = models_dict['FactAICInputFileAttributeSnapshot']
                 FactAICJETemplateHeaderSnapshot = models_dict['FactAICJETemplateHeaderSnapshot']
                 FactAICJETemplateAttributeSnapshot = models_dict['FactAICJETemplateAttributeSnapshot']
-                
+
                 # Create template snapshot first without the input_files
                 template_snapshot = FactAICJETemplateHeaderSnapshot.objects.create(
                     monthly_accounting=self,
