@@ -116,7 +116,7 @@ class JETemplateCreateSerializer(serializers.ModelSerializer):
                         "Bank statement or credit card files cannot be combined with other file types"
                     )
                 
-                if is_object is False:
+                if is_object:
                     raise serializers.ValidationError(
                         f"Templates with {bank_or_credit_files[0].file_type} input files must be configured as object templates (is_object=True)"
                     )
