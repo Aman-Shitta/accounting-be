@@ -8,7 +8,8 @@ from django.contrib.auth import get_user_model
 
 from account.models import (
     MonthlyAccountingDocument,
-    FactAICInputFileAttributeSnapshot
+    FactAICInputFileAttributeSnapshot,
+    FactAICJETemplateAttributeSnapshot
 )
 
 User = get_user_model()
@@ -382,3 +383,109 @@ class MonthlyDocumentAttributeItem(models.Model):
 
     def __str__(self):
         return f"{self.document.doc_id} - Page {self.page_number} - {self.attribute.name}: {self.value}"
+
+
+class MonthlyTemplateManualAttributeItem(models.Model):
+    """
+    Model to store manual attribute values directly related to JE template attributes.
+    This is used for manual entries that are not tied to specific documents but to templates.
+    Useful for memo/sales documents and manual journal entries.
+    """
+    TRANSACTION_TYPE_CHOICES = [
+        ('debit', 'Debit'),
+        ('credit', 'Credit'),
+    ]
+
+    template_attribute = models.ForeignKey(
+        FactAICJETemplateAttributeSnapshot,
+        on_delete=models.CASCADE,
+        related_name="manual_attribute_items",
+        verbose_name="JE Template Attribute"
+    )
+
+    value = models.CharField(
+        max_length=1000,
+        verbose_name="Attribute Value",
+        null=True,
+        blank=True,
+        help_text="Manual value entered for this attribute"
+    )
+    
+    transaction_type = models.CharField(
+        max_length=10,
+        choices=TRANSACTION_TYPE_CHOICES,
+        verbose_name="Transaction Type",
+        null=True,
+        blank=True,
+        help_text="Whether this is a debit or credit transaction"
+    )
+
+    gl_account = models.ForeignKey(
+        'DimAICGLAcct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="GL Account",
+        related_name="monthly_template_manual_attribute_items",
+        help_text="GL account for this manual entry"
+    )
+    
+    offset_gl_account = models.ForeignKey(
+        'DimAICGLAcct',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Offset GL Account",
+        related_name="monthly_template_offset_manual_attribute_items",
+        help_text="Offset GL account for double-entry booking"
+    )
+    
+    description = models.TextField(
+        verbose_name="Description",
+        null=True,
+        blank=True,
+        help_text="Description or notes for this manual entry"
+    )
+    
+    entered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Entered By",
+        help_text="User who entered this manual value"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Created At"
+    )
+    
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Updated At"
+    )
+
+    class Meta:
+        db_table = 'monthly_template_manual_attribute_item'
+        verbose_name = "Monthly Template Manual Attribute Item"
+        verbose_name_plural = "Monthly Template Manual Attribute Items"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        template_name = self.template_attribute.je_template_snapshot.je_name if self.template_attribute.je_template_snapshot else "Unknown"
+        attribute_name = self.template_attribute.attribute_name or "Unknown Attribute"
+        return f"{template_name} - {attribute_name}: {self.value}"
+    
+    @property
+    def formatted_value(self):
+        """Return formatted value with transaction type"""
+        if self.value:
+            try:
+                from decimal import Decimal
+                amount = Decimal(self.value)
+                type_str = self.transaction_type.upper() if self.transaction_type else ""
+                return f"{type_str}: ${amount:,.2f}" if type_str else f"${amount:,.2f}"
+            except:
+                return self.value
+        return "N/A"

@@ -5,7 +5,8 @@ from .models import FactAICJETemplateHeaderSnapshot
 
 from account.serializers import DimAICGLAcctSerializer
 
-class BankTemplateDataSerializer(serializers.Serializer):
+class JETemplateAttributeDataSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
     gl_account = DimAICGLAcctSerializer(allow_null=True)
     offset_gl_account = DimAICGLAcctSerializer(allow_null=True)
     description = serializers.CharField()
@@ -22,7 +23,8 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        # For bank statements and credit cards that have multiple attributes
+
+        # For bank statements and credit cards that only 1 attribite *
         if instance.attribute_snapshots.count() == 1:
             star_attribute_snapshot = instance.attribute_snapshots.first()
             input_file_attribute = star_attribute_snapshot.input_file_attribute
@@ -54,6 +56,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 attributes_data = []
                 for item in items:
                     attributes_data.append({
+                        "id": item.id,
                         "gl_account": item.gl_account,
                         "offset_gl_account": item.offset_gl_account,
                         "description": item.description,
@@ -61,8 +64,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                         "debit": item.amount if item.transaction_type == "debit" else "",
                         "credit": item.amount if item.transaction_type == "credit" else "",
                     })
-
-                ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
 
         else:
             # Handle non-bank document types (sales, etc.)
@@ -72,18 +73,18 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
             if not input_file_snapshot:
                 attributes = instance.attribute_snapshots.all()
-                ret['attributes'] = [
+                attributes_data = [
                     {
+                        "id": attr.id,
                         "gl_account": DimAICGLAcctSerializer(attr.gl_account).data,
                         "offset_gl_account": None,
                         "description": attr.attribute_name or (attr.input_file_attribute.name if attr.input_file_attribute else '<Manual>'),
                         "date": None,
-                        "debit": "" ,
-                        "credit": "",
+                        "debit": attr.debit,
+                        "credit": attr.credit,
                     }
                     for attr in attributes
                 ]
-                return ret
 
             attributes_data = []
             for ifs in input_file_snapshot:
@@ -105,6 +106,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
                     for item in attribute_items:
                         attributes_data.append({
+                            "id": item.id,
                             "gl_account": item.gl_account,
                             "offset_gl_account": item.offset_gl_account, 
                             "description": item.attribute.name if item.attribute else 'Unknown Attribute',
@@ -117,6 +119,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                         # for object data is always coming from attribure items
                         # so we can safely add the offset entry here
                         attributes_data.append({
+                            "id": item.id,
                             "gl_account": item.offset_gl_account,
                             "offset_gl_account": item.gl_account, 
                             "description": item.attribute.name if item.attribute else 'Unknown Attribute',
@@ -125,7 +128,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                             "debit": item.value if item.transaction_type == "credit" else "",
                         })
 
-                    ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
                 else:
                     # For non-is_object templates, get attribute values but use GL account from JE template
                     from .models.monthly_document_line_models import MonthlyDocumentAttributeItem
@@ -154,6 +156,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
 
                         # Use GL account from JE template, not from attribute item
                         attributes_data.append({
+                            "id": template_attr.pk,
                             "gl_account": template_attr.gl_account,
                             "offset_gl_account": attribute_offset_gl,
                             "description": template_attr.attribute_name or (template_attr.input_file_attribute.name if template_attr.input_file_attribute else '<Manual>'),
@@ -162,7 +165,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                             "credit": attribute_value if template_attr.credit else "",
                         })
 
-                    ret['attributes'] = BankTemplateDataSerializer(attributes_data, many=True).data
+        ret['attributes'] = JETemplateAttributeDataSerializer(attributes_data, many=True).data
 
         return ret
 
@@ -182,7 +185,13 @@ class ManualValueUpdateSerializer(serializers.Serializer):
 
 class JETemplateStatusUpdateSerializer(serializers.Serializer):
     """Serializer for updating JE template status"""
-    status = serializers.ChoiceField(
-        choices=[('verified', 'Verified')],
+    status = serializers.CharField(
         required=True
     )
+
+    def validate_status(self, value):
+        allowed_statuses = ['verified']
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(f"Status must be one of {allowed_statuses}.")
+        return value
+

@@ -23,7 +23,8 @@ from .monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
     MonthlyDocumentBankCheckItem,
-    MonthlyDocumentAttributeItem
+    MonthlyDocumentAttributeItem,
+    MonthlyTemplateManualAttributeItem
 )
 
 
@@ -50,5 +51,6 @@ __all__ = [
     'MonthlyDocumentBankKeyItem',
     'MonthlyDocumentBankLineItem',
     'MonthlyDocumentBankCheckItem',
-    'MonthlyDocumentAttributeItem'
+    'MonthlyDocumentAttributeItem',
+    'MonthlyTemplateManualAttributeItem'
 ]
