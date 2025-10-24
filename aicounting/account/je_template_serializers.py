@@ -508,18 +508,19 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                 # Set attribute_name based on debit/credit values if they reference attribute IDs
                 attribute_name = None
                 attribute_comment = None
+                input_file_attribute = None
                 if debit and str(debit).isdigit():
                     try:
-                        attr = DimAicInputFileAttributes.objects.get(id=int(debit))
-                        attribute_name = attr.name
-                        attribute_comment = attr.comments
+                        input_file_attribute = DimAicInputFileAttributes.objects.get(id=int(debit))
+                        attribute_name = input_file_attribute.name
+                        attribute_comment = input_file_attribute.comments
                     except DimAicInputFileAttributes.DoesNotExist:
                         pass
                 elif credit and str(credit).isdigit():
                     try:
-                        attr = DimAicInputFileAttributes.objects.get(id=int(credit))
-                        attribute_name = attr.name
-                        attribute_comment = attr.comments
+                        input_file_attribute = DimAicInputFileAttributes.objects.get(id=int(credit))
+                        attribute_name = input_file_attribute.name
+                        attribute_comment = input_file_attribute.comments
                     except DimAicInputFileAttributes.DoesNotExist:
                         pass
                 
@@ -529,7 +530,8 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     'debit': debit,
                     'credit': credit,
                     'attribute_name': attribute_name,
-                    'attribute_comment': attribute_comment
+                    'attribute_comment': attribute_comment,
+                    'input_file_attribute': input_file_attribute
                 })
             else:
                 raise serializers.ValidationError(f"Attribute at index {i}: {non_object_serializer.errors}")
@@ -553,9 +555,9 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
             DimAICJETemplateAttribute.objects.filter(je_template_id=template).delete()
 
         for attr_data in validated_attributes:
+            input_file_attribute = attr_data['input_file_attribute']
             if attr_data['type'] == 'object':
                 # For object templates, only create if not already exists for this template
-                input_file_attribute = attr_data['input_file_attribute']
                 existing = DimAICJETemplateAttribute.objects.filter(
                     je_template_id=template,
                     input_file_attribute=input_file_attribute
@@ -576,7 +578,8 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                     credit=attr_data['credit'],
                     attribute_name=attr_data['attribute_name'],
                     input_user=user,
-                    attribute_comment=attr_data.get('attribute_comment')
+                    attribute_comment=attr_data.get('attribute_comment'),
+                    input_file_attribute=input_file_attribute
                 )
             
             created_attributes.append(template_attribute)
