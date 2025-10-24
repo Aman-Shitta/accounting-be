@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from account.models import DimAicInputFiles, DimAicInputFileAttributes
+from account.models import DimAicInputFiles, DimAicInputFileAttributes, FactAICInputFileAttributeSnapshot
 from user.models import DimAICClient
 import logging
 
@@ -15,6 +15,55 @@ class InputFileAttributeSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = DimAicInputFileAttributes
+        fields = [
+            'id', 'name', 'gl_account', 'type', 
+            'offset_gl_account', 'comments',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', ]
+    
+    def validate(self, attrs):
+        """Validate that gl_account and offset_gl_account are different"""
+        gl_account = attrs.get('gl_account')
+        offset_gl_account = attrs.get('offset_gl_account')
+        
+        # Both can be null for bank statement and credit card types
+        if gl_account and offset_gl_account and gl_account.id == offset_gl_account.id:
+            raise serializers.ValidationError(
+                "GL Account and Offset GL Account cannot be the same."
+            )
+        
+        return attrs
+
+    def get_gl_account(self, obj):
+        """Return the GL account ID as a string"""
+        if obj.gl_account:
+            data = {
+                'id': obj.gl_account.id,
+                'name': obj.gl_account.account_name,
+                'account_number': obj.gl_account.account_number
+            }
+            return data
+        return None
+
+    def get_offset_gl_account(self, obj):
+        """Return the GL account ID as a string"""
+        if obj.offset_gl_account:
+            data = {
+                'id': obj.offset_gl_account.id,
+                'name': obj.offset_gl_account.account_name,
+                'account_number': obj.offset_gl_account.account_number
+            }
+            return data
+        return None
+    
+class InputFileSnapshotAttributeSerializer(serializers.ModelSerializer):
+    """Serializer for FactAICInputFileAttributeSnapshot model"""
+    
+    gl_account = serializers.SerializerMethodField()
+    offset_gl_account = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = FactAICInputFileAttributeSnapshot
         fields = [
             'id', 'name', 'gl_account', 'type', 
             'offset_gl_account', 'comments',

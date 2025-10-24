@@ -26,7 +26,8 @@ from .models.monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
     MonthlyDocumentBankCheckItem,
-    MonthlyDocumentAttributeItem
+    MonthlyDocumentAttributeItem,
+    MonthlyTemplateManualAttributeItem
 )
 from .models.dim_aic_snapshot_models import (
     FactAICInputFileSnapshot,
@@ -738,3 +739,50 @@ class MonthlyDocumentAttributeItemAdmin(admin.ModelAdmin):
     def value_short(self, obj):
         return (obj.value[:50] + '...') if obj.value and len(obj.value) > 50 else obj.value
     value_short.short_description = 'Value'
+
+
+@admin.register(MonthlyTemplateManualAttributeItem)
+class MonthlyTemplateManualAttributeItemAdmin(admin.ModelAdmin):
+    """Admin for monthly template manual attribute items."""
+    list_display = ('id', 'template_attribute_name', 'value_short', 'formatted_value', 
+                   'transaction_type', 'gl_account', 'entered_by', 'created_at')
+    list_filter = ('transaction_type', 'created_at', 'entered_by')
+    search_fields = ('template_attribute__attribute_name', 'value', 'description')
+    readonly_fields = ('created_at', 'updated_at', 'formatted_value')
+    
+    fieldsets = (
+        ('Template Reference', {
+            'fields': ('template_attribute',)
+        }),
+        ('Manual Entry Details', {
+            'fields': ('value', 'formatted_value', 'transaction_type', 'description')
+        }),
+        ('GL Classification', {
+            'fields': ('gl_account', 'offset_gl_account'),
+            'description': 'GL accounts for this manual entry'
+        }),
+        ('User Information', {
+            'fields': ('entered_by',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def template_attribute_name(self, obj):
+        if obj.template_attribute:
+            template_name = obj.template_attribute.je_template_snapshot.je_name if obj.template_attribute.je_template_snapshot else 'N/A'
+            attribute_name = obj.template_attribute.attribute_name or 'N/A'
+            return f"{template_name} - {attribute_name}"
+        return 'N/A'
+    template_attribute_name.short_description = 'Template Attribute'
+    
+    def value_short(self, obj):
+        return (obj.value[:50] + '...') if obj.value and len(obj.value) > 50 else obj.value
+    value_short.short_description = 'Value'
+    
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.entered_by:
+            obj.entered_by = request.user
+        super().save_model(request, obj, form, change)
