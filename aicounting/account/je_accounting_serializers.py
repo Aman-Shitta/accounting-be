@@ -17,9 +17,11 @@ class JETemplateAttributeDataSerializer(serializers.Serializer):
 class JETemplateDataSerializer(serializers.ModelSerializer):
     """Serializer for JE Template Data"""
 
+    input_files = serializers.SerializerMethodField(source='get_input_files')
+
     class Meta:
         model = FactAICJETemplateHeaderSnapshot
-        fields = ['id', 'je_name', 'je_refrence', 'je_freq', 'is_object']
+        fields = ['id', 'je_name', 'je_refrence', 'input_files', 'je_freq', 'is_object', 'input_files']
 
     def to_representation(self, instance):
         """
@@ -40,6 +42,17 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         # Serialize and attach attributes data to response
         ret['attributes'] = JETemplateAttributeDataSerializer(attributes_data, many=True).data
         return ret
+
+    def get_input_files(self, obj):
+        """Return the input files if available"""
+        files = obj.input_files.all()
+        if files:
+            return [{
+                'id': file.id,
+                'name': file.name,
+                'file_type': file.file_type
+            } for file in files]
+        return []
 
     def _handle_single_attribute_template(self, instance):
         """
