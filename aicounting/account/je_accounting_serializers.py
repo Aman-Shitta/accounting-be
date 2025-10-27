@@ -42,6 +42,10 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         
         # Serialize and attach attributes data to response
         ret['attributes'] = JETemplateAttributeDataSerializer(attributes_data, many=True).data
+        
+        # Add is_verified flag
+        ret['is_verified'] = self._calculate_is_verified(instance)
+        
         return ret
 
     def get_input_files(self, obj):
@@ -54,6 +58,55 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 'file_type': file.file_type
             } for file in files]
         return []
+
+    def _calculate_is_verified(self, instance):
+        """
+        Calculate if the template is fully verified.
+        
+        A template is verified if:
+        1. Template status is 'verified'
+        2. All associated documents are verified
+        3. Export file exists
+        
+        Args:
+            instance: FactAICJETemplateHeaderSnapshot instance
+            
+        Returns:
+            bool: True if template is fully verified, False otherwise
+        """
+        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+        
+        # Check if template status is verified
+        if instance.status != 'verified':
+            return False
+        
+        # Check if export file exists
+        has_export = instance.je_export_file is not None and bool(instance.je_export_file)
+        if not has_export:
+            return False
+        
+        # Check if all associated documents are verified
+        all_verified = True
+        input_files = instance.input_files.all()
+        
+        for input_file in input_files:
+            # Get documents associated with this input file
+            documents = MonthlyAccountingDocument.objects.filter(
+                input_file_snapshot=input_file,
+                monthly_accounting=instance.monthly_accounting
+            )
+            
+            # Check if any document is not verified
+            for doc in documents:
+                if doc.status != 'verified':
+                    all_verified = False
+                    break
+            
+            if not all_verified:
+                break
+        
+        # Template is verified if status is verified, all documents are verified, and export exists
+        return instance.status == 'verified' and all_verified and has_export
 
     def _handle_single_attribute_template(self, instance):
         """
