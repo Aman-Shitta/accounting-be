@@ -383,21 +383,22 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         
         debit_sum = Decimal('0')
         credit_sum = Decimal('0')
+
         for attr in attributes:
             try:
                 # Parse debit value
-                debit_value = attr.get('debit', '').strip(' (manual)')
+                debit_value = attr.get('debit', '')
                 if debit_value and str(debit_value).strip():
                     debit_sum += Decimal(str(debit_value))
                 
                 # Parse credit value
-                credit_value = attr.get('credit', '').strip(' (manual)')
+                credit_value = attr.get('credit', '')
                 if credit_value and str(credit_value).strip():
                     credit_sum += Decimal(str(credit_value))
                     
             except (ValueError, TypeError, Exception) as e:
                 logger.error(f"Error parsing debit/credit value: {str(e)}")
-                return False, f"Invalid debit/credit value in attributes: {str(e)}", debit_sum, credit_sum
+                return False, f"Invalid debit/credit value in attributes", debit_sum, credit_sum
             
         
         # Check if debits equal credits
@@ -518,6 +519,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message="Template is already verified."
             )
+
         # Determine if this is a bank/credit card template
         is_bank_or_cc = False
         input_file_snapshots = template.input_files.all()
@@ -530,25 +532,21 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         # For non-bank/credit card templates, perform additional validations
         if not is_bank_or_cc:
             # Check if any input files are attached
-            if not input_file_snapshots.exists():
-                return create_api_response(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    message="Cannot verify template because no input files are attached to this template."
-                )
+            if input_file_snapshots.exists():
             
-            # Check if all attached documents are verified
-            for input_file_snapshot in input_file_snapshots:
-                documents = MonthlyAccountingDocument.objects.filter(
-                    input_file_snapshot=input_file_snapshot,
-                    monthly_accounting=template.monthly_accounting
-                )
-                
-                for doc in documents:
-                    if doc.status != 'verified':
-                        return create_api_response(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            message=f"Cannot verify template because document '{input_file_snapshot.name}' is not verified. Please verify all attached documents first."
-                        )
+                # Check if all attached documents are verified
+                for input_file_snapshot in input_file_snapshots:
+                    documents = MonthlyAccountingDocument.objects.filter(
+                        input_file_snapshot=input_file_snapshot,
+                        monthly_accounting=template.monthly_accounting
+                    )
+                    
+                    for doc in documents:
+                        if doc.status != 'verified':
+                            return create_api_response(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                message=f"Cannot verify template because document '{input_file_snapshot.name}' is not verified. Please verify all attached documents first."
+                            )
             
             # For non-object templates, validate debit/credit balance
             if not template.is_object:
@@ -558,8 +556,6 @@ class JEAccountingVerifyView(generics.GenericAPIView):
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message=f"Cannot verify template: {error_msg}",
                         data={
-                            "debit_sum": str(debit_sum),
-                            "credit_sum": str(credit_sum),
                             "error": "Debits and credits must be equal for journal entry to balance."
                         }
                     )

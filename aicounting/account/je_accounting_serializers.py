@@ -30,7 +30,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         attributes_data = []
 
         # Determine if this is a single-attribute template (bank statement/credit card)
-        if instance.attribute_snapshots.count() == 1:
+        if instance.attribute_snapshots.count() == 1 and instance.input_files.count() == 1 and instance.attribute_snapshots.first().file_type in ['bank_statement', 'credit_card']:
             attributes_data = self._handle_single_attribute_template(instance)
         
         if not attributes_data:
