@@ -13,6 +13,7 @@ class JETemplateAttributeDataSerializer(serializers.Serializer):
     date = serializers.CharField()
     debit = serializers.CharField()
     credit = serializers.CharField()
+    is_editable = serializers.CharField()
 
 class JETemplateDataSerializer(serializers.ModelSerializer):
     """Serializer for JE Template Data"""
@@ -184,6 +185,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 "date": None,
                 "debit": attr.debit,
                 "credit": attr.credit,
+                "is_editable": "debit" if attr.debit != 'X' else "credit"
             }
             for attr in template_attributes
         ]
@@ -233,10 +235,11 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                     "id": item.id,
                     "gl_account": item.gl_account,
                     "offset_gl_account": item.offset_gl_account,
-                    "description": item.attribute.name if item.attribute else 'Unknown Attribute',
+                    "description": item.attribute.name,
                     "date": None,  # Attributes don't have dates
                     "debit": item.value if item.transaction_type == "debit" else "",
                     "credit": item.value if item.transaction_type == "credit" else "",
+                    "is_editable": ""
                 })
 
                 # Add balancing offset entry (reverse debit/credit)
@@ -248,6 +251,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                     "date": None,
                     "credit": item.value if item.transaction_type == "debit" else "",
                     "debit": item.value if item.transaction_type == "credit" else "",
+                    "is_editable": ""
                 })
         
         return attributes_data
@@ -276,7 +280,9 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
             attribute_value, attribute_offset_gl = self._get_attribute_value(
                 template_attr, all_documents
             )
-            
+
+            no_name =  not template_attr.input_file_attribute and not template_attr.attribute_name
+
             # Build attribute data using template GL account
             attributes_data.append({
                 "id": template_attr.pk,
@@ -288,6 +294,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 "date": None,
                 "debit": attribute_value if template_attr.debit != 'X' else "",
                 "credit": attribute_value if template_attr.credit != 'X' else "",
+                "is_editable": ("debit" if template_attr.debit != 'X' else 'credit') if no_name else ""
             })
         
         return attributes_data
