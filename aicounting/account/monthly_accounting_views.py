@@ -826,12 +826,32 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
         document.status = 'verified'
         document.save(update_fields=['status'])
 
-        # For bank statements and credit cards, also mark the JE template as verified
+        # For bank statements and credit cards, also mark the JE template as verified and generate export file
         if document.doc_type in ['bank_statement', 'credit_card']:
-            document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all().update(status='verified')
+            # Get the input file snapshot
+            input_file_snapshot = document.input_file_snapshot
+            
+            if input_file_snapshot:
+                # Get associated JE template snapshots
+                je_template_snapshots = input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
+                
+                # Mark templates as verified and generate export files
+                for template_snapshot in je_template_snapshots:
+                    template_snapshot.status = 'verified'
+                    template_snapshot.save(update_fields=['status'])
+                    
+                    # Generate export file for the template
+                    try:
+                        from .je_accounting_views import JEAccountingVerifyView
+                        JEAccountingVerifyView.generate_export_file(template_snapshot)
+                        logger.info(f"Generated export file for JE template {template_snapshot.id}")
+                    except Exception as e:
+                        logger.error(f"Error generating export file for JE template {template_snapshot.id}: {str(e)}")
+                        # Don't fail the whole operation if export generation fails
+                        pass
 
         return create_api_response(
-            message='Document verified successfully. Please proceed to verify the JE Template.',
+            message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in ['bank_statement', 'credit_card'] else 'Document verified successfully. Please proceed to verify the JE Template.',
             status_code=status.HTTP_200_OK
         )
 

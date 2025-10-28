@@ -33,7 +33,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         attributes_data = []
 
         # Determine if this is a single-attribute template (bank statement/credit card)
-        if instance.attribute_snapshots.count() == 1 and instance.input_files.count() == 1 and instance.attribute_snapshots.first().file_type in ['bank_statement', 'credit_card']:
+        if instance.attribute_snapshots.count() == 1 and instance.attribute_snapshots.first().input_file_attribute.name == '*':
             attributes_data = self._handle_single_attribute_template(instance)
         
         if not attributes_data:
@@ -179,6 +179,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
                 "date": item.date,
                 "debit": item.amount if item.transaction_type == "debit" else "",
                 "credit": item.amount if item.transaction_type == "credit" else "",
+                "is_editable": ""
             })
         
         return attributes_data
@@ -226,21 +227,25 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             list: List of template attribute data dictionaries
         """
+        from account.models import MonthlyTemplateManualAttributeItem
+
         template_attributes = instance.attribute_snapshots.all()
+
+        manual_attributes = MonthlyTemplateManualAttributeItem.objects.filter(template_attribute__in=template_attributes)
         attributes_data = [
             {
-                "id": attr.id,
+                "id": attr.template_attribute.id,
                 "gl_account": DimAICGLAcctSerializer(attr.gl_account).data,
                 "offset_gl_account": None,
-                "description": attr.attribute_name or (
-                    attr.input_file_attribute.name if attr.input_file_attribute else '<Manual>'
+                "description": attr.template_attribute.attribute_name or (
+                    attr.template_attribute.input_file_attribute.name if attr.template_attribute.input_file_attribute else '<Manual>'
                 ),
                 "date": None,
-                "debit": attr.debit,
-                "credit": attr.credit,
-                "is_editable": "debit" if attr.debit != 'X' else "credit"
+                "debit": attr.value if attr.template_attribute.debit != 'X' else "",
+                "credit": attr.value if attr.template_attribute.credit != 'X' else "",
+                "is_editable": "debit" if attr.template_attribute.debit != 'X' else "credit"
             }
-            for attr in template_attributes
+            for attr in manual_attributes
         ]
         return attributes_data
 
@@ -320,11 +325,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             list: List of attribute data dictionaries
         """
-        from .models.monthly_document_line_models import (
-            MonthlyDocumentAttributeItem,
-            MonthlyTemplateManualAttributeItem
-        )
-        
         attributes_data = []
         template_attributes = instance.attribute_snapshots.all()
         

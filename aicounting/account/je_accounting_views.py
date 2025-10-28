@@ -373,6 +373,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
     def validate_debit_credit_balance(template_snapshot):
         """
         Validate that sum of debits equals sum of credits for non-object templates.
+        Also validates that all entries have valid numeric values.
         Returns (is_valid, error_message, debit_sum, credit_sum)
         """
         from decimal import Decimal
@@ -383,27 +384,52 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         
         debit_sum = Decimal('0')
         credit_sum = Decimal('0')
+        invalid_entries = []
 
-        for attr in attributes:
-            try:
-                # Parse debit value
-                debit_value = attr.get('debit', '')
-                if debit_value and str(debit_value).strip():
-                    debit_sum += Decimal(str(debit_value))
-                
-                # Parse credit value
-                credit_value = attr.get('credit', '')
-                if credit_value and str(credit_value).strip():
-                    credit_sum += Decimal(str(credit_value))
-                    
-            except (ValueError, TypeError, Exception) as e:
-                logger.error(f"Error parsing debit/credit value: {str(e)}")
-                return False, f"Invalid debit/credit value in attributes", debit_sum, credit_sum
+        for idx, attr in enumerate(attributes):
+            debit_value = attr.get('debit', '')
+            credit_value = attr.get('credit', '')
+            description = attr.get('description', f'Attribute {idx + 1}')
             
+            # Check if both debit and credit are empty or invalid
+            has_valid_debit = False
+            has_valid_credit = False
+            
+            # Validate debit value
+            if debit_value and str(debit_value).strip():
+                try:
+                    debit_decimal = Decimal(str(debit_value))
+                    debit_sum += debit_decimal
+                    has_valid_debit = True
+                except (ValueError, TypeError, Exception) as e:
+                    logger.error(f"Error parsing debit value '{debit_value}': {str(e)}")
+                    invalid_entries.append(f"'{description}' has invalid debit value: '{debit_value}'")
+                    break
+            
+            # Validate credit value
+            if credit_value and str(credit_value).strip():
+                try:
+                    credit_decimal = Decimal(str(credit_value))
+                    credit_sum += credit_decimal
+                    has_valid_credit = True
+                except (ValueError, TypeError, Exception) as e:
+                    logger.error(f"Error parsing credit value '{credit_value}': {str(e)}")
+                    invalid_entries.append(f"'{description}' has invalid credit value: '{credit_value}'")
+                    break
+            
+            # Check if entry has neither valid debit nor valid credit
+            if not has_valid_debit and not has_valid_credit:
+                invalid_entries.append(f"'{description}' has no valid debit or credit value")
+                break
+        
+        # If there are any invalid entries, return error
+        if invalid_entries:
+            error_msg = "Cannot verify template with incomplete or invalid entries: "
+            return False, error_msg, debit_sum, credit_sum
         
         # Check if debits equal credits
         if debit_sum != credit_sum:
-            return False, "Sum of debits does not equal sum of credit", debit_sum, credit_sum
+            return False, f"Sum of debits ({debit_sum}) does not equal sum of credits ({credit_sum})", debit_sum, credit_sum
         
         return True, "", debit_sum, credit_sum
     
@@ -551,12 +577,15 @@ class JEAccountingVerifyView(generics.GenericAPIView):
             # For non-object templates, validate debit/credit balance
             if not template.is_object:
                 is_valid, error_msg, debit_sum, credit_sum = self.validate_debit_credit_balance(template)
+                print("debit_sum, credit_sum :: ",debit_sum, credit_sum)
                 if not is_valid:
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message=f"Cannot verify template: {error_msg}",
                         data={
-                            "error": "Debits and credits must be equal for journal entry to balance."
+                            "error": error_msg,
+                            "debit_sum": str(debit_sum),
+                            "credit_sum": str(credit_sum)
                         }
                     )
 
