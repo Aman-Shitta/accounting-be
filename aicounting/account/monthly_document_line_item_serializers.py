@@ -76,6 +76,7 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'credit': self.get_credit(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
+                "is_editable": ""
             }
         elif isinstance(instance, MonthlyDocumentAttributeItem):
             # Handle AttributeItem (sales, etc.) - use attribute name as description
@@ -89,6 +90,7 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'credit': self.get_credit(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
+                "is_editable": "debit" if instance.transaction_type == 'debit' else "credit"
             }
         else:
             # Fallback for unknown types
@@ -248,6 +250,190 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
             elif credit_amount is not None:
                 instance.transaction_type = 'credit'
                 instance.amount = credit_amount
+
+        instance.save()
+        return instance
+
+
+class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
+    """Serializer for MonthlyDocumentAttributeItem (for sales and other non-bank documents)"""
+    debit = serializers.SerializerMethodField()
+    credit = serializers.SerializerMethodField()
+    gl_account = GLAccountNestedSerializer(read_only=True)
+    offset_gl_account = GLAccountNestedSerializer(read_only=True)
+    gl_account_id = serializers.PrimaryKeyRelatedField(
+        queryset=DimAICGLAcct.objects.all(), 
+        write_only=True, 
+        required=False, 
+        allow_null=True,
+        help_text="ID of the GL account to assign"
+    )
+    attribute_id = serializers.IntegerField(write_only=True, required=True)
+    attribute_name = serializers.CharField(source='attribute.name', read_only=True)
+
+    class Meta:
+        model = MonthlyDocumentAttributeItem
+        fields = [
+            "id",
+            "page_number",
+            "attribute_id",
+            "attribute_name",
+            "value",
+            "debit",
+            "credit",
+            "gl_account",
+            "offset_gl_account", 
+            "gl_account_id",
+        ]
+        read_only_fields = ["id", "attribute_name"]
+
+    def get_debit(self, obj):
+        """Return debit amount as string if transaction is debit type"""
+        if hasattr(obj, 'transaction_type') and hasattr(obj, 'amount'):
+            # MonthlyDocumentBankLineItem
+            if obj.transaction_type == 'debit' and obj.amount is not None:
+                return str(obj.amount)
+        elif hasattr(obj, 'transaction_type') and hasattr(obj, 'value'):
+            # MonthlyDocumentAttributeItem
+            if obj.transaction_type == 'debit' and obj.value is not None:
+                return str(obj.value)
+        return None
+
+    def get_credit(self, obj):
+        """Return credit amount as string if transaction is credit type"""
+        if hasattr(obj, 'transaction_type') and hasattr(obj, 'amount'):
+            # MonthlyDocumentBankLineItem
+            if obj.transaction_type == 'credit' and obj.amount is not None:
+                return str(obj.amount)
+        elif hasattr(obj, 'transaction_type') and hasattr(obj, 'value'):
+            # MonthlyDocumentAttributeItem
+            if obj.transaction_type == 'credit' and obj.value is not None:
+                return str(obj.value)
+        return None
+
+    def validate(self, attrs):
+        """Validate that either debit or credit is provided, but not both"""
+        request = self.context.get('request')
+        is_create = self.instance is None
+        debit = request.data.get('debit') if request else None
+        credit = request.data.get('credit') if request else None
+
+        if is_create:
+            # For create, we need either debit or credit
+            if not debit and not credit:
+                raise serializers.ValidationError("Either 'debit' or 'credit' amount is required.")
+            if debit and credit:
+                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
+        else:
+            # For updates, check the instance's transaction type
+            if debit and credit:
+                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
+        print("self.instance.transaction_type :: ", self.instance.transaction_type)
+
+        # Check if trying to update the wrong column based on transaction type
+        if self.instance.transaction_type == 'debit':
+            if debit is None or not debit.strip():
+                raise serializers.ValidationError({
+                    "debit": "This is a debit transaction. You can only update the 'debit' column, not 'credit'."
+                })
+        elif self.instance.transaction_type == 'credit':
+            if credit is None or not credit.strip():
+                raise serializers.ValidationError({
+                    "credit": "This is a credit transaction. You can only update the 'credit' column, not 'debit'."
+                })
+        
+        return attrs
+
+    def _parse_amount(self, value):
+        """Parse amount string to Decimal, handling common formats"""
+        if value in (None, ""):
+            return None
+        try:
+            # Remove commas and whitespace
+            clean_value = str(value).replace(',', '').strip()
+            return Decimal(clean_value)
+        except (InvalidOperation, ValueError):
+            raise serializers.ValidationError("Invalid amount format.")
+
+    @transaction.atomic
+    def create(self, validated_data):
+        """Create new attribute item"""
+        request = self.context.get('request')
+        document = self.context.get('document')  # MonthlyAccountingDocument instance
+        
+        if not document:
+            raise serializers.ValidationError("Document context is required.")
+        
+        page_number = validated_data.get('page_number', 1)
+        attribute_id = validated_data.pop('attribute_id')
+        gl_account = validated_data.get('gl_account_id')
+        value = validated_data.get('value')
+        
+        # Get the attribute snapshot from the input file
+        try:
+            from .models.dim_aic_snapshot_models import FactAICInputFileAttributeSnapshot
+            attribute = FactAICInputFileAttributeSnapshot.objects.get(
+                id=attribute_id,
+                input_file=document.input_file_snapshot
+            )
+        except FactAICInputFileAttributeSnapshot.DoesNotExist:
+            raise serializers.ValidationError("Invalid attribute_id or attribute does not belong to this document.")
+        
+        debit = request.data.get('debit') if request else None
+        credit = request.data.get('credit') if request else None
+
+        debit_amount = self._parse_amount(debit)
+        credit_amount = self._parse_amount(credit)
+
+        # Determine transaction type and value
+        transaction_type = 'debit' if debit_amount is not None else 'credit'
+        amount = debit_amount if transaction_type == 'debit' else credit_amount
+
+        # Get default offset GL account from the attribute
+        default_offset_gl = attribute.offset_gl_account if hasattr(attribute, 'offset_gl_account') else None
+
+        # Create the attribute item
+        item = MonthlyDocumentAttributeItem.objects.create(
+            document=document,
+            page_number=page_number,
+            attribute=attribute,
+            value=amount,
+            transaction_type=transaction_type,
+            gl_account=gl_account,
+            offset_gl_account=default_offset_gl
+        )
+        return item
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        """Update existing attribute item"""
+        request = self.context.get('request')
+        debit = request.data.get('debit') if request else None
+        credit = request.data.get('credit') if request else None
+        
+        if debit and credit:
+            raise serializers.ValidationError("Provide only one of 'debit' or 'credit'.")
+
+        # Update basic fields
+        if 'page_number' in validated_data:
+            instance.page_number = validated_data['page_number']
+        if 'gl_account_id' in validated_data:
+            instance.gl_account = validated_data['gl_account_id']
+
+        # Update value and transaction type if provided
+        if debit is not None or credit is not None:
+            debit_amount = self._parse_amount(debit)
+            credit_amount = self._parse_amount(credit)
+            
+            if debit_amount is not None and credit_amount is not None:
+                raise serializers.ValidationError("Only one of debit or credit can be set.")
+            
+            if debit_amount is not None:
+                instance.transaction_type = 'debit'
+                instance.value = debit_amount
+            elif credit_amount is not None:
+                instance.transaction_type = 'credit'
+                instance.value = credit_amount
 
         instance.save()
         return instance

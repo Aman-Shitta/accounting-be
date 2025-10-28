@@ -508,19 +508,13 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 )
             
             # Additional validation for bank_statement and credit_card templates
-            if (je_template.input_file and 
-                je_template.input_file.file_type in ['bank_statement', 'credit_card']):
+            if (je_template.input_files and 
+                any([f.file_type in ['bank_statement', 'credit_card'] for f in je_template.input_files.all()])):
                 
-                existing_attrs = DimAICJETemplateAttribute.objects.filter(
-                    je_template_id=je_template,
-                    input_file_attribute__isnull=False
-                ).count()
-                
-                if existing_attrs > 0:
-                    return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        f"Templates with {je_template.input_file.file_type} files already have default attributes configured and cannot be modified."
-                    )
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Templates with {je_template.input_files.first().file_type} template cannot be modified."
+                )
             
             serializer = JETemplateAttributeCreateSerializer(
                 data=request.data,
@@ -551,11 +545,15 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             )
         
         except Exception as e:
+            import os, sys
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
             logger.error(f"Error configuring attributes for template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while configuring attributes.",
-                data={"error": str(e)}
+                errors={"attributes": str(e)}
             )
 
 

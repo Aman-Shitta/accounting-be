@@ -141,23 +141,29 @@ class FactAICMonthlyAccounting(models.Model):
             monthly_freq = DimAICJEFreq.objects.get(je_freq__icontains='monthly')
         except DimAICJEFreq.DoesNotExist:
             monthly_freq = None
-        
-        try:
-            # Create input files snapshots
-            input_files = DimAicInputFiles.objects.filter(client=self.client)
-            for input_file in input_files:
-                if input_file.dimaicjetemplateheader_set.exists():
-                    self._create_input_file_snapshot(input_file)
             
-            # Create template snapshots (only monthly frequency)
+        try:
+            # First, get all templates with monthly frequency
             if monthly_freq:
                 templates = DimAICJETemplateHeader.objects.filter(
                     client=self.client,
-                    je_freq=monthly_freq,
-                    input_file__isnull=False
+                    je_freq=monthly_freq
                 )
+                
+                # Create a set of input files referenced by these templates
+                relevant_input_files = set()
+                for template in templates:
+                    # Add all input files used by this template
+                    relevant_input_files.update(template.input_files.all())
+                
+                # Create snapshots only for relevant input files
+                for input_file in relevant_input_files:
+                    self._create_input_file_snapshot(input_file)
+                
+                # Create template snapshots
                 for template in templates:
                     self._create_template_snapshot(template)
+                    
         except Exception as e:
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -197,7 +203,6 @@ class FactAICMonthlyAccounting(models.Model):
         models_dict = get_snapshot_models()
         FactAICInputFileSnapshot = models_dict['FactAICInputFileSnapshot']
         FactAICInputFileAttributeSnapshot = models_dict['FactAICInputFileAttributeSnapshot']
-        
         # Handle file copying if the original file exists
         snapshot_file = None
         if input_file.file:
@@ -232,6 +237,7 @@ class FactAICMonthlyAccounting(models.Model):
             original_input_file=input_file,
             client=input_file.client,
             name=input_file.name,
+            file=snapshot_file,
             file_type=input_file.file_type,
             description=input_file.description,
             input_user=input_file.input_user,
@@ -254,7 +260,6 @@ class FactAICMonthlyAccounting(models.Model):
                 original_updated_at=attribute.updated_at
             )
 
-        
         return file_snapshot
     
     def _create_template_snapshot(self, template):
@@ -267,19 +272,8 @@ class FactAICMonthlyAccounting(models.Model):
                 FactAICInputFileAttributeSnapshot = models_dict['FactAICInputFileAttributeSnapshot']
                 FactAICJETemplateHeaderSnapshot = models_dict['FactAICJETemplateHeaderSnapshot']
                 FactAICJETemplateAttributeSnapshot = models_dict['FactAICJETemplateAttributeSnapshot']
-                
-                # Find the corresponding input file snapshot if exists
-                input_file_snapshot = None
-                if template.input_file:
-                    try:
-                        input_file_snapshot = FactAICInputFileSnapshot.objects.get(
-                            monthly_accounting=self,
-                            original_input_file=template.input_file
-                        )
-                    except FactAICInputFileSnapshot.DoesNotExist:
-                        pass
-                
-                # Create template snapshot
+
+                # Create template snapshot first without the input_files
                 template_snapshot = FactAICJETemplateHeaderSnapshot.objects.create(
                     monthly_accounting=self,
                     original_template=template,
@@ -290,11 +284,23 @@ class FactAICMonthlyAccounting(models.Model):
                     je_freq=template.je_freq,
                     je_type=template.je_type,
                     is_object=template.is_object,
-                    input_file=input_file_snapshot,
                     description=template.description,
                     original_created_at=template.created_at,
                     original_updated_at=template.updated_at
                 )
+                
+                # Add corresponding input file snapshots to the M2M relationship
+                for input_file in template.input_files.all():
+                    try:
+                        input_file_snapshot = FactAICInputFileSnapshot.objects.get(
+                            monthly_accounting=self,
+                            original_input_file=input_file
+                        )
+                        # Add the snapshot to the template's input_files M2M field
+                        template_snapshot.input_files.add(input_file_snapshot)
+                    except FactAICInputFileSnapshot.DoesNotExist:
+                        # Skip this input file if no snapshot exists
+                        pass
                 
                 # Create template attribute snapshots
                 for attribute in template.template_attributes.all():
@@ -353,19 +359,17 @@ class FactAICMonthlyAccounting(models.Model):
             monthly_accounting=self
         )
 
-        if not input_file_snapshots.exists():
-            self.delete()
-            raise ValidationError("No input file snapshots found. Monthly accounting session deleted.")
-        
-        for snapshot in input_file_snapshots:
-            # Create a document for each snapshot
-            document = MonthlyAccountingDocument.objects.create(
-                monthly_accounting=self,
-                input_file_snapshot=snapshot,
-                doc_type=snapshot.file_type if hasattr(snapshot, 'file_type') else 'bank_statement',
-                status='pending'
-            )
-            created_documents.append(document)
-        
+        if input_file_snapshots.exists():
+
+            for snapshot in input_file_snapshots:
+                # Create a document for each snapshot
+                document = MonthlyAccountingDocument.objects.create(
+                    monthly_accounting=self,
+                    input_file_snapshot=snapshot,
+                    doc_type=snapshot.file_type if hasattr(snapshot, 'file_type') else 'bank_statement',
+                    status='pending'
+                )
+                created_documents.append(document)
+            
         return created_documents
 

@@ -37,10 +37,10 @@ class Configuration:
             - **Description** (narration or merchant/payee info)
             - **Debit** amount (money withdrawn or spent)
             - **Credit** amount (money received)
-            - **Balance** (optional, if available)
 
             **Additional Instructions:**
             - Do not attempt to OCR scanned cheque or deposit images.
+            - Identify the cheque table items as transactional activity (i.e cheque number, date, amount) and extract them where cheque number will become  Description..
             - If transactional rows appear in paragraph or sentence form, still extract them into structured entries.
             - Use consistent formatting across all extracted transactions.
 

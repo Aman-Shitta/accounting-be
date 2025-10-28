@@ -26,7 +26,8 @@ from .models.monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
     MonthlyDocumentBankCheckItem,
-    MonthlyDocumentAttributeItem
+    MonthlyDocumentAttributeItem,
+    MonthlyTemplateManualAttributeItem
 )
 from .models.dim_aic_snapshot_models import (
     FactAICInputFileSnapshot,
@@ -129,21 +130,23 @@ class DimAICJETemplateAttributeInline(admin.TabularInline):
 class DimAICJETemplateHeaderAdmin(admin.ModelAdmin):
     list_display = (
         'id', 'je_name', 'je_refrence', 'customer', 'client', 
-        'je_freq', 'je_type', 'is_object', 'input_file', 'created_at', 'updated_at'
+        'je_freq', 'je_type', 'is_object', 'display_input_files', 'created_at', 'updated_at'
     )
     search_fields = ('je_name', 'je_refrence', 'client__client_name')
     list_filter = ('is_object', 'je_freq', 'je_type', 'client', 'created_at', 'updated_at')
     ordering = ('-created_at',)
-    readonly_fields = ('id', 'created_at', 'updated_at')
+    readonly_fields = ('id', 'created_at', 'updated_at', 'display_input_files')
     inlines = [DimAICJETemplateAttributeInline]
+    
+    filter_horizontal = ('input_files',)  # Adds a nice widget for handling M2M relationships
     
     fieldsets = (
         ('Template Information', {
             'fields': ('je_name', 'je_refrence', 'je_freq', 'je_type')
         }),
         ('Template Type', {
-            'fields': ('is_object', 'input_file'),
-            'description': 'is_object determines the template type. If True, input_file is required.'
+            'fields': ('is_object', 'input_files'),
+            'description': 'is_object determines the template type. If True, at least one input file is required.'
         }),
         ('Relationships', {
             'fields': ('customer', 'client')
@@ -155,18 +158,26 @@ class DimAICJETemplateHeaderAdmin(admin.ModelAdmin):
     )
     
     def get_queryset(self, request):
-        """Optimize queries with select_related"""
+        """Optimize queries with select_related and prefetch_related"""
         return super().get_queryset(request).select_related(
-            'customer', 'client', 'je_freq', 'je_type', 'input_file'
-        )
+            'customer', 'client', 'je_freq', 'je_type'
+        ).prefetch_related('input_files')
+    
+    def display_input_files(self, obj):
+        """Display input files as comma-separated list in admin list view"""
+        return ", ".join([file.name for file in obj.input_files.all()])
+    display_input_files.short_description = "Input Files"
     
     def save_model(self, request, obj, form, change):
         """Custom save logic with validation"""
-        # Validate that if is_object is True, input_file must be provided
-        if obj.is_object and not obj.input_file:
-            from django.core.exceptions import ValidationError
-            raise ValidationError("Input file is required when template is an object template.")
         super().save_model(request, obj, form, change)
+        
+        # We need to check after saving because M2M fields are only saved after the main model
+        if obj.is_object and not obj.input_files.exists():
+            messages.warning(
+                request,
+                "Warning: This is an object template but no input files are associated. At least one input file is recommended."
+            )
 
 @admin.register(DimAICJETemplateGL)
 class DimAICJETemplateGLAdmin(admin.ModelAdmin):
@@ -444,9 +455,9 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
     readonly_fields = ("doc_id", "monthly_accounting", "input_file_snapshot", "created_at", "updated_at", "file_link")
     
     inlines = [
-        MonthlyDocumentBankKeyItemInline,
+        # MonthlyDocumentBankKeyItemInline,
         MonthlyDocumentBankLineItemInline,
-        MonthlyDocumentBankCheckItemInline,
+        # MonthlyDocumentBankCheckItemInline,
     ]
 
     def file_link(self, obj):  # pragma: no cover
@@ -556,18 +567,20 @@ class FactAICJETemplateHeaderSnapshotAdmin(admin.ModelAdmin):
     """
     Admin for FactAICJETemplateHeaderSnapshot
     """
-    list_display = ('id', 'je_name', 'monthly_accounting_link', 'je_type', 'is_object', 'original_created_at')
+    list_display = ('id', 'je_name', 'monthly_accounting_link', 'je_type', 'is_object', 'display_input_files', 'original_created_at')
     list_filter = ('je_type', 'is_object', 'monthly_accounting__month', 'monthly_accounting__year')
     search_fields = ('je_name', 'monthly_accounting__client__client_name')
-    readonly_fields = ('monthly_accounting', 'original_template', 'client', 'customer', 'original_created_at', 'original_updated_at')
+    readonly_fields = ('monthly_accounting', 'original_template', 'client', 'customer', 'original_created_at', 'original_updated_at', 'display_input_files')
     inlines = [FactAICJETemplateAttributeSnapshotInline]
+    
+    filter_horizontal = ('input_files',)  # Better UI for M2M fields
     
     fieldsets = (
         ('Template Information', {
             'fields': ('je_name', 'je_refrence', 'je_freq', 'je_type', 'is_object', 'description')
         }),
         ('Relationships', {
-            'fields': ('monthly_accounting', 'original_template', 'client', 'customer', 'input_file')
+            'fields': ('monthly_accounting', 'original_template', 'client', 'customer', 'input_files')
         }),
         ('Timestamps', {
             'fields': ('original_created_at', 'original_updated_at')
@@ -576,6 +589,11 @@ class FactAICJETemplateHeaderSnapshotAdmin(admin.ModelAdmin):
             'fields': ('je_export_file',),
         })
     )
+    
+    def display_input_files(self, obj):
+        """Display input files as comma-separated list in admin list view"""
+        return ", ".join([file.name for file in obj.input_files.all()])
+    display_input_files.short_description = "Input Files"
     
     def monthly_accounting_link(self, obj):
         if obj.monthly_accounting:
@@ -721,3 +739,50 @@ class MonthlyDocumentAttributeItemAdmin(admin.ModelAdmin):
     def value_short(self, obj):
         return (obj.value[:50] + '...') if obj.value and len(obj.value) > 50 else obj.value
     value_short.short_description = 'Value'
+
+
+@admin.register(MonthlyTemplateManualAttributeItem)
+class MonthlyTemplateManualAttributeItemAdmin(admin.ModelAdmin):
+    """Admin for monthly template manual attribute items."""
+    list_display = ('id', 'template_attribute_name', 'value_short', 'formatted_value', 
+                   'transaction_type', 'gl_account', 'entered_by', 'created_at')
+    list_filter = ('transaction_type', 'created_at', 'entered_by')
+    search_fields = ('template_attribute__attribute_name', 'value', 'description')
+    readonly_fields = ('created_at', 'updated_at', 'formatted_value')
+    
+    fieldsets = (
+        ('Template Reference', {
+            'fields': ('template_attribute',)
+        }),
+        ('Manual Entry Details', {
+            'fields': ('value', 'formatted_value', 'transaction_type', 'description')
+        }),
+        ('GL Classification', {
+            'fields': ('gl_account', 'offset_gl_account'),
+            'description': 'GL accounts for this manual entry'
+        }),
+        ('User Information', {
+            'fields': ('entered_by',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def template_attribute_name(self, obj):
+        if obj.template_attribute:
+            template_name = obj.template_attribute.je_template_snapshot.je_name if obj.template_attribute.je_template_snapshot else 'N/A'
+            attribute_name = obj.template_attribute.attribute_name or 'N/A'
+            return f"{template_name} - {attribute_name}"
+        return 'N/A'
+    template_attribute_name.short_description = 'Template Attribute'
+    
+    def value_short(self, obj):
+        return (obj.value[:50] + '...') if obj.value and len(obj.value) > 50 else obj.value
+    value_short.short_description = 'Value'
+    
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.entered_by:
+            obj.entered_by = request.user
+        super().save_model(request, obj, form, change)

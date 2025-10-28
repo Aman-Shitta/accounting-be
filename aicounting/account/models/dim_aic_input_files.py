@@ -94,7 +94,9 @@ class DimAicInputFileAttributes(models.Model):
     
     input_file = models.ForeignKey(
         DimAicInputFiles,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         verbose_name="Input File",
         related_name="attributes"
     )

@@ -5,6 +5,7 @@ from rest_framework import status
 from aicounting.msal_conf import MsalGraphConf
 
 from user.services import create_user_for_customer
+from user.constants import CustomerInviteViewMessages
 
 from authentication.permissions import IsSuperUser
 from authentication.authenticate import AdminJWTAuthentication
@@ -38,7 +39,7 @@ class AzureInviteView(GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid data",
+                message=CustomerInviteViewMessages["validation_error"],
                 errors=serializer.errors
             )
         
@@ -54,9 +55,14 @@ class AzureInviteView(GenericAPIView):
         )
 
         if error_message:
+            # Determine if it's an "already exists" error
+            if "already exists" in error_message.lower():
+                message = CustomerInviteViewMessages["already_exists"]
+            else:
+                message = error_message
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message=error_message
+                message=message
             )
 
         # Extract first and last name from email
@@ -81,12 +87,12 @@ class AzureInviteView(GenericAPIView):
             customer.system_user.delete()
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message="Failed to send Azure invite.",
+                message=CustomerInviteViewMessages["azure_error"]
             )
 
         return create_api_response(
             status_code=status.HTTP_201_CREATED,
-            message="Customer invite sent successfully. Customer created in non-verified state.",
+            message=CustomerInviteViewMessages["success"],
             data={
                 "customer_id": customer.id,
                 "customer_name": customer.customer_name,

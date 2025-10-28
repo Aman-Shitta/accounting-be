@@ -7,6 +7,7 @@ from rest_framework import status
 from aicounting.msal_conf import MsalGraphConf
 
 from user.services import create_user_for_accountant
+from .constants import AccountantInviteViewMessages, AccountantListViewMessages
 
 from authentication.permissions import IsCustomer
 from authentication.authenticate import JSONWebTokenAuthentication
@@ -40,7 +41,7 @@ class AzureAccountantInviteView(GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid data",
+                message=AccountantInviteViewMessages["validation_error"],
                 errors=serializer.errors
             )
         
@@ -55,9 +56,14 @@ class AzureAccountantInviteView(GenericAPIView):
         )
 
         if error_message:
+            # Determine if it's an "already exists" error
+            if "already exists" in error_message.lower():
+                message = AccountantInviteViewMessages["already_exists"]
+            else:
+                message = error_message
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message=error_message
+                message=message
             )
 
         # Send Azure AD B2C invite
@@ -74,12 +80,12 @@ class AzureAccountantInviteView(GenericAPIView):
             accountant.system_user.delete()
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message="Failed to send Azure invite.",
+                message=AccountantInviteViewMessages["azure_error"]
             )
 
         return create_api_response(
             status_code=status.HTTP_201_CREATED,
-            message="Accountant invite sent successfully. Accountant created in non-verified state.",
+            message=AccountantInviteViewMessages["success"],
             data={
                 "accountant": DimAICAccountantSerializer(accountant).data,
                 "customer_id": customer.id,
@@ -108,6 +114,6 @@ class AccountantListView(GenericAPIView):
         serializer = self.serializer_class(accountants, many=True)
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="Accountants retrieved successfully.",
+            message=AccountantListViewMessages["success"],
             data=serializer.data
         )

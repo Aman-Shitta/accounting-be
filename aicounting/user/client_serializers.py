@@ -42,9 +42,13 @@ class DimAICAccountantSerializer(serializers.ModelSerializer):
 
 
 class ClientCreateUpdateSerializer(serializers.ModelSerializer):
-    """Main serializer for creating DimAICClient with nested contacts and documents"""
+    """Main serializer for creating DimAICClient with contacts and documents"""
     
-    contacts = ContactSerializer(many=True, write_only=True, required=False)
+    # Flat contact fields
+    contact_name = serializers.CharField(required=True, max_length=100, help_text="Contact person's full name")
+    contact_email = serializers.EmailField(required=True, max_length=100, help_text="Contact person's email address")
+    contact_phone = serializers.CharField(required=True, max_length=15, help_text="Contact person's phone number (7-15 digits)")
+    
     # Define the expected document types
     chart_of_account = serializers.FileField(required=True, help_text="Chart Of Accounts file (CSV/Excel)")
     gl_history = serializers.FileField(required=False, help_text="General Ledger History file (CSV/Excel)")
@@ -54,10 +58,35 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         model = DimAICClient
         fields = [
             'id', 'client_id', 'client_name', 
-            'contacts', "chart_of_account", "gl_history", "vendor_list"
+            'contact_name', 'contact_email', 'contact_phone',
+            'chart_of_account', 'gl_history', 'vendor_list'
         ]
         read_only_fields = ['id']
+        
+    def validate_contact_email(self, value):
+        """Validate email format"""
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_email(value)
+            return value
+        except DjangoValidationError:
+            raise serializers.ValidationError("Enter a valid email address.")
+            
+    def validate_contact_phone(self, value):
+        """Validate phone number format"""
+        import re
+        if not re.match(r'^\+?\d{7,15}$', value):
+            raise serializers.ValidationError("Enter a valid phone number without spaces (7 to 15 digits, optional leading +)")
+        return value
 
+    def validate_chart_of_account(self, value):
+        """Validate COA file type"""
+        import os
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in ['.csv', '.xls', '.xlsx']:
+            raise serializers.ValidationError("Chart Of Accounts file must be CSV or Excel format (.csv, .xls, .xlsx)")
+        return value
 
     def validate(self, attrs):
 
@@ -97,22 +126,17 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
 
     def create(self, validated_data):
-        contacts_data = validated_data.pop('contacts', [])
+        # Extract contact data
+        contact_data = {
+            'contact_name': validated_data.pop('contact_name'),
+            'contact_email': validated_data.pop('contact_email'),
+            'contact_phone': validated_data.pop('contact_phone')
+        }
         documents = {
             'chart_of_account': validated_data.pop('chart_of_account', None),
             'gl_history': validated_data.pop('gl_history', None),
             'vendor_list': validated_data.pop('vendor_list', None)
         }
-
-        # Validate COA before creating client
-        chart_of_account = documents.get('chart_of_account')
-        if not chart_of_account:
-            raise serializers.ValidationError({"chart_of_account": ["Chart Of Accounts file is required."]})
-        # Validate file type for COA
-        import os
-        ext = os.path.splitext(chart_of_account.name)[1].lower()
-        if ext not in ['.csv', '.xls', '.xlsx']:
-            raise serializers.ValidationError({"chart_of_account": ["Chart Of Accounts file must be CSV or Excel format (.csv, .xls, .xlsx)"]})
 
         request_user = self.context['request'].user
         customer = getattr(request_user, 'customer_profile', None)
@@ -143,15 +167,14 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
                 self.__validate_document__(documents, client, is_update=False)
 
-                # Create contacts
-                for contact_data in contacts_data:
-                    contact = DimAICContact(
-                        client_id=client,
-                        contact_name=contact_data['contact_name'],
-                        contact_email=contact_data['contact_email'],
-                        contact_phone=contact_data['contact_phone']
-                    )
-                    contact.save()
+                # Create single contact
+                contact = DimAICContact(
+                    client_id=client,
+                    contact_name=contact_data['contact_name'],
+                    contact_email=contact_data['contact_email'],
+                    contact_phone=contact_data['contact_phone']
+                )
+                contact.save()
 
                 for doc_type, file_obj in documents.items():
                     if file_obj:
@@ -416,7 +439,12 @@ class ClientAccountantAssignmentSerializer(serializers.Serializer):
     assigned_accountants = serializers.ListField(
         child=serializers.IntegerField(),
         min_length=1,
-        help_text="List of accountant IDs to add to the client"
+        help_text="List of accountant IDs to add to the client",
+        error_messages={
+            'min_length': 'No accountant selected.',
+            'empty': 'No accountant selected.',
+            'not_a_list': "Expected a list of accountant IDs."
+        }
     )
     
     def validate_assigned_accountants(self, value):
@@ -432,7 +460,7 @@ class ClientAccountantAssignmentSerializer(serializers.Serializer):
         
         if invalid_ids:
             raise serializers.ValidationError(
-                f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
+                f"Invalid accountant or Accountant not found."
             )
         
         return list(valid_accountants)

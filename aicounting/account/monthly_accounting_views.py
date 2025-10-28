@@ -337,20 +337,65 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
 
             # Get JE template snapshots (basic info only)
             je_template_snapshots = monthly_accounting.je_template_snapshots.select_related(
-                'original_template', 'input_file'
-            )
+                'original_template'
+                ).prefetch_related(
+                    'input_files'
+                )
+            
+            # Get monthly accounting documents for status checking
+            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+            documents_map = {}
+            
+            # Create map of input file snapshot ID to document for quick lookup
+            monthly_docs = MonthlyAccountingDocument.objects.filter(
+                monthly_accounting=monthly_accounting
+            ).select_related('input_file_snapshot')
+            
+            for doc in monthly_docs:
+                if doc.input_file_snapshot:
+                    documents_map[doc.input_file_snapshot.id] = doc
             
             je_templates = []
             for template_snapshot in je_template_snapshots:
-
+                # Get all input files associated with this template
+                input_files = []
+                all_verified = True
+                for input_file in template_snapshot.input_files.all():
+                    # Find the document status for this input file
+                    is_verified = False
+                    doc_status = None
+                    doc_id = None
+                    
+                    if input_file.id in documents_map:
+                        doc = documents_map[input_file.id]
+                        doc_status = doc.status
+                        doc_id = doc.id
+                        is_verified = doc.status == 'verified'
+                    
+                    # If any input file is not verified, the template is not fully verified
+                    if not is_verified:
+                        all_verified = False
+                    
+                    input_files.append({
+                        "file_name": input_file.name,
+                        "type": input_file.file_type if hasattr(input_file, 'file_type') else None,
+                        "type_display": input_file.get_file_type_display() if hasattr(input_file, 'get_file_type_display') else None,
+                        "verified": is_verified,
+                        "document_id": doc_id,
+                        "document_status": doc_status
+                    })
+                
+                # Check if the template has an export file generated (which happens after verification)
+                has_export = template_snapshot.je_export_file is not None
                 je_templates.append({
                     "id": template_snapshot.id,  # Snapshot ID
                     "name": template_snapshot.je_name,
-                    "type": template_snapshot.input_file.file_type  if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
-                    "type_display": template_snapshot.input_file.get_file_type_display() if (template_snapshot.input_file and hasattr(template_snapshot.input_file, 'file_type')) else None,
+                    "input_files": input_files,  # List of associated input files with verification status
                     "created_at": template_snapshot.original_created_at.isoformat() if template_snapshot.original_created_at else None,
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
-                    "is_ready": all(status == 'verified' for status in template_snapshot.input_file.extraction_documents.all().values_list('status', flat=True)),
+                    "is_ready": all_verified,
+                    "verified_count": sum(1 for f in input_files if f['verified']),
+                    "is_verified": (template_snapshot.status =='verified' and all_verified and has_export),  # Verified if all files are verified and export exists
                     "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })
 
@@ -581,21 +626,12 @@ class MonthlyAccountingDocumentStartExtractionView(generics.GenericAPIView):
                 from .tasks import process_uploaded_document
                 process_uploaded_document.delay(str(document.id), config_params)
                 
-            elif document.doc_type in ['sales']:
-                attributes = document.input_file_snapshot.attribute_snapshots.all()
-                key_items = [attri.name for attri in attributes]
-                key_items_formatted = [f"{attri.name}: {attri.comments}" for attri in attributes]
-                
-                config_params = dict(
-                    doc_type=document.doc_type,
-                    extract_key_items=True,
-                    key_items=key_items,
-                    key_items_formatted=key_items_formatted,
-                    excluded_fields=[]
-                )
-                
-                from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
+            else:
+                return create_api_response(
+                status.HTTP_400_BAD_REQUEST,
+                "This does not support extract.",
+                data={"error": str(e)}
+            )
             
             return create_api_response(
                 status.HTTP_200_OK,
@@ -724,97 +760,15 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
 
 
-class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
+class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
+    """
+    Update document status from 'classified' to 'verified'.
+    
+    Note: Export file generation has been moved to JEAccountingVerifyView.
+    Users should now verify the JE template directly instead of the document.
+    """
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
-
-    @staticmethod
-    def generate_export_file(document):
-        import io
-        import csv
-        from django.core.files.base import ContentFile
-        from .je_accounting_serializers import JETemplateDataSerializer
-
-        if document.doc_type in ['bank_statement', 'credit_card']:
-            bank_template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
-            bank_template = bank_template_qs.first() if bank_template_qs.exists() else None
-            if not bank_template:
-                raise ValueError('No JE Template associated with this document.')
-                
-            template_attributes = JETemplateDataSerializer(bank_template).data['attributes']
-
-            filename = "je_template.csv"
-            output = io.StringIO()
-            writer = csv.writer(output)
-
-            writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
-            for row in template_attributes:
-                attribute_gl = row.get('gl_account') or dict()
-                writer.writerow([
-                    attribute_gl.get('account_number', '') or '',
-                    attribute_gl.get('account_name', '') or '',
-                    row.get('description', '') or '',
-                    row.get('debit', '') or '',
-                    row.get('credit', '') or ''
-                ])
-
-            csv_data = output.getvalue()
-            output.close()
-
-            bank_template.je_export_file.save(filename, ContentFile(csv_data))
-        else:
-            # Handle non-bank document types (sales, etc.)
-            template_qs = document.input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
-            if not template_qs:
-                raise ValueError('No JE Template associated with this document.')
-
-            for template in template_qs:
-                if template.is_object:
-                    # For is_object templates, use data from extracted attribute items
-                    template_attributes = JETemplateDataSerializer(template).data['attributes']
-
-                    filename = "je_template.csv"
-                    output = io.StringIO()
-                    writer = csv.writer(output)
-
-                    writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
-                    for row in template_attributes:
-                        attribute_gl = row.get('gl_account') or dict()
-                        writer.writerow([
-                            attribute_gl.get('account_number', '') or '',
-                            attribute_gl.get('account_name', '') or '',
-                            row.get('description', '') or '',
-                            row.get('debit', '') or '',
-                            row.get('credit', '') or ''
-                        ])
-
-                    csv_data = output.getvalue()
-                    output.close()
-
-                    template.je_export_file.save(filename, ContentFile(csv_data))
-                else:
-                    # For non-is_object templates, use GL accounts from JE template with attribute values
-                    template_attributes = JETemplateDataSerializer(template).data['attributes']
-
-                    filename = "je_template.csv"
-                    output = io.StringIO()
-                    writer = csv.writer(output)
-
-                    writer.writerow(['GL Account Code', 'GL Account Name', 'Description', 'Debit', 'Credit'])
-                    for row in template_attributes:
-                        attribute_gl = row.get('gl_account') or dict()
-                        writer.writerow([
-                            attribute_gl.get('account_number', '') or '',
-                            attribute_gl.get('account_name', '') or '',
-                            row.get('description', '') or '',
-                            row.get('debit', '') or '',
-                            row.get('credit', '') or ''
-                        ])
-
-                    csv_data = output.getvalue()
-                    output.close()
-
-                    template.je_export_file.save(filename, ContentFile(csv_data))
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/"""
@@ -827,34 +781,35 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
                     status.HTTP_400_BAD_REQUEST,
                     f"Invalid {var_name}."
                 )
-            # Authorize access similarly to other views
-            user = request.user
-            if hasattr(user, 'customer_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.customer_profile
-                )
-            elif hasattr(user, 'accountant_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
-                )
-            else:
-                return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
 
-            # Fetch the document by PK (document_id) and ensure it belongs to the session
-            try:
-                document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
-                    id=document_id,
-                    monthly_accounting=monthly_accounting
-                )
-            except MonthlyAccountingDocument.DoesNotExist:
-                return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
+        # Authorize access similarly to other views
+        user = request.user
+        if hasattr(user, 'customer_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.customer_profile
+            )
+        elif hasattr(user, 'accountant_profile'):
+            monthly_accounting = get_object_or_404(
+                FactAICMonthlyAccounting.objects.select_related('client'),
+                id=accounting_id,
+                client_id=client_id,
+                client__customer=user.accountant_profile.customer,
+                client__assigned_accountants=user.accountant_profile
+            )
+        else:
+            return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+
+        # Fetch the document by PK (document_id) and ensure it belongs to the session
+        try:
+            document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
+                id=document_id,
+                monthly_accounting=monthly_accounting
+            )
+        except MonthlyAccountingDocument.DoesNotExist:
+            return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found or access denied.")
 
         if document.status != 'classified':
             return create_api_response(
@@ -871,23 +826,34 @@ class MonthlyAccountingDocumentUpdateView(generics.GenericAPIView):
         document.status = 'verified'
         document.save(update_fields=['status'])
 
-        try:
-            self.generate_export_file(document)
-        except Exception as e:
-            document.status = 'classified'
-            document.save(update_fields=['status'])
-            logger.error(f"Error generating export file for document {document_id}: {str(e)}")
-            return create_api_response(
-                message='Error generating export file.',
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                data={"error": str(e)}
-            )
-
+        # For bank statements and credit cards, also mark the JE template as verified and generate export file
+        if document.doc_type in ['bank_statement', 'credit_card']:
+            # Get the input file snapshot
+            input_file_snapshot = document.input_file_snapshot
+            
+            if input_file_snapshot:
+                # Get associated JE template snapshots
+                je_template_snapshots = input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
+                
+                # Mark templates as verified and generate export files
+                for template_snapshot in je_template_snapshots:
+                    template_snapshot.status = 'verified'
+                    template_snapshot.save(update_fields=['status'])
+                    
+                    # Generate export file for the template
+                    try:
+                        from .je_accounting_views import JEAccountingVerifyView
+                        JEAccountingVerifyView.generate_export_file(template_snapshot)
+                        logger.info(f"Generated export file for JE template {template_snapshot.id}")
+                    except Exception as e:
+                        logger.error(f"Error generating export file for JE template {template_snapshot.id}: {str(e)}")
+                        # Don't fail the whole operation if export generation fails
+                        pass
 
         return create_api_response(
-            message='Document verified. Please validate Journal Entries. ',
+            message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in ['bank_statement', 'credit_card'] else 'Document verified successfully. Please proceed to verify the JE Template.',
             status_code=status.HTTP_200_OK
-            )
+        )
 
 
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
@@ -920,6 +886,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             id=document_id,
             monthly_accounting=monthly_accounting
         )
+
         # Remove the document type restriction - now we support all document types
         return document, None
 
@@ -988,11 +955,12 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
         """
         Create a new line item for a monthly accounting document.
-        Only supports bank statement and credit card documents for creation.
+        For bank/credit card: create bank line items
+        For other types: create attribute items (only for missing attributes)
         
         POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         
-        Body:
+        For bank/credit card:
         {
             "page_number": 1,
             "line_number": 5,  // optional - will append if not provided
@@ -1001,22 +969,84 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             "debit": "125.50",  // either debit OR credit, not both
             "gl_account_id": 123
         }
+        
+        For other document types:
+        {
+            "page_number": 1,
+            "attribute_id": 456,  // must be an attribute not yet extracted
+            "value": "some value",
+            "gl_account_id": 123
+        }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+            from .monthly_document_line_item_serializers import (
+                MonthlyDocumentBankLineItemSerializer, 
+                MonthlyDocumentAttributeItemSerializer
+            )
             
             document, error_response = self._get_document(client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentBankLineItemSerializer(
-                data=request.data, 
-                context={'request': request, 'document': document}
-            )
+            if document.doc_type in ['bank_statement', 'credit_card']:
+                # Create bank line item
+                serializer = MonthlyDocumentBankLineItemSerializer(
+                    data=request.data, 
+                    context={'request': request, 'document': document}
+                )
+            else:
+                # Create attribute item - check if attribute is already extracted
+                attribute_id = request.data.get('attribute_id')
+                if not attribute_id:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        "attribute_id is required for non-bank documents."
+                    )
+                
+                # Check if this attribute already has an extracted item
+                existing_item = MonthlyDocumentAttributeItem.objects.filter(
+                    document=document,
+                    attribute_id=attribute_id
+                ).first()
+                
+                if existing_item:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        f"Attribute item for this attribute already exists. Use PATCH to update it."
+                    )
+                
+                # Verify attribute belongs to the input file snapshot
+                if not document.input_file_snapshot:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Document has no input file snapshot."
+                    )
+                
+                attribute_exists = document.input_file_snapshot.attribute_snapshots.filter(
+                    id=attribute_id
+                ).exists()
+                
+                if not attribute_exists:
+                    return create_api_response(
+                        status.HTTP_400_BAD_REQUEST,
+                        "Invalid attribute_id. Attribute does not belong to this document's template."
+                    )
+                
+                serializer = MonthlyDocumentAttributeItemSerializer(
+                    data=request.data,
+                    context={'request': request, 'document': document}
+                )
             
             if serializer.is_valid():
                 item = serializer.save()
-                output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                
+                # Use the appropriate serializer for output
+                if document.doc_type in ['bank_statement', 'credit_card']:
+                    output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                else:
+                    output_serializer = MonthlyDocumentAttributeItemSerializer(item, context={'request': request})
+                
                 return create_api_response(
                     status.HTTP_201_CREATED, 
                     "Line item created successfully.", 
@@ -1044,9 +1074,9 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
 
     def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
-        """Helper method to get line item with proper authorization - only supports BankLineItem for updates"""
+        """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""
         from .models.monthly_accounting_document_model import MonthlyAccountingDocument
-        from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+        from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
         
         user = request.user
         if hasattr(user, 'customer_profile'):
@@ -1065,7 +1095,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 client__assigned_accountants=user.accountant_profile
             )
         else:
-            return None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
+            return None, None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
         
         document = get_object_or_404(
             MonthlyAccountingDocument, 
@@ -1073,50 +1103,84 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             monthly_accounting=monthly_accounting
         )
         
-        # Only allow line item updates for bank statements and credit cards
-        if document.doc_type not in ['bank_statement', 'credit_card']:
-            return None, create_api_response(
-                status.HTTP_400_BAD_REQUEST, 
-                "Line item updates are only supported for bank statements and credit cards."
+        # Try to fetch the appropriate line item based on document type
+        if document.doc_type in ['bank_statement', 'credit_card']:
+            line_item = get_object_or_404(
+                MonthlyDocumentBankLineItem, 
+                id=line_item_id, 
+                document=document
             )
+            item_type = 'bank'
+        else:
+            line_item = get_object_or_404(
+                MonthlyDocumentAttributeItem,
+                id=line_item_id,
+                document=document
+            )
+            item_type = 'attribute'
         
-        line_item = get_object_or_404(
-            MonthlyDocumentBankLineItem, 
-            id=line_item_id, 
-            document=document
-        )
-        return line_item, None
+        return line_item, item_type, None
 
     def patch(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
         """
-        Update a specific line item. Only supports bank statement and credit card line items.
+        Update a specific line item. Supports both bank line items and attribute items.
         
         PATCH /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         
-        Body:
+        For bank/credit card:
         {
             "description": "Updated description",
             "credit": "150.00",  // will change from debit to credit
             "gl_account_id": 456
         }
+        
+        For other document types:
+        {
+            "value": "updated value",
+            "gl_account_id": 456
+        }
         """
         try:
-            from .monthly_document_line_item_serializers import MonthlyDocumentBankLineItemSerializer
+            from .monthly_document_line_item_serializers import (
+                MonthlyDocumentBankLineItemSerializer,
+                MonthlyDocumentAttributeItemSerializer
+            )
             
-            line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
+            line_item, item_type, error_response = self._get_line_item(
+                client_id, accounting_id, document_id, line_item_id, request
+            )
             if error_response:
                 return error_response
             
-            serializer = MonthlyDocumentBankLineItemSerializer(
-                line_item, 
-                data=request.data, 
-                partial=True, 
-                context={'request': request}
-            )
+            # Use appropriate serializer based on item type
+            if item_type == 'bank':
+                serializer = MonthlyDocumentBankLineItemSerializer(
+                    line_item, 
+                    data=request.data, 
+                    partial=True, 
+                    context={'request': request}
+                )
+            else:
+                serializer = MonthlyDocumentAttributeItemSerializer(
+                    line_item,
+                    data=request.data,
+                    partial=True,
+                    context={'request': request}
+                )
             
             if serializer.is_valid():
                 updated_item = serializer.save()
-                output_serializer = MonthlyDocumentBankLineItemSerializer(updated_item, context={'request': request})
+                
+                # Use appropriate output serializer
+                if item_type == 'bank':
+                    output_serializer = MonthlyDocumentBankLineItemSerializer(
+                        updated_item, context={'request': request}
+                    )
+                else:
+                    output_serializer = MonthlyDocumentAttributeItemSerializer(
+                        updated_item, context={'request': request}
+                    )
+                
                 return create_api_response(
                     status.HTTP_200_OK, 
                     "Line item updated successfully.", 
@@ -1126,7 +1190,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST, 
                 "Validation failed.", 
-                data=serializer.errors
+                errors=serializer.errors
             )
         
         except Exception as e:
@@ -1139,39 +1203,52 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
     def delete(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
         """
-        Delete a specific line item and renumber subsequent lines.
+        Delete a specific line item.
+        For bank items: renumber subsequent lines.
+        For attribute items: just delete (no renumbering needed).
         
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
             from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
             
-            line_item, error_response = self._get_line_item(client_id, accounting_id, document_id, line_item_id, request)
+            line_item, item_type, error_response = self._get_line_item(
+                client_id, accounting_id, document_id, line_item_id, request
+            )
             if error_response:
                 return error_response
             
-            page_number = line_item.page_number
-            document = line_item.document
-            deleted_line_number = line_item.line_number
-            
-            with transaction.atomic():
-                # Delete the line item
+            if item_type == 'bank':
+                page_number = line_item.page_number
+                document = line_item.document
+                deleted_line_number = line_item.line_number
+                
+                with transaction.atomic():
+                    # Delete the line item
+                    line_item.delete()
+                    
+                    # Renumber subsequent lines on the same page
+                    updated_count = MonthlyDocumentBankLineItem.objects.filter(
+                        document=document, 
+                        page_number=page_number, 
+                        line_number__gt=deleted_line_number
+                    ).update(line_number=models.F('line_number') - 1)
+                    
+                    logger.info(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
+                
+                return create_api_response(
+                    status.HTTP_200_OK, 
+                    f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
+                )
+            else:
+                # For attribute items, just delete
                 line_item.delete()
+                logger.info(f"Deleted attribute item {line_item_id}")
                 
-                # Renumber subsequent lines on the same page
-                # Use bulk update for efficiency - subtract 1 from all lines after the deleted line
-                updated_count = MonthlyDocumentBankLineItem.objects.filter(
-                    document=document, 
-                    page_number=page_number, 
-                    line_number__gt=deleted_line_number
-                ).update(line_number=models.F('line_number') - 1)
-                
-                logger.info(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
-            
-            return create_api_response(
-                status.HTTP_200_OK, 
-                f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
-            )
+                return create_api_response(
+                    status.HTTP_200_OK,
+                    "Line item deleted successfully."
+                )
         
         except Exception as e:
             logger.error(f"Error deleting line item {line_item_id}: {str(e)}")

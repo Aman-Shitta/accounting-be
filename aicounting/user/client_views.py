@@ -19,6 +19,14 @@ from authentication.permissions import IsCustomer, IsCustomerOrAccountant
 from aicounting.response import create_api_response
 
 from .utils import OpenAIAssistant
+from .constants import (
+    ClientCreateViewMessages,
+    ClientUpdateViewMessages,
+    ClientRetrieveViewMessages,
+    ClientListViewMessages,
+    ClientDocumentUploadMessages,
+    ContactCreateViewMessages,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -35,53 +43,18 @@ class ClientCreateView(generics.GenericAPIView):
     queryset = DimAICClient.objects.all()
 
     
-    def _parse_contacts_data(self, data):
-        """
-        Parse form data to handle nested structures like contacts[0][contact_name]
-        """
-        import re
-        from collections import defaultdict
-        
-        parsed_data = {}
-        contacts_data = defaultdict(dict)
-        
-        # Regular expression to match nested form data patterns
-        contact_pattern = re.compile(r'contacts\[(\d+)\]\[(\w+)\]')
-        
-        for key, value in data.items():
-            # Check if this is a contact field
-            contact_match = contact_pattern.match(key)
-            if contact_match:
-                index = int(contact_match.group(1))
-                field_name = contact_match.group(2)
-                contacts_data[index][field_name] = value
-            else:
-                # Regular field
-                parsed_data[key] = value
-        
-        # Convert contacts defaultdict to list
-        if contacts_data:
-            contacts_list = []
-            for i in sorted(contacts_data.keys()):
-                contacts_list.append(contacts_data[i])
-            parsed_data['contacts'] = contacts_list
-        
-        return parsed_data
-
     def post(self, request, *args, **kwargs):
         try:
-
             # Use atomic transaction for all operations
             with transaction.atomic():
-                parsed_data = self._parse_contacts_data(request.data)
 
-                serializer = self.get_serializer(data=parsed_data, context={"request": self.request})
+                serializer = self.get_serializer(data=request.data, context={"request": self.request})
                 if not serializer.is_valid():
                     logger.error(f"Client creation validation failed: {serializer.errors}")
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Client creation failed due to validation errors.",
-                        data=serializer.errors
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=ClientCreateViewMessages["validation_error"],
+                        errors=serializer.errors
                     )
 
                 # Create the client and related objects
@@ -100,8 +73,8 @@ class ClientCreateView(generics.GenericAPIView):
                 logger.info(f"Client created successfully: {client.client_id}")
                 
                 return create_api_response(
-                    status.HTTP_201_CREATED,
-                    "Client created successfully.",
+                    status_code=status.HTTP_201_CREATED,
+                    message=ClientCreateViewMessages["success"],
                     data=response_serializer.data
                 )
             
@@ -113,9 +86,8 @@ class ClientCreateView(generics.GenericAPIView):
 
             logger.error(f"Unexpected error during client creation: {str(e)}")
             return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during client creation.",
-                data={"error": str(e)}
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message=ClientCreateViewMessages["server_error"]
             )
 
 class ClientListView(generics.GenericAPIView):
@@ -142,8 +114,8 @@ class ClientListView(generics.GenericAPIView):
         serializer = self.get_serializer(queryset, many=True)
         
         return create_api_response(
-            status.HTTP_200_OK,
-            "Client list retrieved successfully.",
+            status_code=status.HTTP_200_OK,
+            message=ClientListViewMessages["success"],
             data=serializer.data
         )
 
@@ -173,17 +145,17 @@ class ClientRetrieveView(generics.GenericAPIView):
         
         if not queryset.exists():
             return create_api_response(
-                status.HTTP_404_NOT_FOUND,
-                "Client not found.",
-                data={}
+                status_code=status.HTTP_404_NOT_FOUND,
+                message=ClientRetrieveViewMessages["not_found"],
+                data=None
             )
         
         client = queryset.first()
         serializer = self.get_serializer(client)
         
         return create_api_response(
-            status.HTTP_200_OK,
-            "Client retrieved successfully.",
+            status_code=status.HTTP_200_OK,
+            message=ClientRetrieveViewMessages["success"],
             data=serializer.data
         )
 
@@ -246,8 +218,8 @@ class ClientUpdateView(generics.GenericAPIView):
                 instance = self.get_object(kwargs.get('id'))
                 if not instance:
                     return create_api_response(
-                        status.HTTP_404_NOT_FOUND,
-                        "Client not found or you don't have permission to update it."
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        message=ClientUpdateViewMessages["not_found"]
                     )
 
                 # Check if data is sent as JSON in 'data' field (recommended approach)
@@ -263,9 +235,9 @@ class ClientUpdateView(generics.GenericAPIView):
                         serializer_data = combined_data
                     except json.JSONDecodeError:
                         return create_api_response(
-                            status.HTTP_400_BAD_REQUEST,
-                            "Invalid JSON in 'data' field.",
-                            data={}
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            message="Invalid JSON format in request data.",
+                            errors={"data": ["The provided JSON data is invalid."]}
                         )
                 else:
                     # Fallback to old form-data parsing
@@ -278,26 +250,25 @@ class ClientUpdateView(generics.GenericAPIView):
                 
                 if not serializer.is_valid():
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Client update failed due to validation errors.",
-                        data=serializer.errors
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=ClientUpdateViewMessages["validation_error"],
+                        errors=serializer.errors
                     )
 
                 client = serializer.save()
                 response_serializer = ClientRetrieveSerializer(client)
                 
                 return create_api_response(
-                    status.HTTP_200_OK,
-                    "Client updated successfully.",
+                    status_code=status.HTTP_200_OK,
+                    message=ClientUpdateViewMessages["success"],
                     data=response_serializer.data
                 )
             
         except Exception as e:
             logger.error(f"Unexpected error during client update: {str(e)}")
             return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during client update.",
-                error={"error": str(e)}
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message=ClientUpdateViewMessages["server_error"]
             )
 
 class ContactCreateView(generics.GenericAPIView):
@@ -316,9 +287,8 @@ class ContactCreateView(generics.GenericAPIView):
                 customer = self.request.user.customer_profile
                 if not customer:
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "No customer found.",
-                        data={}
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message="User account not properly configured."
                     )
                     
                 try:
@@ -328,41 +298,39 @@ class ContactCreateView(generics.GenericAPIView):
                     )
                 except DimAICClient.DoesNotExist:
                     return create_api_response(
-                        status.HTTP_404_NOT_FOUND,
-                        "Client not found.",
-                        data={}
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        message=ClientRetrieveViewMessages["not_found"]
                     )
 
                 if client.contacts:
                     logger.error(f"Client {client_id} already has contacts.")
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Client already has contacts.",
-                        data={}
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message="Client already has contacts assigned.",
+                        errors={"contacts": ["This client already has contacts. Please update existing contacts instead."]}
                     )
                 serializer = self.get_serializer(data=request.data)
                 if not serializer.is_valid():
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Contact creation failed due to validation errors.",
-                        data=serializer.errors
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=ContactCreateViewMessages["validation_error"],
+                        errors=serializer.errors
                     )
 
                 # Create the contact
                 serializer.save(client=client)
                 
                 return create_api_response(
-                    status.HTTP_201_CREATED,
-                    "Contact created successfully.",
+                    status_code=status.HTTP_201_CREATED,
+                    message=ContactCreateViewMessages["success"],
                     data=serializer.data
                 )
             
         except Exception as e:
             logger.error(f"Unexpected error during contact creation: {str(e)}")
             return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during contact creation.",
-                error={"error": str(e)}
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message=ContactCreateViewMessages["error"]
             )
 
 class DocumentUploadView(generics.GenericAPIView):
@@ -381,9 +349,8 @@ class DocumentUploadView(generics.GenericAPIView):
                 customer = getattr(request.user, 'customer_profile', None)
                 if not customer:
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "User must have a customer profile.",
-                        data={}
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message="User account not properly configured."
                     )
                     
                 try:
@@ -393,9 +360,8 @@ class DocumentUploadView(generics.GenericAPIView):
                     )
                 except DimAICClient.DoesNotExist:
                     return create_api_response(
-                        status.HTTP_404_NOT_FOUND,
-                        "Client not found.",
-                        data={}
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        message=ClientRetrieveViewMessages["not_found"]
                     )
 
                 # Prepare the data - extract files from request.FILES based on document types
@@ -416,9 +382,9 @@ class DocumentUploadView(generics.GenericAPIView):
                 
                 if not serializer.is_valid():
                     return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Document upload failed due to validation errors.",
-                        data=serializer.errors
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        message=ClientDocumentUploadMessages["validation_error"],
+                        errors=serializer.errors
                     )
 
                 # Create and process the documents
@@ -454,100 +420,22 @@ class DocumentUploadView(generics.GenericAPIView):
                 )
                 
                 if all_successful:
-                    message = f"Successfully uploaded and processed {len(result['documents'])} documents."
+                    message = ClientDocumentUploadMessages["success"]
                 else:
-                    message = f"Uploaded {len(result['documents'])} documents with some processing errors. Check processing_results for details."
+                    message = "Documents uploaded successfully, but some may require additional processing."
                 
                 return create_api_response(
-                    status.HTTP_201_CREATED,
-                    message,
+                    status_code=status.HTTP_201_CREATED,
+                    message=message,
                     data=response_data
                 )
             
         except Exception as e:
             logger.error(f"Unexpected error during multiple document upload: {str(e)}")
             return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during document upload.",
-                data={"error": str(e)}
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message=ClientDocumentUploadMessages["error"]
             )
-
-
-# class ClientAssignAccountantsView(generics.GenericAPIView):
-#     """Assign or update accountants for a specific client (replaces existing assignments)"""
-#     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-#     permission_classes = [permissions.IsAuthenticated, IsCustomer] 
-#     serializer_class = ClientAccountantAssignmentSerializer
-
-#     def get_object(self, client_id):
-#         """Get client instance for the authenticated customer"""
-#         customer = self.request.user.customer_profile
-#         if customer:
-#             try:
-#                 return DimAICClient.objects.get(customer=customer, id=client_id)
-#             except DimAICClient.DoesNotExist:
-#                 return None
-#         return None
-
-#     def put(self, request, *args, **kwargs):
-#         """Assign accountants to a client (replaces all existing assignments)"""
-#         try:
-#             client_id = kwargs.get('id')
-#             client = self.get_object(client_id)
-            
-#             if not client:
-#                 return create_api_response(
-#                     status.HTTP_404_NOT_FOUND,
-#                     "Client not found or you don't have permission to modify it."
-#                 )
-
-#             # Validate that accountant IDs belong to the same customer
-#             accountant_ids = request.data.get('assigned_accountants', [])
-#             customer = request.user.customer_profile
-            
-#             # Check if all provided accountants belong to the customer
-#             valid_accountants = customer.accountants.filter(id__in=accountant_ids)
-#             if len(valid_accountants) != len(accountant_ids):
-#                 invalid_ids = set(accountant_ids) - set(valid_accountants.values_list('id', flat=True))
-#                 return create_api_response(
-#                     status.HTTP_400_BAD_REQUEST,
-#                     f"Invalid accountant IDs: {list(invalid_ids)}. Accountants must belong to your organization."
-#                 )
-
-#             serializer = self.get_serializer(client, data=request.data, partial=True)
-            
-#             if not serializer.is_valid():
-#                 return create_api_response(
-#                     status.HTTP_400_BAD_REQUEST,
-#                     "Assignment failed due to validation errors.",
-#                     data=serializer.errors
-#                 )
-
-#             updated_client = serializer.save()
-            
-#             # Return updated client with assigned accountants
-#             response_data = {
-#                 'client_id': updated_client.id,
-#                 'client_name': updated_client.client_name,
-#                 'assigned_accountants': DimAICAccountantSerializer(
-#                     updated_client.assigned_accountants.all(), 
-#                     many=True
-#                 ).data
-#             }
-            
-#             return create_api_response(
-#                 status.HTTP_200_OK,
-#                 "Accountants assigned successfully.",
-#                 data=response_data
-#             )
-            
-#         except Exception as e:
-#             logger.error(f"Unexpected error during accountant assignment: {str(e)}")
-#             return create_api_response(
-#                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-#                 "An unexpected error occurred during accountant assignment.",
-#                 data={"error": str(e)}
-#             )
 
 
 class ClientAssignAccountantsView(generics.GenericAPIView):

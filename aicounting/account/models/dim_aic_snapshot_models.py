@@ -218,6 +218,12 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
     Snapshot model that mirrors DimAICJETemplateHeader exactly
     """
     
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('failed', 'Failed'),
+    ]
+
     id = models.AutoField(primary_key=True, verbose_name="JE Template Snapshot ID")
     
     # Link to monthly accounting session
@@ -278,19 +284,26 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
         db_column='je_type_id',
     )
     
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name="JE Template Status",
+        null=True,
+        blank=True
+    )
+    
     is_object = models.BooleanField(
         default=False,
         verbose_name="Is Object",
         help_text="Indicates if the template is an object template or not"
     )
     
-    input_file = models.ForeignKey(
-        FactAICInputFileSnapshot,  # Reference to snapshot instead of original
-        on_delete=models.CASCADE,
+    input_files = models.ManyToManyField(
+        FactAICInputFileSnapshot,
         null=True,
         blank=True,
         verbose_name="Input File Snapshot",
-        db_column='input_file_id',
         help_text="The input file snapshot associated with this JE template"
     )
     

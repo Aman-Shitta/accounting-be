@@ -11,6 +11,7 @@ from google.genai import types
 
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from django.conf import settings
 
 from typing import List, Dict, Optional
 from agentic_doc.parse import parse
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 class LandingAIService:
     def __init__(self):
         self.config = ParseConfig(
-            api_key=os.getenv("LANDING_AI_API_KEY"),
+            api_key=settings.LANDING_AI_API_KEY,
         )
 
     def extract_markdown(self, page_bytes):
@@ -583,10 +584,10 @@ class DocumentProcessor(BaseDocumentProcessor):
                             md_bytes = None
 
                 # 1. Classify the page using markdown first, fallback to PDF
-                if md_bytes:
-                    page_types = page_classifier.classify(md_bytes=md_bytes)
-                else:
-                    page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
+                # if md_bytes:
+                #     page_types = page_classifier.classify(md_bytes=md_bytes)
+                # else:
+                page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
                 print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 
@@ -649,7 +650,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         except Exception as cleanup_error:
             logger.warning(f"Error during cleanup: {cleanup_error}")
 
-        self._save_contorl_totals()
+        self._save_control_totals()
         # Process and save extracted data
         processing_stats = self._save_extracted_data()
 
@@ -660,7 +661,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             "page_count": len(self.page_data)
         }
 
-    def _save_contorl_totals(self):
+    def _save_control_totals(self):
         # Save control totals to document
         self.document.control_item = self.control_totals
         self.document.save()
@@ -682,6 +683,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             "pages_processed": 0
         }
         page_data = self.page_data
+        checks_linked = dict()
         with transaction.atomic():
             for page_idx, page_item in enumerate(page_data):
                 page_key = f"page_{page_idx + 1}"
@@ -701,11 +703,22 @@ class DocumentProcessor(BaseDocumentProcessor):
                             value=str(value) if value is not None else ""
                         )
                         stats["key_items"] += 1
-                
-                # Save line items (transactions)
                 line_items_data = transactions.get("line_items", [])
+                # Save line items (transactions)
+                
                 for line_idx, line_item in enumerate(line_items_data):
-                    self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    # check if check related transaction already exists
+                    if line_item.get("check_number").strip() and (line_item.get("check_number") in checks_linked):
+                        if len(checks_linked[line_item.get("check_number")].description) > len(line_item.get("description", "")):
+                            continue
+                        else:
+                            checks_linked[line_item.get("check_number")].description = line_item.get("description", "")
+                            continue
+
+                    line_item = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    if line_item.is_check_transaction and line_item.check_number:
+                        checks_linked[line_item.check_number] = line_item
+
                     stats["line_items"] += 1
                 
                 # Save check data
@@ -719,7 +732,8 @@ class DocumentProcessor(BaseDocumentProcessor):
                     self._link_check_to_line_item(check_obj)
                 
                 stats["pages_processed"] += 1
-
+        # cleanup
+        del(checks_linked)
         logger.info(f"Saved extracted data: {stats}")
         return stats
 
