@@ -90,7 +90,7 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'credit': self.get_credit(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
-                "is_editable": "debit" if instance.transaction_type == 'debit' else 'credit' if instance.transaction_type == 'credit' else ""
+                "is_editable": ("debit" if instance.transaction_type == 'debit' else 'credit' if instance.transaction_type == 'credit' else "") if not instance.value  else ""
             }
         else:
             # Fallback for unknown types
