@@ -571,11 +571,16 @@ class JETemplateAttributeCreateSerializer(serializers.Serializer):
                         input_user=user
                     )
             else:  # non_object or manual attributes
+                # Normalize None values to 'X' for debit/credit
+                # One side should always be 'X', the other can be: attribute_id, 'manual', or a number
+                debit_value = attr_data['debit'] if attr_data['debit'] is not None else 'X'
+                credit_value = attr_data['credit'] if attr_data['credit'] is not None else 'X'
+                
                 template_attribute = DimAICJETemplateAttribute.objects.create(
                     je_template_id=template,
                     gl_account=attr_data['gl_account'],
-                    debit=attr_data['debit'],
-                    credit=attr_data['credit'],
+                    debit=debit_value,
+                    credit=credit_value,
                     attribute_name=attr_data['attribute_name'],
                     input_user=user,
                     attribute_comment=attr_data.get('attribute_comment'),

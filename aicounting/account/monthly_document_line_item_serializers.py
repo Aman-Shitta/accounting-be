@@ -90,7 +90,7 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'credit': self.get_credit(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
-                "is_editable": ("debit" if instance.transaction_type == 'debit' else 'credit' if instance.transaction_type == 'credit' else "") if not instance.value  else ""
+                "is_editable": "debit" if instance.transaction_type == 'debit' else "credit"
             }
         else:
             # Fallback for unknown types
@@ -328,15 +328,16 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
             # For updates, check the instance's transaction type
             if debit and credit:
                 raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
-            
+        print("self.instance.transaction_type :: ", self.instance.transaction_type)
+
         # Check if trying to update the wrong column based on transaction type
         if self.instance.transaction_type == 'debit':
-            if debit is None:
+            if debit is None or not debit.strip():
                 raise serializers.ValidationError({
                     "debit": "This is a debit transaction. You can only update the 'debit' column, not 'credit'."
                 })
         elif self.instance.transaction_type == 'credit':
-            if credit is None:
+            if credit is None or not credit.strip():
                 raise serializers.ValidationError({
                     "credit": "This is a credit transaction. You can only update the 'credit' column, not 'debit'."
                 })
