@@ -733,8 +733,8 @@ class JEAttributeEditView(generics.GenericAPIView):
                 is_bank = True
 
         # Check if attribute is editable
-        is_manual_debit = attribute.debit.lower() != 'x' and not attribute.debit.isdigit()
-        is_manual_credit = attribute.credit.lower() != 'x' and not attribute.credit.isdigit()
+        is_manual_debit = (attribute.debit.lower() != 'x' and not attribute.debit.isdigit()) if attribute.debit else False
+        is_manual_credit = (attribute.credit.lower() != 'x' and not attribute.credit.isdigit()) if attribute.credit else False
 
         if is_bank or (not is_manual_debit and not is_manual_credit):
             return create_api_response(
