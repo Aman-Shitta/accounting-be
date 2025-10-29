@@ -332,12 +332,12 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
 
         # Check if trying to update the wrong column based on transaction type
         if self.instance.transaction_type == 'debit':
-            if debit is None or not debit.strip():
+            if debit is None or not str(debit).strip():
                 raise serializers.ValidationError({
                     "debit": "This is a debit transaction. You can only update the 'debit' column, not 'credit'."
                 })
         elif self.instance.transaction_type == 'credit':
-            if credit is None or not credit.strip():
+            if credit is None or not str(credit).strip():
                 raise serializers.ValidationError({
                     "credit": "This is a credit transaction. You can only update the 'credit' column, not 'debit'."
                 })
