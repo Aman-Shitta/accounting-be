@@ -158,7 +158,7 @@ class JETemplateCreateView(generics.GenericAPIView):
                     status.HTTP_403_FORBIDDEN,
                     "Access denied."
                 )
-            
+            request.data['input_files'] = request.data.get('input_files') or []
             serializer = self.get_serializer(
                 data=request.data, 
                 context={'request': request, 'client_id': client_id}
