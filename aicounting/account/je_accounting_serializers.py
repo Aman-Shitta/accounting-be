@@ -206,8 +206,8 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
             # Collect all extraction documents from input files
             all_documents = self._collect_all_documents(input_file_snapshot)
             
-            if not all_documents:
-                return []
+            # if not all_documents:
+              #  return []
             
             # Process based on template type (is_object or not)
             if instance.is_object:
@@ -230,8 +230,18 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         from account.models import MonthlyTemplateManualAttributeItem
 
         template_attributes = instance.attribute_snapshots.all()
+        manual_attributes = []
+        for template_attr in template_attributes:
+            manual_attribute, _ = MonthlyTemplateManualAttributeItem.objects.get_or_create(
+                template_attribute=template_attr,
+                gl_account=template_attr.gl_account,
+                offset_gl_account=None,
+                transaction_type="debit" if template_attr.debit != 'X' else "credit",
+                value="",)
+            manual_attributes.append(manual_attribute)
 
-        manual_attributes = MonthlyTemplateManualAttributeItem.objects.filter(template_attribute__in=template_attributes)
+
+        # manual_attributes = MonthlyTemplateManualAttributeItem.objects.filter(template_attribute__in=template_attributes)
         attributes_data = [
             {
                 "id": attr.template_attribute.id,
