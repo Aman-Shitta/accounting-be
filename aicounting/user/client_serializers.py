@@ -47,7 +47,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     # Flat contact fields
     contact_name = serializers.CharField(required=True, max_length=100, help_text="Contact person's full name")
     contact_email = serializers.EmailField(required=True, max_length=100, help_text="Contact person's email address")
-    contact_phone = serializers.CharField(required=True, max_length=15, help_text="Contact person's phone number (7-15 digits)")
+    contact_phone = serializers.CharField(
+        required=True, 
+        max_length=15, 
+        help_text="Contact person's 10-digit phone number. Format: XXX-XXX-XXXX or XXXXXXXXXX (e.g., 204-456-7896 or 2044567896)"
+    )
     
     # Define the expected document types
     chart_of_account = serializers.FileField(required=True, help_text="Chart Of Accounts file (CSV/Excel)")
@@ -76,8 +80,33 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_contact_phone(self, value):
         """Validate phone number format"""
         import re
-        if not re.match(r'^\+?\d{7,15}$', value):
-            raise serializers.ValidationError("Enter a valid phone number without spaces (7 to 15 digits, optional leading +)")
+        # First strip any whitespace
+        value = value.strip()
+        
+        # Remove any hyphens and validate the pure number
+        number_only = value.replace('-', '').replace('+', '')
+        
+        # Check if it starts with optional + and has 10 digits
+        if not re.match(r'^\+?\d{10}$', number_only):
+            raise serializers.ValidationError(
+                "Phone number must contain exactly 10 digits (hyphens optional)"
+            )
+        
+        # Check total length including optional hyphens
+        if len(value) > 15:
+            raise serializers.ValidationError("Phone number too long - maximum 15 characters including hyphens")
+            
+        # Verify hyphens are in correct positions if present
+        if '-' in value:
+            # If hyphens exist, they should be in correct positions (after 3rd and 6th digits)
+            parts = value.split('-')
+            if len(parts) > 3:
+                raise serializers.ValidationError("Invalid hyphen placement. Format: XXX-XXX-XXXX or XXXXXXXXXX")
+            
+            # Check each part's length if hyphens are present
+            if not all(len(part) in [3, 4] for part in parts[:-1]) or len(parts[-1]) != 4:
+                raise serializers.ValidationError("Invalid number grouping. Format: XXX-XXX-XXXX or XXXXXXXXXX")
+            
         return value
 
     def validate_chart_of_account(self, value):
