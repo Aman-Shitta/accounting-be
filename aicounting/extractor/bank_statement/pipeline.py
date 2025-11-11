@@ -850,6 +850,8 @@ class DocumentProcessor(BaseDocumentProcessor):
     def _link_check_to_line_item(self, check_item: MonthlyDocumentBankCheckItem):
         """
         Try to link a check item to its corresponding line item.
+        If not found, add the check object item data into the transaction table 
+        under the same page number, with line number as the last line number in that page.
         
         Args:
             check_item: MonthlyDocumentBankCheckItem to link
@@ -868,3 +870,38 @@ class DocumentProcessor(BaseDocumentProcessor):
             check_item.related_line_item = matching_line_item
             check_item.save()
             logger.debug(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
+        else:
+            # Check not found in line items, add it as a new line item in the transaction table
+            # Get the last line number for this page
+            last_line_item = MonthlyDocumentBankLineItem.objects.filter(
+                document=self.document,
+                page_number=check_item.page_number
+            ).order_by('-line_number').first()
+            
+            # Calculate next line number for this page
+            next_line_number = (last_line_item.line_number + 1) if last_line_item else 1
+            
+            # Parse amount from check
+            amount = self._parse_amount(check_item.amount)
+            
+            # Create a new line item from the check data
+            new_line_item = MonthlyDocumentBankLineItem.objects.create(
+                document=self.document,
+                page_number=check_item.page_number,
+                line_number=next_line_number,
+                date=check_item.clearing_date or check_item.passing_date or "",
+                description=f"Check #{check_item.check_number} to {check_item.payee}" + (f" - {check_item.memo}" if check_item.memo else ""),
+                amount=amount,
+                transaction_type='debit',  # Checks are typically debits
+                debit_amount=check_item.amount,
+                credit_amount=None,
+                is_check_transaction=True,
+                check_number=check_item.check_number,
+                gl_account=None,
+                offset_gl_account=None
+            )
+            
+            # Link the check to the newly created line item
+            check_item.related_line_item = new_line_item
+            check_item.save()
+            logger.info(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
