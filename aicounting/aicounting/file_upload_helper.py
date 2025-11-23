@@ -26,7 +26,7 @@ New Structure:
 
 from datetime import datetime
 import os
-from aicounting.azure_storage_paths import AzureBlobPathBuilder
+from aicounting.azure_storage_paths import AzureBlobPathBuilder, AzureStoragePathConstants
 
 
 def _add_timestamp_to_filename(filename):
@@ -47,16 +47,7 @@ def _add_timestamp_to_filename(filename):
 def upload_to_customer_client_folder(instance, filename):
     """
     Generate upload path for client documents.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/input_files/YYYY-MM-DD/filename
-    
-    Args:
-        instance: DimAICClientDocument instance with client relationship
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: customer_<name>_<id>/client_<name>_<id>/client_documents/DD-MM-YYYY/filename
     """
     try:
         builder = AzureBlobPathBuilder(
@@ -65,25 +56,14 @@ def upload_to_customer_client_folder(instance, filename):
             client_id=instance.client.id,
             client_name=instance.client.client_name or "Unknown"
         )
-        # Client documents go to input_files folder
-        return builder.customer_documents_path(filename, add_timestamp=True)
+        return builder.client_documents_path(filename, add_timestamp=True)
     except (AttributeError, TypeError):
-        # Fallback to legacy path if relationship is broken
-        return f"customer_documents/{_add_timestamp_to_filename(filename)}"
+        return f"client_documents/{_add_timestamp_to_filename(filename)}"
 
 def upload_to_je_export_folder(instance, filename):
     """
     Generate upload path for JE export files.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/je_exports/YYYY-MM-DD/filename
-    
-    Args:
-        instance: Model instance with customer and client relationship
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: customer_<name>_<id>/client_<name>_<id>/accounting/output_files/DD-MM-YYYY/filename
     """
     try:
         builder = AzureBlobPathBuilder(
@@ -92,25 +72,15 @@ def upload_to_je_export_folder(instance, filename):
             client_id=instance.client.id,
             client_name=instance.client.client_name or "Unknown"
         )
-        return builder.je_exports_path(filename, add_timestamp=True)
+        return builder.accounting_output_files_path(filename, add_timestamp=True)
     except (AttributeError, TypeError):
-        # Fallback to legacy path if relationship is broken
-        return f"je_exports/{_add_timestamp_to_filename(filename)}"
+        return f"accounting/output_files/{_add_timestamp_to_filename(filename)}"
 
 
 def upload_to_input_files_folder(instance, filename):
     """
     Generate upload path for input files.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/input_files/YYYY-MM-DD/filename
-    
-    Args:
-        instance: DimAicInputFiles instance with client relationship
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: customer_<name>_<id>/client_<name>_<id>/input_files/DD-MM-YYYY/filename
     """
     try:
         builder = AzureBlobPathBuilder(
@@ -121,25 +91,14 @@ def upload_to_input_files_folder(instance, filename):
         )
         return builder.input_files_path(filename, add_timestamp=True)
     except (AttributeError, TypeError):
-        # Fallback to legacy path if relationship is broken
         return f"input_files/{_add_timestamp_to_filename(filename)}"
 
 def upload_to_documents_folder(instance, filename):
     """
     Generate upload path for general documents.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/monthly_accounting/documents/doc_id/filename
-    
-    Args:
-        instance: DimAICDocument instance with doc_typ and doc_id attributes
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: documents/doc_type/doc_id/filename
+    (Note: This falls outside the customer/client structure if no client info is available)
     """
-    # For general documents, use a generic customer/client structure
-    # This is a fallback for documents without client relationship
     doc_type = getattr(instance, 'doc_typ', 'general')
     doc_id = getattr(instance, 'doc_id', 'unknown')
     timestamped_filename = _add_timestamp_to_filename(filename)
@@ -150,19 +109,9 @@ def upload_to_documents_folder(instance, filename):
 def upload_to_processed_documents_folder(instance, filename):
     """
     Generate upload path for processed documents.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/monthly_accounting/processed_documents/doc_id/filename
-    
-    Args:
-        instance: Model instance with customer and client relationship
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: customer_<name>_<id>/client_<name>_<id>/accounting/processed_documents/doc_id/filename
     """
     try:
-        # Determine customer and client
         if hasattr(instance, 'customer'):
             customer = instance.customer
             client = instance.client if hasattr(instance, 'client') else None
@@ -182,45 +131,26 @@ def upload_to_processed_documents_folder(instance, filename):
     except (AttributeError, TypeError):
         pass
     
-    # Fallback to legacy path if relationship is broken
     return f"processed_documents/{_add_timestamp_to_filename(filename)}"
 
 
 def upload_to_templates_folder(instance, filename):
     """
-    Generate upload path for template files (not using new builder as these are system-wide)
-    Used for: JE templates and other template documents
-    
-    Structure: templates/{template_type}/{template_id}/YYYY-MM-DD/{timestamped_filename}
-    
-    Args:
-        instance: Model instance with template information
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Generate upload path for template files.
+    Structure: templates/{template_type}/{template_id}/DD-MM-YYYY/{timestamped_filename}
     """
     template_type = getattr(instance, 'template_type', 'general')
     template_id = getattr(instance, 'id', 'default')
     timestamped_filename = _add_timestamp_to_filename(filename)
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%d-%m-%Y")
     
     return f"templates/{template_type}/{template_id}/{today}/{timestamped_filename}"
 
 
 def upload_to_reports_folder(instance, filename):
     """
-    Generate upload path for generated reports (not using new builder as these are system-wide)
-    Used for: System generated reports and exports
-    
+    Generate upload path for generated reports.
     Structure: reports/{report_type}/{year}/{month}/{timestamped_filename}
-    
-    Args:
-        instance: Model instance with report information
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
     """
     report_type = getattr(instance, 'report_type', 'general')
     current_date = datetime.now()
@@ -233,17 +163,8 @@ def upload_to_reports_folder(instance, filename):
 
 def upload_to_backups_folder(instance, filename):
     """
-    Generate upload path for backup files (not using new builder as these are system-wide)
-    Used for: Database backups, file backups
-    
+    Generate upload path for backup files.
     Structure: backups/{backup_type}/{year}/{month}/{day}/{timestamped_filename}
-    
-    Args:
-        instance: Model instance with backup information
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
     """
     backup_type = getattr(instance, 'backup_type', 'general')
     current_date = datetime.now()
@@ -257,20 +178,11 @@ def upload_to_backups_folder(instance, filename):
 
 def upload_to_temp_folder(instance, filename):
     """
-    Generate upload path for temporary files (not using new builder as these are short-lived)
-    Used for: Temporary processing files that will be cleaned up
-    
-    Structure: temp/{session_id}/YYYY-MM-DD/{timestamped_filename}
-    
-    Args:
-        instance: Model instance
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Generate upload path for temporary files.
+    Structure: temp/{session_id}/DD-MM-YYYY/{timestamped_filename}
     """
     session_id = getattr(instance, 'session_id', 'default')
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%d-%m-%Y")
     timestamped_filename = _add_timestamp_to_filename(filename)
     
     return f"temp/{session_id}/{today}/{timestamped_filename}"
@@ -279,16 +191,7 @@ def upload_to_temp_folder(instance, filename):
 def upload_to_montly_accounting_folder(document, filename):
     """
     Generate upload path for monthly accounting document uploads.
-    Uses unified AzureBlobPathBuilder for trackable paths.
-    
-    Structure: customer_<name>_<id>/client_<name>_<id>/monthly_accounting/YYYY-MM-DD/filename
-    
-    Args:
-        document: MonthlyAccountingDocument instance
-        filename (str): Original filename
-        
-    Returns:
-        str: Upload path
+    Structure: customer_<name>_<id>/client_<name>_<id>/accounting/input_files/DD-MM-YYYY/filename
     """
     try:
         client = document.monthly_accounting.client
@@ -298,10 +201,38 @@ def upload_to_montly_accounting_folder(document, filename):
             client_id=client.id,
             client_name=client.client_name or "Unknown"
         )
-        return builder.monthly_accounting_upload_path(filename, add_timestamp=True)
+        return builder.accounting_input_files_path(filename, add_timestamp=True)
     except (AttributeError, TypeError):
-        # Fallback to legacy path if relationship is broken
-        return f"monthly_accounting/{_add_timestamp_to_filename(filename)}"
+        return f"accounting/input_files/{_add_timestamp_to_filename(filename)}"
+
+
+def upload_to_monthly_accounting_snapshot_folder(instance, filename):
+    """
+    Generate upload path for monthly accounting input file snapshots.
+    Structure: customer_<name>_<id>/client_<name>_<id>/accounting/input_files/DD-MM-YYYY/filename
+    """
+    try:
+        client = None
+        if hasattr(instance, 'client'):
+            client = instance.client
+        elif hasattr(instance, 'monthly_accounting') and hasattr(instance.monthly_accounting, 'client'):
+            client = instance.monthly_accounting.client
+            
+        if client:
+            builder = AzureBlobPathBuilder(
+                customer_id=client.customer.id,
+                customer_name=client.customer.customer_name or "Unknown",
+                client_id=client.id,
+                client_name=client.client_name or "Unknown"
+            )
+            # Snapshots go to accounting/input_files as they are inputs for that session
+            return builder.accounting_snapshots_input_files_path(filename, add_timestamp=True)
+    except (AttributeError, TypeError):
+        pass
+        
+    return f"accounting_snapshots/input_files/{_add_timestamp_to_filename(filename)}"
+
+
 
 def upload_to_montly_accounting_path_folder(document, path, filename):
     """

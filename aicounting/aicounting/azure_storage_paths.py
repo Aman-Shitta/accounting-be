@@ -29,20 +29,23 @@ Structure:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class AzureStoragePathConstants:
     """Constants for Azure storage paths"""
     
-    # Date format for daily folders (for trackability)
-    DATE_FORMAT = "%Y-%m-%d"
+    # Date format for daily folders (DD-MM-YYYY as requested)
+    DATE_FORMAT = "%d-%m-%Y"
     
     # Folder names
-    CUSTOMER_DOCUMENTS = "customer_documents"
+    CLIENT_DOCUMENTS = "client_documents"
     INPUT_FILES = "input_files"
-    JE_EXPORTS = "je_exports"
-    MONTHLY_ACCOUNTING = "monthly_accounting"
+    ACCOUNTING = "accounting"
+    ACCOUNTING_SNAPSHOT = "accounting_snapshots"
+    OUTPUT_FILES = "output_files"
+    
+    # Legacy/Internal folders (kept for reference or internal use)
     DOCUMENTS = "documents"
     PROCESSED_DOCUMENTS = "processed_documents"
     PROCESSED_OUTPUT = "processed_output"
@@ -156,16 +159,7 @@ class AzureBlobPathBuilder:
     ) -> str:
         """
         Generate path for input files.
-        
-        Structure: customer_*/client_*/input_files/YYYY-MM-DD/filename.ext
-        
-        Args:
-            filename: File to upload
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            custom_date: Custom date folder (YYYY-MM-DD format, default: today)
-            
-        Returns:
-            Full blob path
+        Structure: customer_*/client_*/input_files/DD-MM-YYYY/filename.ext
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
@@ -173,83 +167,96 @@ class AzureBlobPathBuilder:
         
         return f"{self.base_path}/{AzureStoragePathConstants.INPUT_FILES}/{date_folder}/{filename}"
 
-    def customer_documents_path(
+    def client_documents_path(
         self,
         filename: str,
         add_timestamp: bool = True,
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for input files.
-        
-        Structure: customer_*/client_*/input_files/YYYY-MM-DD/filename.ext
-        
-        Args:
-            filename: File to upload
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            custom_date: Custom date folder (YYYY-MM-DD format, default: today)
-            
-        Returns:
-            Full blob path
+        Generate path for client documents.
+        Structure: customer_*/client_*/client_documents/DD-MM-YYYY/filename.ext
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
-        return f"{self.base_path}/{AzureStoragePathConstants.CUSTOMER_DOCUMENTS}/{date_folder}/{filename}"
+        return f"{self.base_path}/{AzureStoragePathConstants.CLIENT_DOCUMENTS}/{date_folder}/{filename}"
     
-    # ========== JE EXPORTS ==========
-    def je_exports_path(
+    # ========== ACCOUNTING ==========
+    def accounting_input_files_path(
         self,
         filename: str,
         add_timestamp: bool = True,
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for JE export files.
-        
-        Structure: customer_*/client_*/je_exports/YYYY-MM-DD/filename.ext
-        
-        Args:
-            filename: File to upload
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            custom_date: Custom date folder (YYYY-MM-DD format, default: today)
-            
-        Returns:
-            Full blob path
+        Generate path for accounting input files.
+        Structure: customer_*/client_*/accounting/input_files/DD-MM-YYYY/filename.ext
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
-        return f"{self.base_path}/{AzureStoragePathConstants.JE_EXPORTS}/{date_folder}/{filename}"
+        return (
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
+            f"{AzureStoragePathConstants.INPUT_FILES}/{date_folder}/{filename}"
+        )
     
-    # ========== MONTHLY ACCOUNTING ==========
-    def monthly_accounting_upload_path(
+    def accounting_snapshots_input_files_path(
         self,
         filename: str,
         add_timestamp: bool = True,
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for monthly accounting document uploads.
-        
-        Structure: customer_*/client_*/monthly_accounting/YYYY-MM-DD/filename.ext
-        
-        Args:
-            filename: File to upload
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            custom_date: Custom date folder (YYYY-MM-DD format, default: today)
-            
-        Returns:
-            Full blob path
+        Generate path for accounting input files.
+        Structure: customer_*/client_*/accounting/input_files/DD-MM-YYYY/filename.ext
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
-        return f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/{date_folder}/{filename}"
+        return (
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING_SNAPSHOT}/"
+            f"{AzureStoragePathConstants.INPUT_FILES}/{date_folder}/{filename}"
+        )
     
+
+    def accounting_output_files_path(
+        self,
+        filename: str,
+        add_timestamp: bool = True,
+        custom_date: Optional[str] = None
+    ) -> str:
+        """
+        Generate path for accounting output files.
+        Structure: customer_*/client_*/accounting/output_files/DD-MM-YYYY/filename.ext
+        """
+        date_folder = custom_date or self._get_today_folder()
+        if add_timestamp:
+            filename = self._add_timestamp_to_filename(filename)
+        
+        return (
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
+            f"{AzureStoragePathConstants.OUTPUT_FILES}/{date_folder}/{filename}"
+        )
+
+    # ========== LEGACY / ALIAS METHODS ==========
+    # These ensure backward compatibility while enforcing new structure
+    
+    def je_exports_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
+        """Alias for accounting output files"""
+        return self.accounting_output_files_path(filename, add_timestamp, custom_date)
+    
+    def monthly_accounting_upload_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
+        """Alias for accounting input files"""
+        return self.accounting_input_files_path(filename, add_timestamp, custom_date)
+    
+    def customer_documents_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
+        """Alias for client documents"""
+        return self.client_documents_path(filename, add_timestamp, custom_date)
+
     def monthly_accounting_document_path(
         self,
         filename: str,
@@ -258,22 +265,13 @@ class AzureBlobPathBuilder:
     ) -> str:
         """
         Generate path for extracted/processed monthly accounting documents.
-        
-        Structure: customer_*/client_*/monthly_accounting/documents/doc_id/filename.ext
-        
-        Args:
-            filename: File to upload
-            doc_id: Document ID (UUID or unique identifier)
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            
-        Returns:
-            Full blob path
+        Structure: customer_*/client_*/accounting/documents/doc_id/filename.ext
         """
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
         return (
-            f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/"
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
             f"{AzureStoragePathConstants.DOCUMENTS}/{doc_id}/{filename}"
         )
     
@@ -285,22 +283,13 @@ class AzureBlobPathBuilder:
     ) -> str:
         """
         Generate path for markdown versions of documents.
-        
-        Structure: customer_*/client_*/monthly_accounting/documents/doc_id/markdown/document.md
-        
-        Args:
-            doc_id: Document ID (UUID or unique identifier)
-            filename: Markdown filename (default: document.md)
-            add_timestamp: Whether to add timestamp to filename (default: False)
-            
-        Returns:
-            Full blob path
+        Structure: customer_*/client_*/accounting/documents/doc_id/markdown/document.md
         """
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
         return (
-            f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/"
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
             f"{AzureStoragePathConstants.DOCUMENTS}/{doc_id}/"
             f"{AzureStoragePathConstants.MARKDOWN}/{filename}"
         )
@@ -314,22 +303,13 @@ class AzureBlobPathBuilder:
     ) -> str:
         """
         Generate path for processed document files.
-        
-        Structure: customer_*/client_*/monthly_accounting/processed_documents/doc_id/filename.ext
-        
-        Args:
-            doc_id: Document ID (UUID or unique identifier)
-            filename: Processed file (e.g., extracted JSON, cleaned PDF)
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            
-        Returns:
-            Full blob path
+        Structure: customer_*/client_*/accounting/processed_documents/doc_id/filename.ext
         """
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
         return (
-            f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/"
+            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
             f"{AzureStoragePathConstants.PROCESSED_DOCUMENTS}/{doc_id}/{filename}"
         )
     
@@ -341,29 +321,11 @@ class AzureBlobPathBuilder:
     ) -> str:
         """
         Generate path for batch processed output files.
-        
-        Structure: customer_*/client_*/monthly_accounting/processed_documents/processed_output/filename.ext
-        
-        Args:
-            filename: Output file (e.g., aggregated data, summary report)
-            add_timestamp: Whether to add timestamp to filename (default: True)
-            custom_date: Custom date folder (YYYY-MM-DD format, optional)
-            
-        Returns:
-            Full blob path
+        Structure: customer_*/client_*/accounting/output_files/DD-MM-YYYY/filename.ext
         """
-        if add_timestamp:
-            filename = self._add_timestamp_to_filename(filename)
-        
-        base = (
-            f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/"
-            f"{AzureStoragePathConstants.PROCESSED_DOCUMENTS}/"
-            f"{AzureStoragePathConstants.PROCESSED_OUTPUT}"
-        )
-        
-        if custom_date:
-            return f"{base}/{custom_date}/{filename}"
-        return f"{base}/{filename}"
+        # Mapped to accounting/output_files as per new structure
+        return self.accounting_output_files_path(filename, add_timestamp, custom_date)
+
     
     # ========== UTILITY PATHS ==========
     def get_base_customer_path(self) -> str:
@@ -491,7 +453,7 @@ class AzureBlobPathValidator:
             return None
     
     @staticmethod
-    def validate_path(blob_path: str) -> tuple[bool, str]:
+    def validate_path(blob_path: str) -> "Tuple[bool, str]":
         """
         Validate a path against the naming convention.
         
