@@ -15,8 +15,10 @@ from user.models import DimAICClient, DimAICAssistant
 
 class OpenAIAssistant(OpeAIClient):
     
-    def __init__(self, api_key, client_id=None, special_rules=None):
+    def __init__(self, api_key, customer=None, client_obj=None, client_id=None, special_rules=None):
         super().__init__(api_key)
+        self.customer = customer
+        self.client_obj = client_obj
         self.client_id = client_id
         self.aic_client = None
         self.vector_store_id = None
@@ -304,7 +306,10 @@ class OpenAIAssistant(OpeAIClient):
             from django.core.files.base import ContentFile
             
             # Create path in processed_documents folder
-            json_path = f"processed_documents/client_{self.client_id}/{json_filename}"
+            if self.customer and self.client_obj:
+                json_path = f"customer_{self.customer.customer_name.lower().replace(' ', '_')}_{self.customer.id}/client_{self.client_obj.client_name.lower().replace(' ', '_')}_{self.client_obj.id}/processed_documents/{json_filename}"
+            else:
+                json_path = f"processed_documents/client_{self.client_id}/{json_filename}"
             
             # Save to Azure storage
             default_storage.save(json_path, ContentFile(json_content.encode('utf-8')))

@@ -14,7 +14,7 @@ from django.conf import settings
 
 # Local imports
 from extractor.bank_statement.classify import GLClassifier
-from extractor.bank_statement.processor import MonthlyAccountingDocumentProcessor
+from extractor.processor import MonthlyAccountingDocumentProcessor
 from extractor.prompter import Configuration
 
 from .models.monthly_accounting_document_model import MonthlyAccountingDocument

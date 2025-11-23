@@ -110,11 +110,77 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_chart_of_account(self, value):
-        """Validate COA file type"""
+        """Validate COA file type and structure"""
         import os
+        import pandas as pd
+        import tempfile
+        
+        # Check file extension
         ext = os.path.splitext(value.name)[1].lower()
         if ext not in ['.csv', '.xls', '.xlsx']:
             raise serializers.ValidationError("Chart Of Accounts file must be CSV or Excel format (.csv, .xls, .xlsx)")
+        
+        # Validate file structure by checking required columns
+        try:
+            # Save uploaded file to a temporary location for validation
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                for chunk in value.chunks():
+                    temp_file.write(chunk)
+                temp_file_path = temp_file.name
+            
+            # Reset file pointer after reading
+            value.seek(0)
+            
+            try:
+                # Read file to check columns
+                if ext == '.csv':
+                    df = pd.read_csv(temp_file_path)
+                else:
+                    df = pd.read_excel(temp_file_path)
+                
+                # Normalize column names
+                df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+                
+                # Check for required columns
+                required_columns = ['class', 'subclass', 'gl_code', 'gl_description']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    raise serializers.ValidationError(
+                        f"Required columns are: Class, SubClass, GL Code, GL Description"
+                    )
+                
+                # Check if file has data
+                if len(df) == 0:
+                    raise serializers.ValidationError("The file is empty. Please upload a file with data.")
+                
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    
+        except serializers.ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error validating COA file structure: {e}")
+            raise serializers.ValidationError(f"Error reading file: {str(e)}")
+        
+        return value
+
+    def validate_gl_history(self, value):
+        """Validate GL History file type"""
+        import os
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in ['.csv', '.xls', '.xlsx']:
+            raise serializers.ValidationError("GL History file must be CSV or Excel format (.csv, .xls, .xlsx)")
+        return value
+
+    def validate_vendor_list(self, value):
+        """Validate Vendor List file type"""
+        import os
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in ['.csv', '.xls', '.xlsx']:
+            raise serializers.ValidationError("Vendor List file must be CSV or Excel format (.csv, .xls, .xlsx)")
         return value
 
     def validate(self, attrs):
@@ -250,7 +316,9 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 # Delete client record
                                 if client:
                                     client.delete()
-                                raise serializers.ValidationError({doc_type: result.get('error', 'Unknown error')})
+                                # Return proper field-level error
+                                error_message = result.get('error', 'Unknown error')
+                                raise serializers.ValidationError({doc_type: [error_message]})
                             doc_process_results[doc_type] = {
                                 'document_id': document.id,
                                 'processing_result': result,
@@ -276,7 +344,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             # Delete client record
                             if client:
                                 client.delete()
-                            raise serializers.ValidationError({doc_type: str(e)})
+                            # Return proper field-level error
+                            raise serializers.ValidationError({doc_type: [str(e)]})
             except serializers.ValidationError:
                 raise
             except Exception as e:
@@ -296,6 +365,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 # Delete client record
                 if client:
                     client.delete()
+                # Return proper error format
                 raise serializers.ValidationError({"non_field_errors": [str(e)]})
         return client
 
