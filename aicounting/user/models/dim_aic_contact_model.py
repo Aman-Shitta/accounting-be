@@ -26,7 +26,7 @@ class DimAICContact(models.Model):
         verbose_name="Contact Phone",
         validators=[
             RegexValidator(
-                regex=r'^\+?\d{7,15}$',
+                regex=r'^(?:\d{10,15}|\d{3}-\d{3}-\d{4})$',
                 message="Enter a valid phone number (7 to 15 digits, optional leading +)"
             )
         ]

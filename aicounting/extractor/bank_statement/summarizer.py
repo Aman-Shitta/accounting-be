@@ -5,7 +5,7 @@ import unicodedata
 
 # Third-party imports
 from google.genai import Client, types
-
+from extractor.base import JSONCleaner
 
 class BankStatementSummarizer:
     def __init__(self, llm_client: Client, model: str, schema: types.Schema=None):
@@ -87,7 +87,7 @@ class BankStatementSummarizer:
             for resp in stream_response:
                 raw += resp.text
 
-            clean_json_str = self._clean_json_string(raw)
+            clean_json_str = JSONCleaner.updated_json_repair(raw)
 
             try:
                 summary = json.loads(clean_json_str)
@@ -106,16 +106,3 @@ class BankStatementSummarizer:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             print(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
             return {}
-
-    def _clean_json_string(self, raw: str) -> str:
-        """
-        Cleans and prepares LLM output for safe JSON decoding.
-        """
-        raw = re.sub(r'^```(?:json)?', '', raw)
-        raw = raw.strip('` \n')
-        raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
-        raw = raw.replace("None", "null")
-
-        # Remove control characters except newline/tab
-        raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
-        return raw

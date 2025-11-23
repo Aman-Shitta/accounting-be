@@ -56,11 +56,12 @@ class ClientCreateView(generics.GenericAPIView):
                         message=ClientCreateViewMessages["validation_error"],
                         errors=serializer.errors
                     )
-
                 # Create the client and related objects
                 client = serializer.save()
 
                 client_assistant = OpenAIAssistant(
+                    customer=client.customer,
+                    client_obj=client,
                     api_key=settings.OPENAI_API_KEY,
                     client_id=client.client_id,
                     special_rules=serializer.validated_data.get('special_rules', None)
@@ -77,7 +78,6 @@ class ClientCreateView(generics.GenericAPIView):
                     message=ClientCreateViewMessages["success"],
                     data=response_serializer.data
                 )
-            
         except Exception as e:
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -264,6 +264,14 @@ class ClientUpdateView(generics.GenericAPIView):
                     data=response_serializer.data
                 )
             
+        except serializers.ValidationError as e:
+            # Handle validation errors specifically
+            logger.error(f"Validation error during client update: {e.detail}")
+            return create_api_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=ClientUpdateViewMessages["validation_error"],
+                errors=e.detail
+            )
         except Exception as e:
             logger.error(f"Unexpected error during client update: {str(e)}")
             return create_api_response(
@@ -391,6 +399,8 @@ class DocumentUploadView(generics.GenericAPIView):
                 result = serializer.save()
                 
                 client_assistant = OpenAIAssistant(
+                    customer=customer,
+                    client_obj=client,
                     api_key=settings.OPENAI_API_KEY,
                     client_id=client.client_id,
                     special_rules=serializer.validated_data.get('special_rules', None)

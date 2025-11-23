@@ -140,6 +140,7 @@ class AssistantService:
         if existing_config:
             # Return existing assistant
             assistant = OpenAIAssistant(
+                customer=existing_config.client.customer,
                 api_key=api_key,
                 special_rules=existing_config.special_rules,
                 schema_path=existing_config.response_format_schema_path

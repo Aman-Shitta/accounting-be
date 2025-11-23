@@ -714,12 +714,24 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.file = uploaded_file
             document.uploaded_by = request.user
             document.save()
-
+            
             # Trigger markdown pre-processing for bank statements and credit cards
             if document.doc_type in ['bank_statement', 'credit_card']:
                 logger.info(f"Starting markdown pre-processing for document {document.doc_id}")
-                from .tasks import preprocess_document_markdown
-                preprocess_document_markdown.delay(str(document.id))
+
+                config_params = dict(
+                    doc_type=document.doc_type,
+                    extract_line_items=True,
+                    line_items=[
+                        "date: The date of the transaction.",
+                        "description: A description of the transaction.",
+                        "debit amount: The debit amount of the transaction.",
+                        "credit amount: The credit amount of the transaction.",
+                    ],
+                    excluded_fields=[]
+                )
+                from .tasks import process_uploaded_document
+                process_uploaded_document.delay(str(document.id), config_params)
 
             elif document.doc_type in ['sales']:
                 
