@@ -32,6 +32,8 @@ class MonthlyAccountingDocument(models.Model):
         ('bank_statement', 'Bank Statement'),
         ('credit_card', 'Credit Card'),
         ('sales', 'Sales'),
+        ('payroll', 'Payroll'),
+        ('misc', 'Misc'),
     ]
     
     doc_id = models.UUIDField(

@@ -733,7 +733,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 from .tasks import process_uploaded_document
                 process_uploaded_document.delay(str(document.id), config_params)
 
-            elif document.doc_type in ['sales']:
+            elif document.doc_type in ['sales', 'payroll', 'misc']:
                 
                 attributes = document.input_file_snapshot.attribute_snapshots.all()
                 key_items =[attri.name for attri in attributes]

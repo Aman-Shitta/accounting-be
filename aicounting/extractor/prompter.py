@@ -55,7 +55,7 @@ class Configuration:
             Focus strictly on daily account activity that reflects money movement.
             Skip everything else that is not a transactional statement.
             """
-        elif self.doc_type in ["sales"]:
+        elif self.doc_type in ['sales', 'payroll', 'misc']:
             return """
                 You are an expert financial document parsing agent specialized in sales document analysis.
 
@@ -105,7 +105,7 @@ def prepare_prompt(config: Configuration) -> str:
     if config.doc_type in ["bank_statement", "credit_card"]:
         # Handle bank statement and credit card documents
         return _prepare_bank_statement_prompt(config, prompt)
-    elif config.doc_type in ["sales"]:
+    elif config.doc_type in ["sales", "payroll", "misc"]:
         # Handle sales documents
         return _prepare_sales_prompt(config, prompt)
     else:
