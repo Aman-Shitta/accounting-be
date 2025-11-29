@@ -468,7 +468,7 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {"fields": ("doc_id", "monthly_accounting", "input_file_snapshot", "doc_type", "status", "file", "file_link")}),
-        ("Processing Results", {"fields": ("control_item",), "classes": ("collapse",)}),
+        ("Processing Results", {"fields": ("control_item", "markdown_metadata"), "classes": ("collapse",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
 
