@@ -178,6 +178,22 @@ class MonthlyDocumentBankLineItem(models.Model):
         help_text="Check number if this is a check transaction"
     )
     
+    # Extraction quality fields
+    amount_confidence = models.FloatField(
+        verbose_name="Amount Confidence Score",
+        null=True,
+        blank=True,
+        help_text="Confidence score (0.0-1.0) for the extracted amount from LandingAI"
+    )
+    
+    extraction_metadata = models.JSONField(
+        verbose_name="Extraction Metadata",
+        null=True,
+        blank=True,
+        default=dict,
+        help_text="Additional extraction metadata including bounding boxes, OCR quality, etc."
+    )
+    
     # Audit fields
     created_at = models.DateTimeField(
         auto_now_add=True,

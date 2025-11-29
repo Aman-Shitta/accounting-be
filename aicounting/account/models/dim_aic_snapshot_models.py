@@ -15,6 +15,8 @@ class FactAICInputFileSnapshot(models.Model):
         ('bank_statement', 'Bank Statement'),
         ('credit_card', 'Credit Card'),
         ('sales', 'Sales'),
+        ('payroll', 'Payroll'),
+        ('misc', 'Misc'),
     ]
     
     id = models.AutoField(primary_key=True, verbose_name="Input File Snapshot ID")
