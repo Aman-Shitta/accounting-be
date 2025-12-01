@@ -46,7 +46,7 @@ class MonthlyAccountingDocumentProcessor:
             # from extractor.bank_statement.pipeline import DocumentProcessor
             from extractor.bank_statement.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
             self.doc_processor = LandingDocumentProcessor(self.config, self.monthly_document)
-        elif doc_type == 'sales':
+        elif doc_type in ['sales', 'payroll', 'misc']:
             from extractor.sales.pipeline import DocumentProcessor
             self.doc_processor = DocumentProcessor(self.config, self.monthly_document)
         else:
