@@ -47,7 +47,13 @@ class DimAicInputFiles(models.Model):
         verbose_name="File",
         help_text="Upload the input file"
     )
-    
+    """
+    description field to store additional information about the input file
+    - when file_type is 'bank' or 'cc' the information will be used by classification pipeline
+      to better identify the gl account of bank/cc statement.
+    - else used for any additional notes about the input file
+
+    """
     description = models.TextField(
         null=True,
         blank=True,

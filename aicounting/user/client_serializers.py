@@ -310,7 +310,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                     if doc.file:
                                         try:
                                             default_storage.delete(doc.file.name)
-                                            logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                            logger.error(f"Cleaned up file from Azure: {doc.file.name}")
                                         except Exception as cleanup_error:
                                             logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                                 # Delete client record
@@ -324,10 +324,10 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 'processing_result': result,
                                 'success': result['success']
                             }
-                            logger.info(f"Successfully processed {doc_type} document. "
+                            logger.error(f"Successfully processed {doc_type} document. "
                                       f"Processed {result['processed_count']} records.")
                             if result['errors']:
-                                logger.warning(f"Processing completed with {len(result['errors'])} errors: {result['errors']}")
+                                logger.error(f"Processing completed with {len(result['errors'])} errors: {result['errors']}")
                         except serializers.ValidationError:
                             raise
                         except Exception as e:
@@ -338,7 +338,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 if doc.file:
                                     try:
                                         default_storage.delete(doc.file.name)
-                                        logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                        logger.error(f"Cleaned up file from Azure: {doc.file.name}")
                                     except Exception as cleanup_error:
                                         logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                             # Delete client record
@@ -359,7 +359,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                     if doc.file:
                         try:
                             default_storage.delete(doc.file.name)
-                            logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                            logger.error(f"Cleaned up file from Azure: {doc.file.name}")
                         except Exception as cleanup_error:
                             logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                 # Delete client record
@@ -409,7 +409,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                         existing_contact.contact_email = contact_data.get('contact_email', existing_contact.contact_email)
                         existing_contact.contact_phone = contact_data.get('contact_phone', existing_contact.contact_phone)
                         existing_contact.save()
-                        logger.info(f"Updated existing contact for client {instance.client_id}")
+                        logger.error(f"Updated existing contact for client {instance.client_id}")
                     else:
                         # Create new contact
                         DimAICContact.objects.create(
@@ -418,7 +418,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             contact_email=contact_data['contact_email'],
                             contact_phone=contact_data['contact_phone']
                         )
-                        logger.info(f"Created new contact for client {instance.client_id}")
+                        logger.error(f"Created new contact for client {instance.client_id}")
 
                 # Handle documents update
                 created_documents = []
@@ -491,7 +491,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 'success': result['success']
                             }
                             
-                            logger.info(f"Successfully processed {doc_type} document for client {instance.client_id}. "
+                            logger.error(f"Successfully processed {doc_type} document for client {instance.client_id}. "
                                       f"Processed {result['processed_count']} records.")
                             
                         except Exception as e:
@@ -717,10 +717,10 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                             }
                             
                             # Log processing results
-                            logger.info(f"Successfully processed {doc_type} document. "
+                            logger.error(f"Successfully processed {doc_type} document. "
                                       f"Processed {result['processed_count']} records.")
                             if result['errors']:
-                                logger.warning(f"Processing completed with {len(result['errors'])} errors: {result['errors']}")
+                                logger.error(f"Processing completed with {len(result['errors'])} errors: {result['errors']}")
                                 
                         except Exception as e:
                             # Processing error - cleanup files and raise error to rollback transaction
@@ -732,7 +732,7 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                                 if doc.file:
                                     try:
                                         default_storage.delete(doc.file.name)
-                                        logger.info(f"Cleaned up file from Azure: {doc.file.name}")
+                                        logger.error(f"Cleaned up file from Azure: {doc.file.name}")
                                     except Exception as cleanup_error:
                                         logger.error(f"Error cleaning up file {doc.file.name}: {cleanup_error}")
                             

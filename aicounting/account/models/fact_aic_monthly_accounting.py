@@ -201,13 +201,13 @@ class FactAICMonthlyAccounting(models.Model):
                     # If original file doesn't exist, log a warning
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"Original file {input_file.file.name} not found for snapshot")
+                    logger.error(f"Original file {input_file.file.name} not found for snapshot")
                     
             except Exception as e:
                 # Log the error but continue with snapshot creation
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to copy file for snapshot: {str(e)}")
+                logger.error(f"Failed to copy file for snapshot: {str(e)}")
         
         # Create input file snapshot
         file_snapshot = FactAICInputFileSnapshot.objects.create(

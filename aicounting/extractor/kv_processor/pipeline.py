@@ -200,5 +200,5 @@ class DocumentProcessor(BaseDocumentProcessor):
                     )
                     stats["skipped_extracted_attributes"] += 1
 
-        logger.info(f"Saved extracted data: {stats}")
+        logger.error(f"Saved extracted data: {stats}")
         return stats

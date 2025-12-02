@@ -43,7 +43,6 @@ class MonthlyAccountingDocumentProcessor:
     def set_doc_processor(self, doc_type: str):
         """Set the underlying DocumentProcessor instance."""
         if doc_type in ['bank_statement', 'credit_card']:
-            # from extractor.banking.pipeline import DocumentProcessor
             from extractor.banking.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
             self.doc_processor = LandingDocumentProcessor(self.config, self.monthly_document)
         elif doc_type in ['sales', 'payroll', 'misc']:
@@ -83,7 +82,7 @@ class MonthlyAccountingDocumentProcessor:
             self.monthly_document.status = "extracted"
             self.monthly_document.save()
             
-            logger.info(f"Document {self.monthly_document.doc_id} processed successfully")
+            logger.error(f"Document {self.monthly_document.doc_id} processed successfully")
             
             return return_data
             
@@ -118,7 +117,7 @@ class MonthlyAccountingDocumentProcessor:
             return Decimal(clean_amount)
             
         except (InvalidOperation, ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse amount '{amount_str}': {e}")
+            logger.error(f"Failed to parse amount '{amount_str}': {e}")
             return None
     
     def _clear_existing_data(self):
@@ -160,7 +159,7 @@ class MonthlyDocumentBatchProcessor:
         for document in documents:
             try:
                 if not document.file:
-                    logger.warning(f"Document {document.doc_id} has no file attached")
+                    logger.error(f"Document {document.doc_id} has no file attached")
                     results["failed"].append({
                         "document_id": str(document.doc_id),
                         "error": "No file attached"
@@ -189,5 +188,5 @@ class MonthlyDocumentBatchProcessor:
                 })
                 results["total_failed"] += 1
         
-        logger.info(f"Batch processing completed: {results['total_processed']} successful, {results['total_failed']} failed")
+        logger.error(f"Batch processing completed: {results['total_processed']} successful, {results['total_failed']} failed")
         return results

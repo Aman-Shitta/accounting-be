@@ -28,7 +28,7 @@ monthly_accounting_url_patterns = [
     # Upload a file for a specific document (requires accounting session id and document id)
     path('<int:accounting_id>/documents/<int:document_id>/upload/', MonthlyAccountingDocumentUploadView.as_view(), name='monthly-accounting-document-upload'),
     # Start extraction after pre-processing is complete
-    path('<int:accounting_id>/documents/<int:document_id>/extract/', MonthlyAccountingDocumentStartExtractionView.as_view(), name='monthly-accounting-document-extract'),
+    # path('<int:accounting_id>/documents/<int:document_id>/extract/', MonthlyAccountingDocumentStartExtractionView.as_view(), name='monthly-accounting-document-extract'),
     path('<int:accounting_id>/documents/<int:document_id>/verify/', MonthlyAccountingDocumentStatusUpdateView.as_view(), name='monthly-accounting-document-update-status'),
 
     path('<int:accounting_id>/documents/<int:document_id>/items/', MonthlyAccountingDocumentLineItemListCreateView.as_view(), name='monthly-accounting-document-lineitems'),

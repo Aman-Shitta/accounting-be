@@ -500,7 +500,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             # Validate expected structure
             for key in expected_structure.keys():
                 if key not in parsed_data:
-                    logger.warning(f"Missing key '{key}' in LLM response, adding default value")
+                    logger.error(f"Missing key '{key}' in LLM response, adding default value")
                     parsed_data[key] = expected_structure[key]
             
             return parsed_data
@@ -537,7 +537,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         markdown_pages_data = {}
         if md and self.document.markdown_metadata:
             metadata = self.document.markdown_metadata
-            logger.info(f"Using pre-generated markdown for {metadata.get('total_pages', 0)} pages")
+            logger.error(f"Using pre-generated markdown for {metadata.get('total_pages', 0)} pages")
             
             # Build a dict for quick lookup: page_number -> markdown data
             for page_info in metadata.get('pages', []):
@@ -560,27 +560,27 @@ class DocumentProcessor(BaseDocumentProcessor):
                 if md:
                     # Try to get pre-generated markdown first
                     if page_num in markdown_pages_data:
-                        logger.info(f"Using pre-generated markdown for page {page_num}")
+                        logger.error(f"Using pre-generated markdown for page {page_num}")
                         page_info = markdown_pages_data[page_num]
                         
                         # Fetch markdown from Azure using the stored path
                         try:
                             with default_storage.open(page_info['path'], 'rb') as md_file:
                                 md_bytes = md_file.read()
-                            logger.info(f"Loaded pre-generated markdown for page {page_num} ({len(md_bytes)} bytes)")
+                            logger.error(f"Loaded pre-generated markdown for page {page_num} ({len(md_bytes)} bytes)")
                         except Exception as e:
-                            logger.warning(f"Failed to load pre-generated markdown for page {page_num}: {e}")
+                            logger.error(f"Failed to load pre-generated markdown for page {page_num}: {e}")
                             md_bytes = None
                     
                     # Fallback to real-time generation if pre-generated not available
                     if md_bytes is None and parser:
-                        logger.info(f"Generating markdown in real-time for page {page_num}")
+                        logger.error(f"Generating markdown in real-time for page {page_num}")
                         page_markdown = parser.extract_markdown(page_bytes=page_bytes)
                         if page_markdown:
                             md_bytes = page_markdown.encode("utf-8")
-                            logger.info(f"Generated markdown for page {page_num} ({len(md_bytes)} bytes)")
+                            logger.error(f"Generated markdown for page {page_num} ({len(md_bytes)} bytes)")
                         else:
-                            logger.warning(f"Failed to generate markdown for page {page_num}")
+                            logger.error(f"Failed to generate markdown for page {page_num}")
                             md_bytes = None
 
                 # 1. Classify the page using markdown first, fallback to PDF
@@ -648,7 +648,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             if summarizer:
                 del summarizer
         except Exception as cleanup_error:
-            logger.warning(f"Error during cleanup: {cleanup_error}")
+            logger.error(f"Error during cleanup: {cleanup_error}")
 
         self._save_control_totals()
         # Process and save extracted data
@@ -734,7 +734,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 stats["pages_processed"] += 1
         # cleanup
         del(checks_linked)
-        logger.info(f"Saved extracted data: {stats}")
+        logger.error(f"Saved extracted data: {stats}")
         return stats
 
     def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
@@ -762,7 +762,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             return Decimal(clean_amount)
             
         except (InvalidOperation, ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse amount '{amount_str}': {e}")
+            logger.error(f"Failed to parse amount '{amount_str}': {e}")
             return None
 
 
@@ -796,7 +796,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 transaction_type = 'credit'
                 amount = self._parse_amount(credit_amount_raw)
         except Exception as e:
-            logger.warning(f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
+            logger.error(f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
         
         # Check transaction detection
         is_check_transaction = line_data.get("is_check_transaction", False)
@@ -869,7 +869,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         if matching_line_item:
             check_item.related_line_item = matching_line_item
             check_item.save()
-            logger.debug(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
+            logger.error(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
         else:
             # Check not found in line items, add it as a new line item in the transaction table
             # Get the last line number for this page
@@ -904,4 +904,4 @@ class DocumentProcessor(BaseDocumentProcessor):
             # Link the check to the newly created line item
             check_item.related_line_item = new_line_item
             check_item.save()
-            logger.info(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+            logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
