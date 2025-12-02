@@ -27,14 +27,14 @@ from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyAccountingDocument
 )
-from document.pipeline.utils import split_pdf_to_pages
+from extractor.utils import split_pdf_to_pages
 
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for Extraction Schemas ---
 
-from extractor.bank_statement.models import *
-from extractor.bank_statement.page_classifier import PageClassifier
+from extractor.banking.models import *
+from extractor.banking.page_classifier import PageClassifier
 
 
 
@@ -77,7 +77,7 @@ class DocumentProcessor(BaseDocumentProcessor):
     def parse_pdf(self, pdf_path):
         parse_response = self.client.parse(
                 document=Path(pdf_path),
-                model="dpt-2" 
+                model="dpt-2-latest" 
             )
         return parse_response
 

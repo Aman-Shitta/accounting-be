@@ -106,7 +106,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         self.transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
 
     def process_document(self, file_bytes: bytes, mime_type: str, md: bool) -> Dict[str, any]:
-        from document.pipeline.utils import split_pdf_to_pages
+        from extractor.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
     

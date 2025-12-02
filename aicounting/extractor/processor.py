@@ -43,11 +43,11 @@ class MonthlyAccountingDocumentProcessor:
     def set_doc_processor(self, doc_type: str):
         """Set the underlying DocumentProcessor instance."""
         if doc_type in ['bank_statement', 'credit_card']:
-            # from extractor.bank_statement.pipeline import DocumentProcessor
-            from extractor.bank_statement.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
+            # from extractor.banking.pipeline import DocumentProcessor
+            from extractor.banking.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
             self.doc_processor = LandingDocumentProcessor(self.config, self.monthly_document)
         elif doc_type in ['sales', 'payroll', 'misc']:
-            from extractor.sales.pipeline import DocumentProcessor
+            from extractor.kv_processor.pipeline_landing import DocumentProcessor
             self.doc_processor = DocumentProcessor(self.config, self.monthly_document)
         else:
             raise ValueError(f"Unsupported document type: {doc_type}")

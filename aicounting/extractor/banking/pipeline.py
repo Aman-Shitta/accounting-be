@@ -29,7 +29,7 @@ from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyAccountingDocument
 )
-from document.pipeline.utils import split_pdf_to_pages
+from extractor.utils import split_pdf_to_pages
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
