@@ -425,7 +425,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     attribute_instance = configured_attribute_instances.get(extracted_key_name)
                     
                     extracted_value = self._parse_amount(extracted_value)
-                    if attribute_instance and extracted_value and extracted_value.strip() and extracted_value.strip().lower() != "null":
+                    if attribute_instance and extracted_value:
                         MonthlyDocumentAttributeItem.objects.create(
                             document=self.document,
                             attribute=attribute_instance,
