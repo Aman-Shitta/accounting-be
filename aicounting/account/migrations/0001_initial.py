@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('user', '0015_rename_customer_id_dimaiccustomer_id'),
-        ('document', '0003_remove_dimaicdocument_file_loc_dimaicdocument_file'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

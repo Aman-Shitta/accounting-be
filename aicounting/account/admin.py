@@ -15,8 +15,6 @@ from .models import (
     DimAICJETemplateHeader,
     DimAICJETemplateGL,
     DimAICJETemplateAttribute,
-    DimAICTemplateDoc,
-    FactJETransOther,
     FactAICJETransBank,
     FactAICJEMonthlyStat,
 )
@@ -185,17 +183,6 @@ class DimAICJETemplateGLAdmin(admin.ModelAdmin):
     search_fields = ('je_template_id__je_name',)
     ordering = ('je_template_gl_id',)
 
-@admin.register(DimAICTemplateDoc)
-class DimAICTemplateDocAdmin(admin.ModelAdmin):
-    list_display = ('je_template_gl_acct_id', 'doc_id', 'created_at', 'updated_at')
-    search_fields = ('doc_comments', 'doc_ai_prompt')
-    ordering = ('je_template_gl_acct_id',)
-
-@admin.register(FactJETransOther)
-class FactJETransOtherAdmin(admin.ModelAdmin):
-    list_display = ('je_trans_id', 'gl_acct_id', 'offset_gl_acct_id', 'amt', 'doc_id', 'created_at', 'updated_at')
-    search_fields = ('je_trans_id',)
-    ordering = ('je_trans_id',)
 
 @admin.register(FactAICJETransBank)
 class FactAICJETransBankAdmin(admin.ModelAdmin):

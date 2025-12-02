@@ -13,7 +13,7 @@ from django.core.files.storage import default_storage
 from django.conf import settings
 
 # Local imports
-from extractor.bank_statement.classify import GLClassifier
+from extractor.banking.classify import GLClassifier
 from extractor.processor import MonthlyAccountingDocumentProcessor
 from extractor.prompter import Configuration
 
@@ -25,7 +25,7 @@ from .models import DimAICGLAcct
 
 from agentic_doc.parse import parse
 from agentic_doc.config import ParseConfig
-from document.pipeline.utils import split_pdf_to_pages
+from extractor.utils import split_pdf_to_pages
 
 logger = logging.getLogger(__name__)
 

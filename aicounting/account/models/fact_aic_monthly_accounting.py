@@ -169,29 +169,7 @@ class FactAICMonthlyAccounting(models.Model):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
-    
-    # def trigger_prompt_generation(self):
-    #     """
-    #     Trigger the prompt generation pipeline for this monthly accounting session
-    #     """
-    #     from document.tasks import generate_accounting_prompts
-        
-    #     try:
-    #         # Trigger async task for prompt generation
-    #         task = generate_accounting_prompts.delay(self.id)
-            
-    #         # Log task initiation
-    #         import logging
-    #         logger = logging.getLogger(__name__)
-    #         logger.info(f"Triggered prompt generation task {task.id} for monthly accounting {self.id}")
-            
-    #         return task.id
-            
-    #     except Exception as e:
-    #         import logging
-    #         logger = logging.getLogger(__name__)
-    #         logger.error(f"Failed to trigger prompt generation for monthly accounting {self.id}: {str(e)}")
-    #         raise e
+
     
     def _create_input_file_snapshot(self, input_file):
         """Create snapshot of an input file and its attributes"""
