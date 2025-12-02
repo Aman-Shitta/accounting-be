@@ -10,18 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='factjetransother',
-            name='doc_id',
-        ),
-        migrations.RemoveField(
-            model_name='factjetransother',
-            name='gl_acct_id',
-        ),
-        migrations.RemoveField(
-            model_name='factjetransother',
-            name='offset_gl_acct_id',
-        ),
         migrations.DeleteModel(
             name='DimAICTemplateDoc',
         ),
