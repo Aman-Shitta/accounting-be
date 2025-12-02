@@ -12,7 +12,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('user', '0015_rename_customer_id_dimaiccustomer_id'),
-        ('document', '0003_remove_dimaicdocument_file_loc_dimaicdocument_file'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -106,7 +105,7 @@ class Migration(migrations.Migration):
                 ('amt', models.DecimalField(decimal_places=2, max_digits=10, verbose_name='Amount')),
                 ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Created At')),
                 ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('doc_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='document.dimaicdocument', verbose_name='Document ID')),
+                # ('doc_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='document.dimaicdocument', verbose_name='Document ID')),
                 ('gl_acct_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='account.dimaicglacct', verbose_name='GL Account ID')),
                 ('offset_gl_acct_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='je_trans_offset_accounts', to='account.dimaicglacct', verbose_name='Offset GL Account ID')),
             ],
@@ -165,7 +164,7 @@ class Migration(migrations.Migration):
                 ('doc_ai_prompt', models.TextField(verbose_name='Document AI Prompt')),
                 ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Created At')),
                 ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('doc_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='document.dimaicdocument', verbose_name='Document ID')),
+                # ('doc_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='document.dimaicdocument', verbose_name='Document ID')),
                 ('je_template_gl_acct_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='account.dimaicglacct', verbose_name='JE Temaplate GL Account ID')),
             ],
             options={

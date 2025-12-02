@@ -43,7 +43,7 @@ INSTALLED_APPS = [
 
     'corsheaders',
     'authentication',
-    'document',
+    # 'document',
     'user',
     'account',
 ]

@@ -715,9 +715,10 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.uploaded_by = request.user
             document.save()
             
+            logger.error(f"Starting processing for document {document.doc_id}")
+
             # Trigger markdown pre-processing for bank statements and credit cards
             if document.doc_type in ['bank_statement', 'credit_card']:
-                logger.info(f"Starting markdown pre-processing for document {document.doc_id}")
 
                 config_params = dict(
                     doc_type=document.doc_type,
@@ -752,7 +753,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 process_uploaded_document.delay(str(document.id), config_params)
 
             else:
-                logger.info(f"Document type {document.doc_type} does not require processing.")
+                logger.error(f"Document type {document.doc_type} does not require processing.")
 
             data = {
                 "doc_uuid": str(document.doc_id),
@@ -856,7 +857,7 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
                     try:
                         from .je_accounting_views import JEAccountingVerifyView
                         JEAccountingVerifyView.generate_export_file(template_snapshot)
-                        logger.info(f"Generated export file for JE template {template_snapshot.id}")
+                        logger.error(f"Generated export file for JE template {template_snapshot.id}")
                     except Exception as e:
                         logger.error(f"Error generating export file for JE template {template_snapshot.id}: {str(e)}")
                         # Don't fail the whole operation if export generation fails
@@ -1246,7 +1247,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                         line_number__gt=deleted_line_number
                     ).update(line_number=models.F('line_number') - 1)
                     
-                    logger.info(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
+                    logger.error(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
                 
                 return create_api_response(
                     status.HTTP_200_OK, 
@@ -1255,7 +1256,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             else:
                 # For attribute items, just delete
                 line_item.delete()
-                logger.info(f"Deleted attribute item {line_item_id}")
+                logger.error(f"Deleted attribute item {line_item_id}")
                 
                 return create_api_response(
                     status.HTTP_200_OK,

@@ -71,7 +71,7 @@ class ClientCreateView(generics.GenericAPIView):
 
                 # Return success response with created client data
                 response_serializer = ClientRetrieveSerializer(client)
-                logger.info(f"Client created successfully: {client.client_id}")
+                logger.error(f"Client created successfully: {client.client_id}")
                 
                 return create_api_response(
                     status_code=status.HTTP_201_CREATED,

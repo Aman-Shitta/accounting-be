@@ -49,7 +49,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
            not getattr(template_snapshot, 'status', None) == 'verified' and \
            not template_snapshot.is_object:
             # Don't generate for unverified non-bank, non-object templates
-            logger.info(f"Skipping export generation for unverified template {template_snapshot.id}")
+            logger.error(f"Skipping export generation for unverified template {template_snapshot.id}")
             return
             
         # Get template attributes

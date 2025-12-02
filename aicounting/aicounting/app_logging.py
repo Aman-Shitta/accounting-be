@@ -26,6 +26,11 @@ LOGGING = {
             'filename': os.path.join(settings.BASE_DIR, 'error.log'),
             'formatter': 'verbose',
         },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
     },
 
     'root': {
@@ -40,13 +45,13 @@ LOGGING = {
             'propagate': True,
         },
         'django.request': {
-            'handlers': ['error_file'],
-            'level': 'ERROR',
+            'handlers': ['error_file', 'console'],
+            'level': 'DEBUG',
             'propagate': False,
         },
         'django.server': {
-            'handlers': ['info_file', 'error_file'],
-            'level': 'INFO',
+            'handlers': ['info_file', 'error_file', 'console'],
+            'level': 'DEBUG',
             'propagate': False,
         },
     },

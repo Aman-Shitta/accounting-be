@@ -54,11 +54,14 @@ class DimAICJETemplateHeader(models.Model):
     )
     input_files = models.ManyToManyField(
         'DimAicInputFiles',
-        null=True,
-        blank=True,
         verbose_name="Input File",
         help_text="The input file associated with this JE template"
     )
+    """
+    desc: 
+    strictly informational fields
+    to show to user.
+    """
     description = models.TextField(
         null=True,
         blank=True,

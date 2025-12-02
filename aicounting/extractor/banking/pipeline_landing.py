@@ -8,14 +8,12 @@ import re
 from io import BytesIO
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
-from typing import List, Dict, Optional, Any
+from typing import  Dict, Optional
 
 from django.conf import settings
 from django.db import transaction
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 
-from pydantic import BaseModel, Field
+
 from landingai_ade import LandingAIADE
 from landingai_ade.lib import pydantic_to_json_schema
 
@@ -24,17 +22,16 @@ from extractor.prompter import Configuration
 from account.models import (
     MonthlyDocumentBankCheckItem,
     MonthlyDocumentBankLineItem,
-    MonthlyDocumentBankKeyItem,
     MonthlyAccountingDocument
 )
-from document.pipeline.utils import split_pdf_to_pages
+from extractor.utils import split_pdf_to_pages
 
 logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for Extraction Schemas ---
 
-from extractor.bank_statement.models import *
-from extractor.bank_statement.page_classifier import PageClassifier
+from extractor.banking.models import *
+from extractor.banking.page_classifier import PageClassifier
 
 
 
@@ -52,7 +49,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         api_key = settings.LANDING_AI_API_KEY
 
         if not api_key:
-             logger.warning("LANDING_AI_API_KEY not found in settings or env.")
+             logger.error("LANDING_AI_API_KEY not found in settings or env.")
         
         self.client = LandingAIADE(apikey=api_key)
         
@@ -77,7 +74,7 @@ class DocumentProcessor(BaseDocumentProcessor):
     def parse_pdf(self, pdf_path):
         parse_response = self.client.parse(
                 document=Path(pdf_path),
-                model="dpt-2" 
+                model=settings.LANDING_AI_ADE_MODEL, 
             )
         return parse_response
 
@@ -87,7 +84,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         for i, page_bytes in enumerate(page_bytes_list):
             page_num = i + 1
-            logger.info(f"Processing page {page_num}...")
+            logger.error(f"Processing page {page_num}...")
             try:
                 # generate file from bytes
                 temp_file = self.__generate_temp_file__(page_bytes)
@@ -98,12 +95,12 @@ class DocumentProcessor(BaseDocumentProcessor):
                 markdown_content = parse_response.markdown
 
                 if not markdown_content:
-                    logger.warning(f"No markdown extracted for page {page_num}")
+                    logger.error(f"No markdown extracted for page {page_num}")
                     continue
 
                 page_types = self.page_classifier.classify(page_bytes=page_bytes, mime_type=mime_type)
                 
-                logger.info(f"Page {page_num} classified as: {page_types}")
+                logger.error(f"Page {page_num} classified as: {page_types}")
 
                 page_result = {"page_types": page_types}
                 
@@ -162,13 +159,13 @@ class DocumentProcessor(BaseDocumentProcessor):
 
         # Check if summary is incomplete and re-extract if needed
         if self.control_totals and self._is_summary_incomplete():
-            logger.info("Summary is incomplete, attempting re-extraction from combined pages")
+            logger.error("Summary is incomplete, attempting re-extraction from combined pages")
             relevant_pages = self._get_relevant_pages()
             if relevant_pages:
                 enhanced_summary = self._extract_summary_from_combined_pages(relevant_pages)
                 if enhanced_summary:
                     self.control_totals = enhanced_summary
-                    logger.info("Successfully re-extracted summary from combined pages")
+                    logger.error("Successfully re-extracted summary from combined pages")
 
         self._save_control_totals()
         processing_stats = self._save_extracted_data()
@@ -283,7 +280,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         # cleanup
         del(checks_linked)
-        logger.info(f"Saved extracted data: {stats}")
+        logger.error(f"Saved extracted data: {stats}")
         return stats
 
     def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
@@ -305,7 +302,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             return Decimal(clean_amount)
             
         except (InvalidOperation, ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse amount '{amount_str}': {e}")
+            logger.error(f"Failed to parse amount '{amount_str}': {e}")
             return None
 
     def format_date(self, date_str: str) -> str:
@@ -349,7 +346,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     month_name = month_names[month_num]
                     return f"01-{month_name}-{year}"
             
-            logger.warning(f"Could not parse date format: {date_str} - {e}")
+            logger.error(f"Could not parse date format: {date_str} - {e}")
             return date_str  # Return as-is if no match
 
     def _save_line_item(self, page_number: int, line_number: int, line_data: Dict) -> MonthlyDocumentBankLineItem:
@@ -375,7 +372,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 transaction_type = 'credit'
                 amount = self._parse_amount(credit_amount_raw)
         except Exception as e:
-            logger.warning(f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
+            logger.error(f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
 
         # Check transaction detection
         is_check_transaction = line_data.get("is_check_transaction", False) is not None
@@ -460,7 +457,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         if matching_line_item:
             check_item.related_line_item = matching_line_item
             check_item.save()
-            logger.debug(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
+            logger.error(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
         else:
             # Check not found in line items, add it as a new line item in the transaction table
             # Get the last line number for this page
@@ -495,5 +492,5 @@ class DocumentProcessor(BaseDocumentProcessor):
             # Link the check to the newly created line item
             check_item.related_line_item = new_line_item
             check_item.save()
-            logger.info(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+            logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
 

@@ -303,8 +303,6 @@ class FactAICJETemplateHeaderSnapshot(models.Model):
     
     input_files = models.ManyToManyField(
         FactAICInputFileSnapshot,
-        null=True,
-        blank=True,
         verbose_name="Input File Snapshot",
         help_text="The input file snapshot associated with this JE template"
     )
