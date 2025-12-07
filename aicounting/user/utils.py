@@ -11,7 +11,11 @@ import pandas as pd
 # Local imports
 from aicounting.openai_client import OpeAIClient
 from user.models import DimAICClient, DimAICAssistant
+from user.gl_classification_prompt import GL_ASSISITANT_INSTRUCTION_SET
 
+
+import logging
+logger = logging.getLogger(__name__)
 
 class OpenAIAssistant(OpeAIClient):
     
@@ -30,36 +34,7 @@ class OpenAIAssistant(OpeAIClient):
         self.temperature = 1.0
         self.top_p = 1.0
 
-        self.assistant_instructions = f"""You are a Bookkeeping Assistant API responsible for accurately coding financial transactions based on historical data and organizational guidelines. You will be provided with:
-            Chart of Accounts (COA): A comprehensive list of all GL accounts, each with a unique account number, account type, and description.
-            Vendor Mapping List: A directory linking vendors to their typical GL accounts, including notes on transaction context or specific usage rules.
-            General Ledger History: Historical GL transactions, including dates, descriptions, vendor names, amounts, and accounts used.
-
-            Objectives:
-            Transaction Classification: Assign each transaction to the appropriate GL account from the chart of accounts that has been uploaded to you.  Do not rely on the category in the transaction.  Use your own logic.
-
-            Only use accounts listed in the chart of accounts.  Do not assume and do not hallucinate.
-            Only use the descriptions provided in the chart of accounts.  Do not make up your own.
-            Do not ask questions. Return only the requested structured output in plain text. No explanations.
-
-            **instructions to handle transactions that you are not confident about**
-
-            Return the data with the following nine columns:  
-            **{{
-                id: "1",
-                "description": "item_description",
-                "gl_account": "suspense/etc",
-                "gl_account_desc" :".......",
-                "confidence score": 0.89
-                }}**
-
-            - Date is the date that is provided.
-            - Description is the description provided as is.
-            - Party is derived from the description.  It is company, person or any entity that this transaction is related to.
-            - gl_account is the account that this transaction is mapped to.  Only use accounts listed in the char of accounts.  Do not assume and do not hallucinate.
-            - gl_account_desc is the account description of the above gl_account from the chart of accounts 
-            - confidence score is the score of how confident you are in the classification
-        """
+        self.assistant_instructions = GL_ASSISITANT_INSTRUCTION_SET
 
         if special_rules:
             self.assistant_instructions += f"\n**Special Rules**:\n{special_rules}"
@@ -138,7 +113,7 @@ class OpenAIAssistant(OpeAIClient):
                             file_streams.append(file_stream)
                             
                     except Exception as e:
-                        print(f"Error processing file {doc.file.name}: {e}")
+                        logger.error(f"Error processing file {doc.file.name}: {e}")
             
             if file_streams:
                 file_batch = self.client.vector_stores.file_batches.upload_and_poll(
@@ -150,12 +125,12 @@ class OpenAIAssistant(OpeAIClient):
                 for stream in file_streams:
                     stream.close()
                     
-                print(f"Vector store created with {len(file_streams)} files")
+                logger.error(f"Vector store created with {len(file_streams)} files")
             
             return vector_store.id
             
         except Exception as e:
-            print(f"Error creating vector store: {e}")
+            logger.error(f"Error creating vector store: {e}")
             return None
     
     def _convert_csv_to_json(self, file_content, document_type, filename):
@@ -236,7 +211,7 @@ class OpenAIAssistant(OpeAIClient):
             return json_data
             
         except Exception as e:
-            print(f"Error converting CSV to JSON for {filename}: {e}")
+            logger.error(f"Error converting CSV to JSON for {filename}: {e}")
             return None
     
     def _convert_excel_to_json(self, file_content, document_type, filename):
@@ -296,7 +271,7 @@ class OpenAIAssistant(OpeAIClient):
             return json_data
             
         except Exception as e:
-            print(f"Error converting Excel to JSON for {filename}: {e}")
+            logger.error(f"Error converting Excel to JSON for {filename}: {e}")
             return None
     
     def _save_json_to_azure(self, json_content, original_doc, json_filename):
@@ -313,10 +288,10 @@ class OpenAIAssistant(OpeAIClient):
             
             # Save to Azure storage
             default_storage.save(json_path, ContentFile(json_content.encode('utf-8')))
-            print(f"Saved JSON version to Azure: {json_path}")
+            logger.error(f"Saved JSON version to Azure: {json_path}")
             
         except Exception as e:
-            print(f"Error saving JSON to Azure for {json_filename}: {e}")
+            logger.error(f"Error saving JSON to Azure for {json_filename}: {e}")
 
     def provison_client_assistant(self):
         """
@@ -374,7 +349,7 @@ class OpenAIAssistant(OpeAIClient):
         except DimAICClient.DoesNotExist:
             raise ValueError(f"Client with ID {self.client_id} not found")
         except Exception as e:
-            print(f"Error gathering client information: {e}")
+            logger.error(f"Error gathering client information: {e}")
             raise
 
     def create_assistant(self, name: str, description: str = None):
@@ -407,12 +382,12 @@ class OpenAIAssistant(OpeAIClient):
                     }
                 }
             
-            # print("assistant_params :: ", assistant_params)
+            # logger.error("assistant_params :: ", assistant_params)
             assistant = self.client.beta.assistants.create(**assistant_params)
             return assistant
             
         except Exception as e:
-            print(f"Error creating assistant: {e}")
+            logger.error(f"Error creating assistant: {e}")
             return None
 
     def get_or_create_assistant_config(self):
@@ -438,7 +413,6 @@ class OpenAIAssistant(OpeAIClient):
         """
         if not self.client_id:
             raise ValueError("client_id must be set before updating assistant")
-            
         try:
             # Get the AIC Client object if not already set
             if not self.aic_client:
@@ -454,7 +428,7 @@ class OpenAIAssistant(OpeAIClient):
             self.assistant_id = assistant_config.assistant_id
             
             if not self.vector_store_id:
-                print("No existing vector store found. Creating new one...")
+                logger.error("No existing vector store found. Creating new one...")
                 # If no vector store exists, create one with all documents
                 client_documents = self.aic_client.documents.all()
                 vector_store_id = self.create_vector_store(client_documents)
@@ -464,9 +438,16 @@ class OpenAIAssistant(OpeAIClient):
                     self.vector_store_id = vector_store_id
                 return vector_store_id is not None
             
-            documents_to_add = self.aic_client.documents.filter(
+            if new_document_ids:
+                documents_to_add = self.aic_client.documents.filter(
                     id__in=new_document_ids
                 )
+            else:
+                # Get client documents
+                from django.utils.timezone import now
+                from datetime import timedelta
+                last_5_minutes = now() - timedelta(minutes=5)
+                documents_to_add = self.aic_client.documents.filter(created_at__gt=last_5_minutes)
             
             # Filter documents that have valid file paths
             valid_documents = []
@@ -475,7 +456,7 @@ class OpenAIAssistant(OpeAIClient):
                     valid_documents.append(doc)
             
             if not valid_documents:
-                print("No valid documents found to add to vector store")
+                logger.error("No valid documents found to add to vector store")
                 return True
             
             # Add new files to existing vector store from Azure storage
@@ -534,7 +515,7 @@ class OpenAIAssistant(OpeAIClient):
                             file_streams.append(file_stream)
                             
                     except Exception as e:
-                        print(f"Error processing file {doc.file.name}: {e}")
+                        logger.error(f"Error processing file {doc.file.name}: {e}")
                 
                 if file_streams:
                     file_batch = self.client.vector_stores.file_batches.upload_and_poll(
@@ -542,7 +523,7 @@ class OpenAIAssistant(OpeAIClient):
                         files=file_streams
                     )
                     
-                    print(f"Added {len(file_streams)} new files to vector store {self.vector_store_id}")
+                    logger.error(f"Added {len(file_streams)} new files to vector store {self.vector_store_id}")
                     
                     # Update the assistant to ensure it uses the updated vector store
                     if self.assistant_id:
@@ -554,12 +535,12 @@ class OpenAIAssistant(OpeAIClient):
                                 }
                             }
                         )
-                        print(f"Updated assistant {self.assistant_id} with new files")
+                        logger.error(f"Updated assistant {self.assistant_id} with new files")
                     
                     return True
                     
             except Exception as e:
-                print(f"Error adding files to vector store: {e}")
+                logger.error(f"Error adding files to vector store: {e}")
                 return False
             finally:
                 # Always close file streams
@@ -572,5 +553,5 @@ class OpenAIAssistant(OpeAIClient):
         except DimAICClient.DoesNotExist:
             raise ValueError(f"Client with ID {self.client_id} not found")
         except Exception as e:
-            print(f"Error updating assistant with new files: {e}")
+            logger.error(f"Error updating assistant with new files: {e}")
             return False

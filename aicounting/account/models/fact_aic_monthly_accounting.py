@@ -4,6 +4,9 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+import logging
+logger = logging.getLogger(__name__)
+
 # Import snapshot models - using lazy imports to avoid circular dependencies
 def get_snapshot_models():
     from .dim_aic_snapshot_models import (
@@ -168,7 +171,7 @@ class FactAICMonthlyAccounting(models.Model):
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(exc_type, fname, exc_tb.tb_lineno)
 
     
     def _create_input_file_snapshot(self, input_file):
@@ -315,7 +318,7 @@ class FactAICMonthlyAccounting(models.Model):
                 import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
+                logger.error(exc_type, fname, exc_tb.tb_lineno)
                 template_snapshot = None
         
         return template_snapshot

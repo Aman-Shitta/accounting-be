@@ -79,7 +79,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         return parse_response
 
 
-    def process_document(self, file_bytes: bytes, mime_type: None, md=False):
+    def process_document(self, file_bytes: bytes, mime_type: None, md=False, special_rules=""):
         page_bytes_list = split_pdf_to_pages(file_bytes)
         
         for i, page_bytes in enumerate(page_bytes_list):
@@ -111,7 +111,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     "markdown": markdown_content,
                 }
 
-                print(f"[DEBUG] Page {page_num} types names: {page_types_names}")
+                logger.error(f"[DEBUG] Page {page_num} types names: {page_types_names}")
 
                 # 3. Extract Data based on classification
                 if "transaction_table" in page_types_names:

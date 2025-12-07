@@ -7,6 +7,12 @@ import unicodedata
 from google.genai import Client, types
 from extractor.base import JSONCleaner
 
+
+
+import logging
+logger = logging.getLogger(__name__)
+
+
 class BankStatementSummarizer:
     def __init__(self, llm_client: Client, model: str, schema: types.Schema=None):
         
@@ -94,8 +100,8 @@ class BankStatementSummarizer:
             except json.JSONDecodeError as e:
                 import sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
+                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
+                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
                 parsed_data = {}
                 summary = {}
 
@@ -104,5 +110,5 @@ class BankStatementSummarizer:
         except Exception as e:
             import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            print(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
+            logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
             return {}

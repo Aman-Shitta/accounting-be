@@ -1,6 +1,9 @@
 from typing import List, Dict, Union
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Configuration:
     def __init__(
         self,
@@ -166,7 +169,7 @@ def _prepare_bank_statement_prompt(config: Configuration, prompt: str) -> str:
     """
 
     prompt = prompt.format(formatting=formatting)
-    print("Bank Statement Prompt formed:", prompt)
+    logger.error("Bank Statement Prompt formed:", prompt)
     return prompt
 
 
@@ -236,7 +239,7 @@ def _prepare_sales_prompt(config: Configuration, prompt: str) -> str:
         formatting=formatting
     )
     prompt =  prompt.replace("    ", "") # Remove leading spaces for cleaner formatting
-    print("Sales Prompt formed:", prompt)
+    logger.error("Sales Prompt formed:", prompt)
     return  prompt
 
 
@@ -255,7 +258,7 @@ def _prepare_generic_prompt(config: Configuration, prompt: str) -> str:
     if "{formatting}" in prompt:
         prompt = prompt.format(formatting="Return data as a structured JSON object.")
     
-    print("Generic Prompt formed:", prompt)
+    logger.error("Generic Prompt formed:", prompt)
     return prompt
 
 

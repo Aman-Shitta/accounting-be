@@ -5,6 +5,9 @@ from .models import FactAICJETemplateHeaderSnapshot
 
 from account.serializers import DimAICGLAcctSerializer
 
+import logging
+logger = logging.getLogger(__name__)
+
 class JETemplateAttributeDataSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     gl_account = DimAICGLAcctSerializer(allow_null=True)
@@ -19,10 +22,9 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
     """Serializer for JE Template Data"""
 
     input_files = serializers.SerializerMethodField(source='get_input_files')
-
     class Meta:
         model = FactAICJETemplateHeaderSnapshot
-        fields = ['id', 'je_name', 'je_refrence', 'input_files', 'je_freq', 'is_object', 'input_files']
+        fields = ['id', 'je_name', 'je_refrence', 'description', 'input_files', 'je_freq', 'is_object', 'input_files']
 
     def to_representation(self, instance):
         """
@@ -45,7 +47,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         
         # Add is_verified flag
         ret['is_verified'] = self._calculate_is_verified(instance)
-        
         return ret
 
     def get_input_files(self, obj):
@@ -382,7 +383,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         attribute_value = ""
         attribute_offset_gl = None
         
-        print("template_attr.input_file_attribute :: ", 
+        logger.error("template_attr.input_file_attribute :: ", 
               template_attr.input_file_attribute, template_attr.attribute_name)
 
         if template_attr.input_file_attribute:

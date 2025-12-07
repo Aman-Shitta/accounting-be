@@ -48,7 +48,7 @@ class TransactionExtractor:
         except Exception as te:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
             return {}
 
         try:
@@ -57,8 +57,8 @@ class TransactionExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
             parsed_data = {}
 
         for item in parsed_data.get("line_items", []):
@@ -123,8 +123,8 @@ class DocumentProcessor(BaseDocumentProcessor):
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
         
         # Process and save extracted data
         processing_stats = self._save_extracted_data()
@@ -188,7 +188,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
             for attr_name, attr_obj in configured_attribute_instances.items():
                 if attr_name not in self.extracted_attributes:
-                    print("Saving empty attribute for missing: ", attr_name)
+                    logger.error("Saving empty attribute for missing: ", attr_name)
                     MonthlyDocumentAttributeItem.objects.create(
                         document=self.document,
                         attribute=attr_obj,

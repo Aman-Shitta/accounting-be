@@ -577,7 +577,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
             # For non-object templates, validate debit/credit balance
             if not template.is_object:
                 is_valid, error_msg, debit_sum, credit_sum = self.validate_debit_credit_balance(template)
-                print("debit_sum, credit_sum :: ",debit_sum, credit_sum)
+                logger.error("debit_sum, credit_sum :: ",debit_sum, credit_sum)
                 if not is_valid:
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,

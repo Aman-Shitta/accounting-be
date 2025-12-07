@@ -11,6 +11,10 @@ from asgiref.sync import async_to_sync
 from msgraph.generated.models.invitation import Invitation
 from msgraph.generated.models.invited_user_message_info import InvitedUserMessageInfo
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 class MsalConf:
 
     TENANT_ID = os.environ.get('AZURE_TENANT_ID')
@@ -154,7 +158,7 @@ class MsalGraphConf(MsalConf):
                 group_assignment_result = {"success": True, "group_id": group_id}
                 
             except Exception as group_error:
-                print(f"Group assignment failed: {str(group_error)}")
+                logger.error(f"Group assignment failed: {str(group_error)}")
                 group_assignment_result = {"success": False, "error": str(group_error)}
             
             return {
@@ -167,11 +171,11 @@ class MsalGraphConf(MsalConf):
                 "message": "Invitation sent successfully" + (" with group assignment" if group_assignment_result["success"] else " but group assignment failed")
             }
         except Exception as e:
-            print(f"Error sending Azure invitation: {str(e)}")
+            logger.error(f"Error sending Azure invitation: {str(e)}")
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(exc_type, fname, exc_tb.tb_lineno)
             
             return {
                 "success": False,
@@ -197,8 +201,8 @@ class MsalGraphConf(MsalConf):
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-            print(f"Error sending Azure invitation: {str(e)}")
+            logger.error(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(f"Error sending Azure invitation: {str(e)}")
             return {
                 "success": False,
                 "error": str(e)
@@ -222,11 +226,11 @@ class MsalGraphConf(MsalConf):
                 "message": "Invitation sent successfully (without group assignment)"
             }
         except Exception as e:
-            print(f"Error sending Azure invitation: {str(e)}")
+            logger.error(f"Error sending Azure invitation: {str(e)}")
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(exc_type, fname, exc_tb.tb_lineno)
             
             return {
                 "success": False,

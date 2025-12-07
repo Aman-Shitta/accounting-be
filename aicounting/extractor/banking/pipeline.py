@@ -60,7 +60,7 @@ class LandingAIService:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Landing AI OCR failed: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Landing AI OCR failed: {e}")
             return ""
 
 class PageClassifier:
@@ -113,19 +113,19 @@ class PageClassifier:
         
         # Prefer markdown over PDF for classification
         if md_bytes:
-            print(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
+            logger.error(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
             content = [
                 types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"),
                 "Analyze the above markdown content from a bank statement page."
             ]
         elif page_bytes and mime_type:
-            print(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
+            logger.error(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
             content = [
                 types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
                 "Analyze the above PDF page content from a bank statement."
             ]
         else:
-            print(f"[ERROR] No content provided for page classification")
+            logger.error(f"[ERROR] No content provided for page classification")
             return ["other"]
 
         gemini_config = {
@@ -147,7 +147,7 @@ class PageClassifier:
             for resp in stream_response:
                 raw += resp.text
                 
-            print(f"[DEBUG] Classification raw response: {raw[:200]}...")
+            logger.error(f"[DEBUG] Classification raw response: {raw[:200]}...")
             
             try:
                 clean_json_str = JSONCleaner.updated_json_repair(raw)
@@ -161,23 +161,23 @@ class PageClassifier:
                 confidence = parsed.get("confidence", 0.5)
                 elements = parsed.get("detected_elements", [])
                 
-                print(f"[DEBUG] Classification result: {page_types} (confidence: {confidence})")
+                logger.error(f"[DEBUG] Classification result: {page_types} (confidence: {confidence})")
                 if elements:
-                    print(f"[DEBUG] Detected elements: {elements}")
+                    logger.error(f"[DEBUG] Detected elements: {elements}")
                 
                 return page_types
                 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
-                print(f"[ERROR] Raw response: {raw}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
+                logger.error(f"[ERROR] Raw response: {raw}")
                 return ["other"]
                 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
             return ["other"]
 
 class TransactionExtractor:
@@ -226,12 +226,12 @@ class TransactionExtractor:
             
             # Log if response seems truncated
             if chunk_count > 0 and not raw.strip().endswith('}'):
-                print(f"[WARN] Response may be truncated, received {chunk_count} chunks, length: {len(raw)}")
+                logger.error(f"[WARN] Response may be truncated, received {chunk_count} chunks, length: {len(raw)}")
                 
         except Exception as te:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
             return {"line_items": []}
 
         # Validate and repair JSON with expected structure
@@ -246,8 +246,8 @@ class TransactionExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output (first 1000 chars): {raw[:1000]}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output (first 1000 chars): {raw[:1000]}")
             parsed_data = {"line_items": []}
 
         # Ensure line_items exists
@@ -331,7 +331,7 @@ class CheckImageExtractor:
         except Exception as ce:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
             return {}
 
         try:
@@ -340,8 +340,8 @@ class CheckImageExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
             parsed_data = {"checks": []}
         return parsed_data
 
@@ -430,15 +430,15 @@ class BankStatementSummarizer:
                 summary = json.loads(clean_json_str)
             except json.JSONDecodeError as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
-                print(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
+                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
+                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
                 summary = {}
 
             return summary
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            print(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
+            logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
             return {}
 
     def _clean_json_string(self, raw: str) -> str:
@@ -588,7 +588,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 #     page_types = page_classifier.classify(md_bytes=md_bytes)
                 # else:
                 page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
-                print(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
+                logger.error(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 
                 # 2. Extract data based on classification
@@ -618,7 +618,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     self.control_totals = summary
 
                 self.page_data.append({f"page_{i+1}": page_result})
-                print(f"[DEBUG] Page {i+1} data is: {page_result}")
+                logger.error(f"[DEBUG] Page {i+1} data is: {page_result}")
                 
                 # Reduce sleep time from 3s to 1s for better throughput
                 time.sleep(1)
@@ -627,8 +627,8 @@ class DocumentProcessor(BaseDocumentProcessor):
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes preview: {page_bytes[:20] if page_bytes else 'None'}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes preview: {page_bytes[:20] if page_bytes else 'None'}")
                 # Log but continue processing other pages
                 continue
             finally:

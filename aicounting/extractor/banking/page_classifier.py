@@ -6,6 +6,9 @@ from extractor.base import JSONCleaner
 from google.genai import types
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 class PageClassifier:
     
     def __init__(self, processor):
@@ -65,19 +68,19 @@ class PageClassifier:
         
         # Prefer markdown over PDF for classification
         if md_bytes:
-            print(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
+            logger.error(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
             content = [
                 types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"),
                 "Analyze the above markdown content from a bank statement page."
             ]
         elif page_bytes and mime_type:
-            print(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
+            logger.error(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
             content = [
                 types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
                 "Analyze the above PDF page content from a bank statement."
             ]
         else:
-            print(f"[ERROR] No content provided for page classification")
+            logger.error(f"[ERROR] No content provided for page classification")
             return ["other"]
 
         gemini_config = {
@@ -99,7 +102,7 @@ class PageClassifier:
             for resp in stream_response:
                 raw += resp.text
                 
-            print(f"[DEBUG] Classification raw response: {raw[:200]}...")
+            logger.error(f"[DEBUG] Classification raw response: {raw[:200]}...")
             
             try:
                 clean_json_str = JSONCleaner.updated_json_repair(raw)
@@ -113,20 +116,20 @@ class PageClassifier:
                 elements = parsed.get("detected_elements", [])
                 
                 if elements:
-                    print(f"[DEBUG] Detected elements: {elements}")
+                    logger.error(f"[DEBUG] Detected elements: {elements}")
                 
                 return page_types
                 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
-                print(f"[ERROR] Raw response: {raw}")
+                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
+                logger.error(f"[ERROR] Raw response: {raw}")
                 return ["other"]
                 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
             return ["other"]
 

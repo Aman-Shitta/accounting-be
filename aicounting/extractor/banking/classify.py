@@ -9,15 +9,12 @@ import tiktoken
 # Local imports
 from aicounting.openai_client import OpeAIClient
 
-# New monthly document models (replacing legacy POC document models)
-try:
-    from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
-    from account.models.monthly_document_line_models import MonthlyDocumentBankLineItem
-except Exception:  # pragma: no cover - import safety for early migrations
-    MonthlyAccountingDocument = None
-    MonthlyDocumentBankLineItem = None
+from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
+from account.models.monthly_document_line_models import MonthlyDocumentBankLineItem
 
-sys.stdout.reconfigure(encoding='utf-8')
+
+import logging
+logger = logging.getLogger(__name__)
 
 class OpeAIThread(OpeAIClient):
     """OpenAI Client with Thread Management."""
@@ -37,9 +34,9 @@ class OpeAIThread(OpeAIClient):
                     }
             )
             self.thread_id = thread.id
-            print(f"Created Thread: {self.thread_id}")
+            logger.error(f"Created Thread: {self.thread_id}")
         except Exception as e:
-            print(f"Error creating thread: {e}")
+            logger.error(f"Error creating thread: {e}")
             return None
     
     # Create Thread
@@ -49,10 +46,10 @@ class OpeAIThread(OpeAIClient):
                 thread_id=thread_id
             )
             thread_id = thread.id
-            print(f"Deleted Thread: {thread_id}")
+            logger.error(f"Deleted Thread: {thread_id}")
             return thread_id
         except Exception as e:
-            print(f"Error deleting thread: {e}")
+            logger.error(f"Error deleting thread: {e}")
             return None
 
     # Send to Thread
@@ -82,7 +79,7 @@ class OpeAIThread(OpeAIClient):
                 )
 
             if run.status != "completed":
-                print(f"Run failed with status: {run.status}")
+                logger.error(f"Run failed with status: {run.status}")
                 return []
 
             # Fetch new assistant messages after last timestamp
@@ -102,16 +99,17 @@ class OpeAIThread(OpeAIClient):
             return output
 
         except Exception as e:
-            print(f"Error sending to thread: {e}")
+            logger.error(f"Error sending to thread: {e}")
             return []
 
 
 class GLClassifier(OpeAIThread):
-    def __init__(self, assistant_id, vector_store_ids=None):
+    def __init__(self, assistant_id, vector_store_ids=None, special_rules=""):
         super().__init__()
         self.assistant_id = assistant_id
         self.vector_store_ids = vector_store_ids or []
         self.thread_id = None
+        self.rules = special_rules
 
     def format_line_items(self, line_items: dict) -> str:
         """
@@ -143,7 +141,7 @@ class GLClassifier(OpeAIThread):
             line_str = f"{line_id:<3} | {desc:<20} | {txn_type}"
             lines.append(line_str)
 
-        return "\n".join(lines)
+        return "\n".join(lines) + f"\n\n**PS: {self.rules}**" if self.rules.strip() else "\n".join(lines)
 
     @staticmethod
     def fetch_extracted_data(document_id: str):
@@ -166,15 +164,15 @@ class GLClassifier(OpeAIThread):
         This mimics the legacy serializer output the classifier prompt expects.
         """
         if not MonthlyAccountingDocument or not MonthlyDocumentBankLineItem:
-            print("Monthly accounting models not available (possibly during migration).")
+            logger.error("Monthly accounting models not available (possibly during migration).")
             return None
         try:
             doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
         except MonthlyAccountingDocument.DoesNotExist:
-            print(f"MonthlyAccountingDocument with id {document_id} not found.")
+            logger.error(f"MonthlyAccountingDocument with id {document_id} not found.")
             return None
         except Exception as e:
-            print(f"Error retrieving MonthlyAccountingDocument: {e}")
+            logger.error(f"Error retrieving MonthlyAccountingDocument: {e}")
             return None
 
         extracted = {}
@@ -208,7 +206,7 @@ class GLClassifier(OpeAIThread):
         extracted_data = self.fetch_extracted_data(document_id)
 
         if not extracted_data:
-            print("No extracted data found.")
+            logger.error("No extracted data found.")
             return {}
 
         self.create_thread(self.vector_store_ids)
@@ -219,16 +217,16 @@ class GLClassifier(OpeAIThread):
             try:
                 line_items = page_data.get("line_items", {})
                 if not line_items:
-                    print(f"[DEBUG] No line items found for page {page_num}")
+                    logger.error(f"[DEBUG] No line items found for page {page_num}")
                     continue
 
                 payload = self.format_line_items(line_items)
 
-                print(f"[DEBUG] Payload for page {page_num}:\n{payload}")
+                logger.error(f"[DEBUG] Payload for page {page_num}:\n{payload}")
 
                 page_results = self.send_to_thread(payload)
 
-                print(f"[DEBUG] Page results for page {page_num}: {page_results}")
+                logger.error(f"[DEBUG] Page results for page {page_num}: {page_results}")
                 classified_data = []
                 if (
                     page_results
@@ -238,11 +236,11 @@ class GLClassifier(OpeAIThread):
                     classified_data = ast.literal_eval(page_results[0]).get("schema")
                     results[page_num] = classified_data
 
-                print(f" classified_data @ page : {page_num} :: ", classified_data)
+                logger.error(f" classified_data @ page : {page_num} :: ", classified_data)
 
                 time.sleep(1)  # shorter sleep; adjust if rate limits encountered
             except Exception as e:
-                print(f"[ERROR] Exception processing page {page_num}: {e}")
+                logger.error(f"[ERROR] Exception processing page {page_num}: {e}")
                 continue  # Skip to next page on error
 
         # self.delete_thread(self.thread_id)

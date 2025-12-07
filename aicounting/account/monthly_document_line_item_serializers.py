@@ -5,6 +5,8 @@ from rest_framework import serializers
 from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
 from .models import DimAICGLAcct
 
+import logging
+logger = logging.getLogger(__name__)
 
 class GLAccountNestedSerializer(serializers.ModelSerializer):
     """Nested serializer for GL Account details"""
@@ -328,7 +330,7 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
             # For updates, check the instance's transaction type
             if debit and credit:
                 raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
-        print("self.instance.transaction_type :: ", self.instance.transaction_type)
+        logger.error("self.instance.transaction_type :: ", self.instance.transaction_type)
 
         # Check if trying to update the wrong column based on transaction type
         if self.instance.transaction_type == 'debit':

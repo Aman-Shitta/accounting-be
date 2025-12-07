@@ -9,6 +9,9 @@ from django.conf import settings
 from google.genai import types
 from extractor.prompter import prepare_prompt
 
+import logging
+logger = logging.getLogger(__name__)
+
 class BaseDocumentProcessor:
     
     api_key = settings.GEMINI_API_KEY
@@ -28,7 +31,7 @@ class BaseDocumentProcessor:
         meta = data.get("meta", {})
         if isinstance(meta, dict) and isinstance(meta.get("pages"), (int, float)):
             if meta["pages"] != 1:
-                print("Warning: Expected single page output, but got multiple pages in Gemini response.")
+                logger.error("Warning: Expected single page output, but got multiple pages in Gemini response.")
                 data["warning"] = "Expected single page output, but got multiple pages in Gemini response."
         return data
     
@@ -66,11 +69,11 @@ class BaseDocumentProcessor:
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 # Check for 503 UNAVAILABLE error
                 if hasattr(e, "args") and e.args and "503" in str(e.args[0]):
-                    print(f"[WARN][{fname}:{exc_tb.tb_lineno}] Gemini model overloaded (503). Retry {attempt+1}/{max_retries} after 5s...")
+                    logger.error(f"[WARN][{fname}:{exc_tb.tb_lineno}] Gemini model overloaded (503). Retry {attempt+1}/{max_retries} after 5s...")
                     time.sleep(5)
                     continue
                 else:
-                    print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] AIClient generate_content_stream error: {e}")
+                    logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] AIClient generate_content_stream error: {e}")
                     raise
         # If all retries failed, raise the last exception
         raise Exception("Gemini model overloaded after multiple retries.")
@@ -94,8 +97,8 @@ class JSONCleaner:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Cleaning JSON: {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Cleaning JSON: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
         return raw
 
     @staticmethod
@@ -107,8 +110,8 @@ class JSONCleaner:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Extracting first JSON: {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Extracting first JSON: {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
         return raw
     
     @staticmethod
@@ -119,7 +122,7 @@ class JSONCleaner:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] JSON REPAIR : {e}")
-            print(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] JSON REPAIR : {e}")
+            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw input: {raw}")
         
         return raw

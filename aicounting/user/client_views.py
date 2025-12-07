@@ -82,7 +82,7 @@ class ClientCreateView(generics.GenericAPIView):
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(exc_type, fname, exc_tb.tb_lineno)
 
             logger.error(f"Unexpected error during client creation: {str(e)}")
             return create_api_response(
@@ -178,41 +178,8 @@ class ClientUpdateView(generics.GenericAPIView):
             logger.error("Client not found for update.")
         return None
 
-    def _parse_contacts_data(self, data):
-        """
-        Parse form data to handle nested structures like contacts[0][contact_name]
-        """
-        import re
-        from collections import defaultdict
-        
-        parsed_data = {}
-        contacts_data = defaultdict(dict)
-        
-        # Regular expression to match nested form data patterns
-        contact_pattern = re.compile(r'contacts\[(\d+)\]\[(\w+)\]')
-        
-        for key, value in data.items():
-            # Check if this is a contact field
-            contact_match = contact_pattern.match(key)
-            if contact_match:
-                index = int(contact_match.group(1))
-                field_name = contact_match.group(2)
-                contacts_data[index][field_name] = value
-            else:
-                # Regular field
-                parsed_data[key] = value
-        
-        # Convert contacts defaultdict to list
-        if contacts_data:
-            contacts_list = []
-            for i in sorted(contacts_data.keys()):
-                contacts_list.append(contacts_data[i])
-            parsed_data['contacts'] = contacts_list
-        
-        return parsed_data
-
     def put(self, request, *args, **kwargs):
-        try:
+        try:            
             # Use atomic transaction for update
             with transaction.atomic():
                 instance = self.get_object(kwargs.get('id'))
@@ -221,32 +188,7 @@ class ClientUpdateView(generics.GenericAPIView):
                         status_code=status.HTTP_404_NOT_FOUND,
                         message=ClientUpdateViewMessages["not_found"]
                     )
-
-                # Check if data is sent as JSON in 'data' field (recommended approach)
-                if 'data' in request.data:
-                    import json
-                    try:
-                        json_data = json.loads(request.data['data'])
-                        # Merge JSON data with files
-                        combined_data = json_data.copy()
-                        # Add files to the data
-                        for key, file in request.FILES.items():
-                            combined_data[key] = file
-                        serializer_data = combined_data
-                    except json.JSONDecodeError:
-                        return create_api_response(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            message="Invalid JSON format in request data.",
-                            errors={"data": ["The provided JSON data is invalid."]}
-                        )
-                else:
-                    # Fallback to old form-data parsing
-                    serializer_data = self._parse_contacts_data(request.data)
-                    # Add files to parsed data
-                    for key, file in request.FILES.items():
-                        serializer_data[key] = file
-                
-                serializer = self.get_serializer(instance, data=serializer_data, partial=True, context={"request": self.request})
+                serializer = self.get_serializer(instance, data=request.data, partial=True, context={"request": self.request})
                 
                 if not serializer.is_valid():
                     return create_api_response(
@@ -256,6 +198,17 @@ class ClientUpdateView(generics.GenericAPIView):
                     )
 
                 client = serializer.save()
+
+                client_assistant = OpenAIAssistant(
+                    customer=client.customer,
+                    client_obj=client,
+                    api_key=settings.OPENAI_API_KEY,
+                    client_id=client.client_id,
+                    special_rules=serializer.validated_data.get('special_rules', None)
+                )
+                # Provision the client GPT assistant
+                client_assistant.update_assistant_with_new_files()
+
                 response_serializer = ClientRetrieveSerializer(client)
                 
                 return create_api_response(
@@ -263,15 +216,7 @@ class ClientUpdateView(generics.GenericAPIView):
                     message=ClientUpdateViewMessages["success"],
                     data=response_serializer.data
                 )
-            
-        except serializers.ValidationError as e:
-            # Handle validation errors specifically
-            logger.error(f"Validation error during client update: {e.detail}")
-            return create_api_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                message=ClientUpdateViewMessages["validation_error"],
-                errors=e.detail
-            )
+
         except Exception as e:
             logger.error(f"Unexpected error during client update: {str(e)}")
             return create_api_response(

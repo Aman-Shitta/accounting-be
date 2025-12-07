@@ -1,3 +1,7 @@
+import os
+import tempfile
+import pandas as pd
+
 from rest_framework import serializers
 from django.db import transaction
 from .models import DimAICAccountant, DimAICClient, DimAICContact, DimAICClientDocument
@@ -111,10 +115,10 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_chart_of_account(self, value):
         """Validate COA file type and structure"""
-        import os
-        import pandas as pd
-        import tempfile
         
+        if self.instance.documents.filter(document_type='chart_of_account').exists():
+            raise serializers.ValidationError("A Chart Of Accounts document already exists for this client.")
+
         # Check file extension
         ext = os.path.splitext(value.name)[1].lower()
         if ext not in ['.csv', '.xls', '.xlsx']:
@@ -170,17 +174,115 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_gl_history(self, value):
         """Validate GL History file type"""
         import os
+
+        if self.instance.documents.filter(document_type='gl_history').exists():
+            raise serializers.ValidationError("A Ledger History document already exists for this client.")
+        
         ext = os.path.splitext(value.name)[1].lower()
         if ext not in ['.csv', '.xls', '.xlsx']:
             raise serializers.ValidationError("GL History file must be CSV or Excel format (.csv, .xls, .xlsx)")
+        
+        try:
+            # Save uploaded file to a temporary location for validation
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                for chunk in value.chunks():
+                    temp_file.write(chunk)
+                temp_file_path = temp_file.name
+            
+            # Reset file pointer after reading
+            value.seek(0)
+            
+            try:
+                # Read file to check columns
+                if ext == '.csv':
+                    df = pd.read_csv(temp_file_path)
+                else:
+                    df = pd.read_excel(temp_file_path)
+                
+                # Normalize column names
+                df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+                
+                # Check for required columns
+                required_columns = ['description', 'gl_code', 'gl_description']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    raise serializers.ValidationError(
+                        f"Required columns are: Description, GL Code, GL Description"
+                    )
+                
+                # Check if file has data
+                if len(df) == 0:
+                    raise serializers.ValidationError("The file is empty. Please upload a file with data.")
+                
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    
+        except serializers.ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error validating Ledger history file structure: {e}")
+            raise serializers.ValidationError(f"Error reading file: {str(e)}")
+
         return value
 
     def validate_vendor_list(self, value):
         """Validate Vendor List file type"""
         import os
+
+        if self.instance.documents.filter(document_type='vendor_list').exists():
+            raise serializers.ValidationError("A Vendor List document already exists for this client.")
+
         ext = os.path.splitext(value.name)[1].lower()
         if ext not in ['.csv', '.xls', '.xlsx']:
             raise serializers.ValidationError("Vendor List file must be CSV or Excel format (.csv, .xls, .xlsx)")
+        try:
+            # Save uploaded file to a temporary location for validation
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                for chunk in value.chunks():
+                    temp_file.write(chunk)
+                temp_file_path = temp_file.name
+            
+            # Reset file pointer after reading
+            value.seek(0)
+            
+            try:
+                # Read file to check columns
+                if ext == '.csv':
+                    df = pd.read_csv(temp_file_path)
+                else:
+                    df = pd.read_excel(temp_file_path)
+                
+                # Normalize column names
+                df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+                
+                # Check for required columns
+                required_columns = ['vendor_name','gl_description','gl_code']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    raise serializers.ValidationError(
+                        f"Required columns are: Description, GL Code, GL Description"
+                    )
+                
+                # Check if file has data
+                if len(df) == 0:
+                    raise serializers.ValidationError("The file is empty. Please upload a file with data.")
+                
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    
+        except serializers.ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error validating Vendor List file structure: {e}")
+            raise serializers.ValidationError(f"Error reading file: {str(e)}")
+
+
         return value
 
     def validate(self, attrs):
@@ -218,7 +320,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             "non_field_errors": [f"A file of type '{doc_type}' already exists for this client."]
                         })
         return data
-
 
     def create(self, validated_data):
         # Extract contact data
@@ -281,7 +382,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 uploaded_by=request_user
                             )
                             created_documents.append(document)
-                            processor = ClientDocumentProcessor(
+                            client_doc_processor = ClientDocumentProcessor(
                                 customer=client.customer, 
                                 uploaded_by=request_user,
                                 client=client
@@ -294,7 +395,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                     temp_file.write(azure_file.read())
                                     temp_file_path = temp_file.name
                                 try:
-                                    result = processor.process_document(temp_file_path, doc_type)
+                                    result = client_doc_processor.process_document(temp_file_path, doc_type)
                                 except Exception as e:
                                     # Clean up temp file
                                     if os.path.exists(temp_file_path):
@@ -303,6 +404,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 finally:
                                     if os.path.exists(temp_file_path):
                                         os.remove(temp_file_path)
+
                             if not result['success']:
                                 # Clean up uploaded files
                                 from django.core.files.storage import default_storage
@@ -352,7 +454,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
+                logger.error(exc_type, fname, exc_tb.tb_lineno)
                 # Clean up uploaded files
                 from django.core.files.storage import default_storage
                 for doc in created_documents:
@@ -375,7 +477,11 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         - Only one contact allowed per client (update existing or create new)
         - Documents: Allow adding missing documents, error if document type already exists
         """
-        contacts_data = validated_data.pop('contacts', [])
+        contact_data = {
+            'contact_name': validated_data.pop('contact_name'),
+            'contact_email': validated_data.pop('contact_email'),
+            'contact_phone': validated_data.pop('contact_phone')
+        }
         documents = {
             'chart_of_account': validated_data.pop('chart_of_account', None),
             'gl_history': validated_data.pop('gl_history', None),
@@ -396,29 +502,25 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 instance.save()
 
                 # Handle contacts update (only one contact allowed)
-                if contacts_data:
-                    if len(contacts_data) > 1:
-                        raise serializers.ValidationError("Only one contact is allowed per client.")
-                    
-                    contact_data = contacts_data[0]
-                    existing_contact = DimAICContact.objects.filter(client_id=instance).first()
-                    
-                    if existing_contact:
-                        # Update existing contact
-                        existing_contact.contact_name = contact_data.get('contact_name', existing_contact.contact_name)
-                        existing_contact.contact_email = contact_data.get('contact_email', existing_contact.contact_email)
-                        existing_contact.contact_phone = contact_data.get('contact_phone', existing_contact.contact_phone)
-                        existing_contact.save()
-                        logger.error(f"Updated existing contact for client {instance.client_id}")
-                    else:
-                        # Create new contact
-                        DimAICContact.objects.create(
-                            client_id=instance,
-                            contact_name=contact_data['contact_name'],
-                            contact_email=contact_data['contact_email'],
-                            contact_phone=contact_data['contact_phone']
-                        )
-                        logger.error(f"Created new contact for client {instance.client_id}")
+                
+                existing_contact = DimAICContact.objects.filter(client_id=instance).first()
+
+                if existing_contact:
+                    # Update existing contact
+                    existing_contact.contact_name = contact_data.get('contact_name', existing_contact.contact_name)
+                    existing_contact.contact_email = contact_data.get('contact_email', existing_contact.contact_email)
+                    existing_contact.contact_phone = contact_data.get('contact_phone', existing_contact.contact_phone)
+                    existing_contact.save()
+                    logger.error(f"Updated existing contact for client {instance.client_id}")
+                else:
+                    # Create new contact
+                    DimAICContact.objects.create(
+                        client_id=instance,
+                        contact_name=contact_data['contact_name'],
+                        contact_email=contact_data['contact_email'],
+                        contact_phone=contact_data['contact_phone']
+                    )
+                    logger.error(f"Created new contact for client {instance.client_id}")
 
                 # Handle documents update
                 created_documents = []
@@ -436,7 +538,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                         
                         if existing_doc:
                             raise serializers.ValidationError({
-                                doc_type: [f"A document of type '{doc_type}' already exists for this client. Please delete the existing document first if you want to replace it."]
+                                doc_type: [f"A document of type '{doc_type}' already exists for this client."]
                             })
                         
                         try:
@@ -451,7 +553,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             created_documents.append(document)
                             
                             # Process the document
-                            processor = ClientDocumentProcessor(
+                            client_doc_processor = ClientDocumentProcessor(
                                 customer=instance.customer,
                                 uploaded_by=request_user,
                                 client=instance
@@ -469,7 +571,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                     temp_file_path = temp_file.name
                                 
                                 try:
-                                    result = processor.process_document(temp_file_path, doc_type)
+                                    result = client_doc_processor.process_document(temp_file_path, doc_type)
                                 finally:
                                     # Clean up temporary file
                                     if os.path.exists(temp_file_path):
@@ -502,7 +604,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
+                logger.error(exc_type, fname, exc_tb.tb_lineno)
                 raise
 
         return instance

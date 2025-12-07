@@ -196,7 +196,7 @@ class AssistantService:
             return response
             
         except Exception as e:
-            print(f"Error in processing: {e}")
+            logger.error(f"Error in processing: {e}")
             return None
     
     @staticmethod

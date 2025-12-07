@@ -197,8 +197,9 @@ def process_uploaded_document(
         processor = MonthlyAccountingDocumentProcessor(doc, config)
         processor.set_doc_processor(doc.doc_type)
         start_time = time.time()
-        result = processor.start_process(file_bytes, md=True)
-        print(f"Document processing time: {time.time() - start_time} seconds")
+        special_rules = doc.input_file_snapshot.description if doc.input_file_snapshot else ""
+        result = processor.start_process(file_bytes, md=True, special_rules=special_rules)
+        logger.error(f"Document processing time: {time.time() - start_time} seconds")
         processor.__release_resources__()
 
         if doc.doc_type in ['bank_statement', 'credit_card']:
@@ -310,6 +311,8 @@ def classify_monthly_document_gl_accounts(document_id: str):
         # Get the document
         doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
         
+        input_file_classsifcation_rules = doc.input_file_snapshot.description
+        
         # First, enrich check transaction descriptions with payee and memo info
         logger.error(f"Enriching check descriptions for document {document_id}")
         enrich_check_transaction_descriptions(document_id)
@@ -341,7 +344,8 @@ def classify_monthly_document_gl_accounts(document_id: str):
 
                     classifier_assistant = GLClassifier(
                         assistant_id=assistant_id,
-                        vector_store_ids=vector_store_ids
+                        vector_store_ids=vector_store_ids,
+                        special_rules=input_file_classsifcation_rules
                     )
                     classified_pages_data = classifier_assistant.classify(document_id) or {}
                 except Exception as e:

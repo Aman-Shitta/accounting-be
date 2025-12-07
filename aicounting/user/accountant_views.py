@@ -12,6 +12,11 @@ from .constants import AccountantInviteViewMessages, AccountantListViewMessages
 from authentication.permissions import IsCustomer
 from authentication.authenticate import JSONWebTokenAuthentication
 
+
+import logging
+logger = logging.getLogger(__name__)
+
+
 class AzureAccountantInviteView(GenericAPIView):
     """
     Invite an accountant to Azure AD B2C and create a local accountant record in non-verified state.
@@ -75,7 +80,7 @@ class AzureAccountantInviteView(GenericAPIView):
         )
 
         if not invite_result.get("success"):
-            print("[DEBUG] Azure invite failed:", invite_result.get("error"))
+            logger.error("[DEBUG] Azure invite failed:", invite_result.get("error"))
             # If Azure invite fails, we should clean up the created accountant
             accountant.system_user.delete()
             return create_api_response(

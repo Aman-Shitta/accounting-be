@@ -10,6 +10,10 @@ from user.constants import CustomerInviteViewMessages
 from authentication.permissions import IsSuperUser
 from authentication.authenticate import AdminJWTAuthentication
 
+
+import logging
+logger = logging.getLogger(__name__)
+
 class AzureInviteView(GenericAPIView):
     """
     Invite a customer to Azure AD B2C and create a local customer record in non-verified state.
@@ -82,7 +86,7 @@ class AzureInviteView(GenericAPIView):
         )
 
         if not invite_result.get("success"):
-            print("[DEBUG] Azure invite failed:", invite_result.get("error"))
+            logger.error("[DEBUG] Azure invite failed:", invite_result.get("error"))
             # If Azure invite fails, we should clean up the created customer
             customer.system_user.delete()
             return create_api_response(
