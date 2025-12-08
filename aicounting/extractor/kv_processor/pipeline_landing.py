@@ -230,7 +230,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         )
         return parse_response
 
-    def process_document(self, file_bytes: bytes, mime_type: str = None, md: bool = False) -> Dict[str, any]:
+    def process_document(self, file_bytes: bytes, mime_type: str = None, md: bool = False, special_rules="") -> Dict[str, any]:
         """
         Process the sales document by extracting key-value attributes from each page.
         
