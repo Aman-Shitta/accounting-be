@@ -82,7 +82,7 @@ class ClientCreateView(generics.GenericAPIView):
             import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(exc_type, fname, exc_tb.tb_lineno)
+            print(exc_type, fname, exc_tb.tb_lineno)
 
             logger.error(f"Unexpected error during client creation: {str(e)}")
             return create_api_response(
