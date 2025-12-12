@@ -1123,14 +1123,14 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 id=line_item_id, 
                 document=document
             )
-            item_type = 'bank'
+            item_type = 'banking_type'
         else:
             line_item = get_object_or_404(
                 MonthlyDocumentAttributeItem,
                 id=line_item_id,
                 document=document
             )
-            item_type = 'attribute'
+            item_type = 'kv_type'
         
         return line_item, item_type, None
 
@@ -1166,7 +1166,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 return error_response
             
             # Use appropriate serializer based on item type
-            if item_type == 'bank':
+            if item_type == 'banking_type':
                 serializer = MonthlyDocumentBankLineItemSerializer(
                     line_item, 
                     data=request.data, 
@@ -1185,7 +1185,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 updated_item = serializer.save()
                 
                 # Use appropriate output serializer
-                if item_type == 'bank':
+                if item_type == 'banking_type':
                     output_serializer = MonthlyDocumentBankLineItemSerializer(
                         updated_item, context={'request': request}
                     )
