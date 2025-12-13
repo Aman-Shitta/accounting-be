@@ -56,7 +56,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         max_length=15, 
         help_text="Contact person's 10-digit phone number. Format: XXX-XXX-XXXX or XXXXXXXXXX (e.g., 204-456-7896 or 2044567896)"
     )
-    
+
     # Define the expected document types
     chart_of_account = serializers.FileField(required=True, help_text="Chart Of Accounts file (CSV/Excel)")
     gl_history = serializers.FileField(required=False, help_text="General Ledger History file (CSV/Excel)")
@@ -116,8 +116,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_chart_of_account(self, value):
         """Validate COA file type and structure"""
         
-        if self.instance.documents.filter(document_type='chart_of_account').exists():
-            raise serializers.ValidationError("A Chart Of Accounts document already exists for this client.")
+        if self.instance and self.instance.documents.filter(document_type='chart_of_account').exists():
+                raise serializers.ValidationError("A Chart Of Accounts document already exists for this client.")
 
         # Check file extension
         ext = os.path.splitext(value.name)[1].lower()
@@ -175,7 +175,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         """Validate GL History file type"""
         import os
 
-        if self.instance.documents.filter(document_type='gl_history').exists():
+        if self.instance and self.instance.documents.filter(document_type='gl_history').exists():
             raise serializers.ValidationError("A Ledger History document already exists for this client.")
         
         ext = os.path.splitext(value.name)[1].lower()
@@ -232,7 +232,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         """Validate Vendor List file type"""
         import os
 
-        if self.instance.documents.filter(document_type='vendor_list').exists():
+        if self.instance and self.instance.documents.filter(document_type='vendor_list').exists():
             raise serializers.ValidationError("A Vendor List document already exists for this client.")
 
         ext = os.path.splitext(value.name)[1].lower()
