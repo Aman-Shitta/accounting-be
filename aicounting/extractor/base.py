@@ -21,19 +21,8 @@ class BaseDocumentProcessor:
     def __init__(self, config, doc):
         self.ai_client = genai.Client(api_key=self.api_key)
         self.document = doc
-        self.doc_config = config
         self.doc_type: str = config.doc_type
         self.prompt = prepare_prompt(config)
-        
-
-    def _process_gemini_output(self, data: dict) -> dict:
-        data["extra_info"] = "Processed by LLM"
-        meta = data.get("meta", {})
-        if isinstance(meta, dict) and isinstance(meta.get("pages"), (int, float)):
-            if meta["pages"] != 1:
-                logger.error("Warning: Expected single page output, but got multiple pages in Gemini response.")
-                data["warning"] = "Expected single page output, but got multiple pages in Gemini response."
-        return data
     
     def _generate_content_stream(self, **kwargs):
         model = kwargs.get("model", None)
