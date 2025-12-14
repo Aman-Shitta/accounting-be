@@ -590,7 +590,8 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             amount=amount,
             transaction_type=transaction_type,
             gl_account=gl_account,
-            offset_gl_account=default_offset_gl
+            offset_gl_account=default_offset_gl,
+            modified_gl=True  # Mark GL as modified on creation
         )
         return item
 
@@ -611,6 +612,7 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             instance.description = validated_data['description']
         if 'gl_account_id' in validated_data:
             instance.gl_account = validated_data['gl_account_id']
+            instance.modified_gl = True  # Mark GL as modified
 
         # Update amount and transaction type if provided
         if debit is not None or credit is not None:

@@ -163,6 +163,12 @@ class MonthlyDocumentBankLineItem(models.Model):
         help_text="Offset GL account for double-entry booking"
     )
     
+    modified_gl = models.BooleanField(
+        default=False,
+        verbose_name="Modified GL",
+        help_text="Whether the GL account was manually modified after classification"
+    )
+
     # Check-related fields (for check transactions)
     is_check_transaction = models.BooleanField(
         default=False,
