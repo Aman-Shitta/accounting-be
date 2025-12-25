@@ -21,10 +21,9 @@ from django.core.files.base import ContentFile
 from django.conf import settings
 from django.db.models import Prefetch
 
-from google import genai
 from google.genai import types
 
-from extractor.base import JSONCleaner
+from extractor.gemini_service import GeminiMixin, JSONHelper
 
 from user.models import DimAICClient, DimAICAssistant, DimAICClientDocument
 from account.models import MonthlyDocumentBankLineItem, MonthlyAccountingDocument
@@ -40,7 +39,7 @@ VECTOR_STORE_FILE_NAMES = {
 }
 
 
-class GeminiGLCondenser:
+class GeminiGLCondenser(GeminiMixin):
     """
     Service to condense GL classification mappings using Gemini.
     Takes a list of description/gl_code/gl_description and returns condensed patterns.
@@ -67,31 +66,30 @@ class GeminiGLCondenser:
     Return the condensed list in JSON format.
     """
 
-    RESPONSE_SCHEMA = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "description": "Condensed description pattern (use * for wildcards)"
-                },
-                "gl_code": {
-                    "type": "string",
-                    "description": "GL account code"
-                },
-                "gl_description": {
-                    "type": "string",
-                    "description": "GL account description/name"
-                }
+    RESPONSE_SCHEMA = types.Schema(
+        type=types.Type.ARRAY,
+        items=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "description": types.Schema(
+                    type=types.Type.STRING,
+                    description="Condensed description pattern (use * for wildcards)"
+                ),
+                "gl_code": types.Schema(
+                    type=types.Type.STRING,
+                    description="GL account code"
+                ),
+                "gl_description": types.Schema(
+                    type=types.Type.STRING,
+                    description="GL account description/name"
+                )
             },
-            "required": ["description", "gl_code", "gl_description"]
-        }
-    }
+            required=["description", "gl_code", "gl_description"]
+        )
+    )
 
     def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model = settings.GEMINI_MODEL
+        self.init_gemini()
 
     def condense(self, gl_mappings: list) -> list:
         """
@@ -113,32 +111,22 @@ class GeminiGLCondenser:
 
             Please analyze these transactions and return a condensed list of patterns."""
 
-            gemini_config: types.GenerateContentConfigDict = {
-                "response_schema": self.RESPONSE_SCHEMA,
-                "response_mime_type": "application/json",
-                "temperature": 0.2,
-                "system_instruction": [self.CONDENSATION_PROMPT]
-            }
-
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=[content],
-                config=gemini_config
+            # Use mixin's config builder
+            config = self.get_gemini_config(
+                temperature=0.2,
+                response_schema=self.RESPONSE_SCHEMA,
+                response_mime_type="application/json",
+                system_instruction=[self.CONDENSATION_PROMPT],
             )
 
-            raw = response.text
+            # Use mixin's generate method
+            raw = self.gemini_generate(
+                contents=[content],
+                config=config,
+            )
 
-            # Parse the response
-            raw_json = JSONCleaner.updated_json_repair(raw)
-
-            try:
-                result = json.loads(raw_json)
-            except json.JSONDecodeError as e:
-                import sys
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
-                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
-                result = {}
+            # Use JSONHelper for parsing
+            result = JSONHelper.parse_json(raw, default=[])
             return result
 
         except Exception as e:

@@ -324,7 +324,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             for document in documents:
                 input_documents.append({
                     "id": document.id,
-                    "doc_id": str(document.doc_id),
+                    "doc_id": str(document.id),
                     "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                     "doc_type": document.doc_type,
                     "doc_type_display": document.get_doc_type_display(),
@@ -637,7 +637,7 @@ class MonthlyAccountingDocumentStartExtractionView(generics.GenericAPIView):
                 status.HTTP_200_OK,
                 "Extraction started successfully.",
                 data={
-                    "doc_uuid": str(document.doc_id),
+                    "doc_uuid": str(document.id),
                     "status": "extracting"
                 }
             )
@@ -715,7 +715,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.uploaded_by = request.user
             document.save()
             
-            logger.error(f"Starting processing for document {document.doc_id}")
+            logger.error(f"Starting processing for document {document.id} of type {document.doc_type}.")
 
             # Trigger markdown pre-processing for bank statements and credit cards
             if document.doc_type in ['bank_statement', 'credit_card']:
@@ -756,7 +756,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 logger.error(f"Document type {document.doc_type} does not require processing.")
 
             data = {
-                "doc_uuid": str(document.doc_id),
+                "doc_id": str(document.id),
                 "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None, 
                 "id": document.id,
                 "doc_type": document.doc_type,
@@ -923,9 +923,42 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 # Use BankLineItem for bank statements and credit cards
                 items = MonthlyDocumentBankLineItem.objects.filter(
                     document=document
-                ).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
+                ).select_related(
+                    'gl_account', 
+                    'offset_gl_account',
+                    'rectification'  # Include rectification data
+                ).order_by('page_number', 'line_number')
                 
                 total_count = items.count()
+                
+                # Get default offset GL account from input file snapshot
+                default_offset_gl = None
+                try:
+                    if document.input_file_snapshot:
+                        bank_attributes = document.input_file_snapshot.attribute_snapshots.all()
+                        if bank_attributes.exists():
+                            default_offset_gl_obj = bank_attributes.first().offset_gl_account
+                            if default_offset_gl_obj:
+                                from .monthly_document_line_item_serializers import GLAccountNestedSerializer
+                                default_offset_gl = GLAccountNestedSerializer(default_offset_gl_obj).data
+                except Exception as e:
+                    logger.warning(f"Could not retrieve default offset GL account: {e}")
+                
+                # Count items needing rectification
+                rectification_stats = {
+                    'total_items_needing_review': 0,
+                    'high_confidence_corrections': 0,
+                    'pending_review': 0
+                }
+                for item in items:
+                    if hasattr(item, 'rectification'):
+                        rect = item.rectification
+                        if rect.needs_correction:
+                            rectification_stats['total_items_needing_review'] += 1
+                            if rect.rectified_confidence and rect.rectified_confidence >= 0.85:
+                                rectification_stats['high_confidence_corrections'] += 1
+                            if rect.review_status == 'pending':
+                                rectification_stats['pending_review'] += 1
             else:
                 # Use AttributeItem for other document types (like sales)
                 attribute_items = MonthlyDocumentAttributeItem.objects.filter(
@@ -939,23 +972,35 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                     items.append(item)
                 
                 total_count = len(items)
+                default_offset_gl = None
+                rectification_stats = None
             
             serializer = MonthlyDocumentLineItemSerializer(items, many=True, context={'request': request})
+            
+            response_data = {
+                'document_id': document.id,
+                "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
+                'doc_uuid': str(document.id),
+                'doc_type': document.doc_type,
+                'total_line_items': total_count,
+                'document': document.file_url if document.file else None,
+                'line_items': serializer.data,
+                'status': document.status,
+                'control_items': document.control_item
+            }
+            
+            # Add default offset GL account for bank statements and credit cards
+            if default_offset_gl:
+                response_data['default_offset_gl_account'] = default_offset_gl
+            
+            # Add rectification statistics if available
+            if rectification_stats:
+                response_data['rectification_stats'] = rectification_stats
             
             return create_api_response(
                 status.HTTP_200_OK, 
                 "Line items retrieved successfully.", 
-                data={
-                    'document_id': document.id,
-                    "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
-                    'doc_uuid': str(document.doc_id),
-                    'doc_type': document.doc_type,
-                    'total_line_items': total_count,
-                    'document': document.file_url if document.file else None,
-                    'line_items': serializer.data,
-                    'status': document.status,
-                    'control_items': document.control_item
-                }
+                data=response_data
             )
         except Exception as e:
             logger.error(f"Error retrieving line items for document {document_id}: {str(e)}")

@@ -64,11 +64,57 @@ class MsalConf:
         
         return public_key
     
+    
     def refresh_access_token(self, refresh_token):
         """
-        This method is used to refresh an access token using a refresh token
+        Refresh an access token using a refresh token.
+        
+        Args:
+            refresh_token: The stored refresh token from the database
+            
+        Returns:
+            dict with new tokens or None if refresh failed
+            {
+                'id_token': str,
+                'refresh_token': str,  # New refresh token (tokens rotate)
+                'expires_in': int
+            }
         """
-        pass
+        if not refresh_token:
+            logger.warning("No refresh token provided")
+            return None
+        
+        try:
+            # MSAL doesn't have a direct refresh_token method in ConfidentialClientApplication
+            # We need to use the OAuth2 token endpoint directly
+            token_url = f"{self.AUTHORITY}/oauth2/v2.0/token"
+            
+            data = {
+                'client_id': self.CLIENT_ID,
+                'client_secret': self.CLIENT_SECRET,
+                'refresh_token': refresh_token,
+                'grant_type': 'refresh_token',
+                'scope': ' '.join(self.SCOPE) + ' offline_access openid profile'
+            }
+            
+            response = requests.post(token_url, data=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info("Successfully refreshed access token")
+                return {
+                    'id_token': result.get('id_token'),
+                    'access_token': result.get('access_token'),
+                    'refresh_token': result.get('refresh_token'),  # New rotated refresh token
+                    'expires_in': result.get('expires_in')
+                }
+            else:
+                logger.error(f"Token refresh failed: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error refreshing token: {str(e)}")
+            return None
 
 class MsalGraphConf(MsalConf):
     """

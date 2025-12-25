@@ -42,6 +42,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         self.pages_data = {}
         self.control_totals = {}
         self.page_metadata = {}
+        self.rectifier = self.get_rectifier()
         
         
         # Initialize LandingAI client
@@ -58,6 +59,10 @@ class DocumentProcessor(BaseDocumentProcessor):
         self.transaction_schema = pydantic_to_json_schema(TransactionList)
         self.check_schema = pydantic_to_json_schema(CheckList)
         self.summary_schema = pydantic_to_json_schema(StatementSummary)
+
+    def get_rectifier(self):
+        from extractor.rectifier.rectify import DocumentRectifier
+        return DocumentRectifier()
 
     def __generate_temp_file__(self, bytes):
         #  LandingAI parse expects a file path. We'll use a temp file.
@@ -112,6 +117,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                 }
 
                 logger.error(f"[DEBUG] Page {page_num} types names: {page_types_names}")
+                check_key = None
 
                 # 3. Extract Data based on classification
                 if "transaction_table" in page_types_names:
@@ -138,6 +144,15 @@ class DocumentProcessor(BaseDocumentProcessor):
                     )
                     self.control_totals = summary_response.extraction
                 
+                # Rectify extracted data using AI visual verification
+                page_result = self.rectifier.rectify_document(
+                    extracted_data=page_result,
+                    page_bytes=page_bytes,
+                    config={
+                        'check_key':check_key
+                    }
+                )
+
                 self.page_data.append({f"page_{page_num}": page_result})
                     
             except Exception as e:
@@ -261,6 +276,10 @@ class DocumentProcessor(BaseDocumentProcessor):
                             continue
 
                     line_item_obj = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    
+                    # Save rectification data if present
+                    self._save_rectification(line_item_obj, line_item)
+                    
                     if line_item_obj.is_check_transaction and line_item_obj.check_number:
                         checks_linked[line_item_obj.check_number] = line_item_obj
 
@@ -493,4 +512,62 @@ class DocumentProcessor(BaseDocumentProcessor):
             check_item.related_line_item = new_line_item
             check_item.save()
             logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+    
+    def _save_rectification(
+        self, 
+        line_item_obj: MonthlyDocumentBankLineItem, 
+        line_data: Dict
+    ) -> bool:
+        """
+        Save rectification data directly to the line item if AI suggested corrections.
+        
+        Args:
+            line_item_obj: The saved line item instance
+            line_data: The raw line item data with rectification fields
+            
+        Returns:
+            True if rectification was applied, False otherwise
+        """
+        # Check if rectification data exists
+        needs_correction = line_data.get('needs_correction', False)
+        rectified_confidence = line_data.get('rectified_confidence')
+        
+        # Only apply rectification if AI flagged it as needing correction
+        if not needs_correction or not rectified_confidence:
+            return False
+        
+        rectified_debit = line_data.get('rectified_debit_amount')
+        rectified_credit = line_data.get('rectified_credit_amount')
+        reasoning = line_data.get('rectification_reasoning', '')
+        
+        try:
+            # Check if there's an actual change
+            if line_item_obj.debit_amount == rectified_debit and line_item_obj.credit_amount == rectified_credit:
+                # No actual change in amounts, skip rectification
+                return False
+
+            # Update line item with rectification data
+            line_item_obj.rectified_debit_amount = rectified_debit
+            line_item_obj.rectified_credit_amount = rectified_credit
+            line_item_obj.is_rectified = True
+            line_item_obj.rectified_confidence = rectified_confidence
+            line_item_obj.rectification_reasoning = reasoning
+            line_item_obj.save(update_fields=[
+                'rectified_debit_amount', 
+                'rectified_credit_amount', 
+                'is_rectified',
+                'rectified_confidence',
+                'rectification_reasoning'
+            ])
+            
+            logger.info(
+                f"Applied rectification to line item {line_item_obj.id}: "
+                f"Confidence={rectified_confidence}, Debit={rectified_debit}, Credit={rectified_credit}"
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save rectification for line item {line_item_obj.id}: {e}")
+            return False
 

@@ -52,7 +52,7 @@ def preprocess_document_markdown(doc_id: str):
             doc.save()
             return {"status": "skipped", "reason": "Document type doesn't require markdown"}
         
-        logger.error(f"Starting markdown pre-processing for document {doc.doc_id}")
+        logger.error(f"Starting markdown pre-processing for document {doc.id}")
         doc.status = 'pre_processing'
         doc.save()
         
@@ -78,7 +78,7 @@ def preprocess_document_markdown(doc_id: str):
         )
         
         # Prepare storage paths
-        doc_folder = f"monthly_accounting/{doc.monthly_accounting.client_id}/{doc.monthly_accounting.id}/documents/{doc.doc_id}"
+        doc_folder = f"monthly_accounting/{doc.monthly_accounting.client_id}/{doc.monthly_accounting.id}/documents/{doc.id}"
         markdown_folder = f"{doc_folder}/markdown"
         
         # Generate markdown for each page
@@ -137,7 +137,7 @@ def preprocess_document_markdown(doc_id: str):
         doc.status = 'pre_processed'
         doc.save()
         
-        logger.error(f"Markdown pre-processing complete for document {doc.doc_id}")
+        logger.error(f"Markdown pre-processing complete for document {doc.id}")
         return {
             "status": "success",
             "total_pages": len(page_bytes_list),
@@ -175,7 +175,7 @@ def process_uploaded_document(
         config = Configuration(**config_params)
         doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
         if not doc:
-            logger.error(f"Documentdoes not exist: {doc_id} invalid id")
+            logger.error(f"Document does not exist: {doc_id} invalid id")
             return 
 
         # Check if file exists
@@ -207,7 +207,7 @@ def process_uploaded_document(
             doc.status = "classifying"
             doc.save()
             # Trigger GL account classification task
-            classify_monthly_document_gl_accounts.delay(str(doc.doc_id))
+            classify_monthly_document_gl_accounts.delay(str(doc.id))
         else:
             doc.status = "classified"
             doc.save()
@@ -215,17 +215,17 @@ def process_uploaded_document(
         
         
         output_json = json.dumps(result, indent=2, default=str)
-        output_path = f"processed_output/{doc.doc_id}/processing_result.json"
+        output_path = f"processed_output/{doc.id}/processing_result.json"
         default_storage.save(output_path, ContentFile(output_json.encode('utf-8')))
         
-        logger.error(f"Document {doc.doc_id} processed successfully: {result['processing_stats']}")
+        logger.error(f"Document {doc.id} processed successfully: {result['processing_stats']}")
 
 
     except Exception as e:
         if doc:
             doc.status = "failed"
             doc.save()
-            logger.error(f"Error processing document {doc.doc_id}: {str(e)}")
+            logger.error(f"Error processing document {doc.id}: {str(e)}")
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
@@ -244,7 +244,7 @@ def enrich_check_transaction_descriptions(document_id: str) -> int:
         Number of descriptions enriched
     """
     try:
-        doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
+        doc = MonthlyAccountingDocument.objects.get(id=document_id)
         enriched_count = 0
         
         # Get all check items with related line items
@@ -309,7 +309,7 @@ def classify_monthly_document_gl_accounts(document_id: str):
     """
     try:
         # Get the document
-        doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
+        doc = MonthlyAccountingDocument.objects.get(id=document_id)
         
         input_file_classsifcation_rules = doc.input_file_snapshot.description
         

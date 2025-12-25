@@ -1,17 +1,30 @@
 
 import os, sys
 import json
-from extractor.base import JSONCleaner
 
 from google.genai import types
+
+from extractor.gemini_service import GeminiService, JSONHelper
 
 
 import logging
 logger = logging.getLogger(__name__)
 
 class PageClassifier:
+    """
+    Page classifier for bank statements using Gemini AI.
+    
+    Classifies bank statement pages into categories like transaction tables,
+    check images, summary tables, etc.
+    """
     
     def __init__(self, processor):
+        """
+        Initialize the classifier with a document processor.
+        
+        Args:
+            processor: A processor instance with Gemini capabilities (e.g., BaseDocumentProcessor)
+        """
         self.processor = processor
         self.schema = types.Schema(
             type=types.Type.OBJECT,
@@ -66,17 +79,17 @@ class PageClassifier:
         Example: {"page_types": [{"type": "transaction_table", "confidence": 0.95}, {"type": "summary_table", "confidence": 0.85}]}
         """
         
-        # Prefer markdown over PDF for classification
+        # Use service helpers to create content parts
         if md_bytes:
             logger.error(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
             content = [
-                types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"),
+                GeminiService.create_markdown_part(md_bytes),
                 "Analyze the above markdown content from a bank statement page."
             ]
         elif page_bytes and mime_type:
             logger.error(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
             content = [
-                types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
+                GeminiService.create_part_from_bytes(page_bytes, mime_type),
                 "Analyze the above PDF page content from a bank statement."
             ]
         else:
@@ -104,28 +117,16 @@ class PageClassifier:
                 
             logger.error(f"[DEBUG] Classification raw response: {raw[:200]}...")
             
-            try:
-                clean_json_str = JSONCleaner.updated_json_repair(raw)
-                try:
-                    parsed = json.loads(clean_json_str)
-                except Exception:
-                    fallback_json = JSONCleaner.extract_first_json(clean_json_str)
-                    parsed = json.loads(fallback_json)
-                
-                page_types = parsed.get("page_types", [{"type": "other", "confidence": 0.1337}])
-                elements = parsed.get("detected_elements", [])
-                
-                if elements:
-                    logger.error(f"[DEBUG] Detected elements: {elements}")
-                
-                return page_types
-                
-            except Exception as e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
-                logger.error(f"[ERROR] Raw response: {raw}")
-                return ["other"]
+            # Use JSONHelper for robust parsing
+            parsed = JSONHelper.parse_json(raw, default={"page_types": [{"type": "other", "confidence": 0.1337}]})
+            
+            page_types = parsed.get("page_types", [{"type": "other", "confidence": 0.1337}])
+            elements = parsed.get("detected_elements", [])
+            
+            if elements:
+                logger.error(f"[DEBUG] Detected elements: {elements}")
+            
+            return page_types
                 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()

@@ -82,14 +82,14 @@ class MonthlyAccountingDocumentProcessor:
             self.monthly_document.status = "extracted"
             self.monthly_document.save()
             
-            logger.error(f"Document {self.monthly_document.doc_id} processed successfully")
+            logger.error(f"Document {self.monthly_document.id} processed successfully")
             
             return return_data
             
         except Exception as e:
             self.monthly_document.status = "failed"
             self.monthly_document.save()
-            logger.error(f"Failed to process document {self.monthly_document.doc_id}: {str(e)}")
+            logger.error(f"Failed to process document {self.monthly_document.id}: {str(e)}")
             raise
     
     def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
@@ -127,66 +127,3 @@ class MonthlyAccountingDocumentProcessor:
         MonthlyDocumentBankCheckItem.objects.filter(document=self.monthly_document).delete()
 
 
-
-    
-class MonthlyDocumentBatchProcessor:
-    """
-    Batch processor for multiple MonthlyAccountingDocument instances.
-    Useful for processing multiple documents in a monthly accounting session.
-    """
-    
-    def __init__(self, config: Configuration):
-        self.config = config
-        logger = logging.getLogger(__name__)
-    
-    def process_documents(self, documents: List[MonthlyAccountingDocument]) -> Dict[str, Any]:
-        """
-        Process multiple documents in batch.
-        
-        Args:
-            documents: List of MonthlyAccountingDocument instances
-            
-        Returns:
-            Dict containing batch processing results
-        """
-        results = {
-            "successful": [],
-            "failed": [],
-            "total_processed": 0,
-            "total_failed": 0
-        }
-        
-        for document in documents:
-            try:
-                if not document.file:
-                    logger.error(f"Document {document.doc_id} has no file attached")
-                    results["failed"].append({
-                        "document_id": str(document.doc_id),
-                        "error": "No file attached"
-                    })
-                    continue
-                
-                # Read file content
-                with document.file.open('rb') as f:
-                    file_bytes = f.read()
-                
-                # Process document
-                processor = MonthlyAccountingDocumentProcessor(document, self.config)
-                result = processor.process_document(file_bytes)
-                
-                results["successful"].append({
-                    "document_id": str(document.doc_id),
-                    "result": result
-                })
-                results["total_processed"] += 1
-                
-            except Exception as e:
-                logger.error(f"Failed to process document {document.doc_id}: {str(e)}")
-                results["failed"].append({
-                    "document_id": str(document.doc_id),
-                    "error": str(e)
-                })
-                results["total_failed"] += 1
-        
-        logger.error(f"Batch processing completed: {results['total_processed']} successful, {results['total_failed']} failed")
-        return results
