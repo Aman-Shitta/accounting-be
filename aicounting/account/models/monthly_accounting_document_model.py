@@ -36,14 +36,6 @@ class MonthlyAccountingDocument(models.Model):
         ('misc', 'Misc'),
     ]
     
-    doc_id = models.UUIDField(
-        default=uuid.uuid4,
-        unique=True,
-        editable=False,
-        verbose_name="Document UUID",
-        help_text="Unique identifier for this document"
-    )
-    
     monthly_accounting = models.ForeignKey(
         FactAICMonthlyAccounting,
         on_delete=models.CASCADE,
@@ -126,7 +118,7 @@ class MonthlyAccountingDocument(models.Model):
         unique_together = ('monthly_accounting', 'input_file_snapshot')
     
     def __str__(self):
-        return f"Document {self.doc_id} - {self.get_doc_type_display()} ({self.status})"
+        return f"Document {self.id} - {self.get_doc_type_display()} ({self.status})"
     
     @property
     def file_url(self):

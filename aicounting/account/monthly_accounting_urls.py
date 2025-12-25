@@ -5,7 +5,7 @@ from .monthly_accounting_views import (
     MonthlyAccountingCreateView,
     MonthlyAccountingDetailView,
     MonthlyAccountingDocumentUploadView,
-    MonthlyAccountingDocumentStartExtractionView,
+    # MonthlyAccountingDocumentStartExtractionView,
     MonthlyAccountingDocumentLineItemListCreateView,
     MonthlyAccountingDocumentLineItemDetailView,
     MonthlyAccountingDocumentStatusUpdateView

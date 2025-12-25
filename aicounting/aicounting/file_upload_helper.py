@@ -96,11 +96,11 @@ def upload_to_input_files_folder(instance, filename):
 def upload_to_documents_folder(instance, filename):
     """
     Generate upload path for general documents.
-    Structure: documents/doc_type/doc_id/filename
+    Structure: documents/doc_type/id/filename
     (Note: This falls outside the customer/client structure if no client info is available)
     """
     doc_type = getattr(instance, 'doc_typ', 'general')
-    doc_id = getattr(instance, 'doc_id', 'unknown')
+    doc_id = getattr(instance, 'id', 'unknown')
     timestamped_filename = _add_timestamp_to_filename(filename)
     
     return f"documents/{doc_type}/{doc_id}/{timestamped_filename}"
@@ -126,7 +126,7 @@ def upload_to_processed_documents_folder(instance, filename):
                 client_id=client.id,
                 client_name=client.client_name or "Unknown"
             )
-            doc_id = getattr(instance, 'doc_id', 'unknown')
+            doc_id = getattr(instance, 'id', 'unknown')
             return builder.processed_document_path(doc_id, filename, add_timestamp=True)
     except (AttributeError, TypeError):
         pass

@@ -2,7 +2,10 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction, models
 from rest_framework import serializers
 
-from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+from .models.monthly_document_line_models import (
+    MonthlyDocumentBankLineItem, 
+    MonthlyDocumentAttributeItem
+)
 from .models import DimAICGLAcct
 
 import logging
@@ -27,6 +30,11 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     description = serializers.CharField()
     debit = serializers.SerializerMethodField()
     credit = serializers.SerializerMethodField()
+    rectified_debit = serializers.SerializerMethodField()
+    rectified_credit = serializers.SerializerMethodField()
+    is_rectified = serializers.SerializerMethodField()
+    rectified_confidence = serializers.SerializerMethodField()
+    rectification_reasoning = serializers.SerializerMethodField()
     gl_account = GLAccountNestedSerializer(read_only=True)
     offset_gl_account = GLAccountNestedSerializer(read_only=True)
     gl_account_id = serializers.PrimaryKeyRelatedField(
@@ -36,6 +44,36 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ID of the GL account to assign"
     )
+    
+    def get_is_rectified(self, obj):
+        """Return rectification flag"""
+        if isinstance(obj, MonthlyDocumentBankLineItem):
+            return obj.is_rectified
+        return False
+    
+    def get_rectified_confidence(self, obj):
+        """Return rectification confidence score"""
+        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
+            return obj.rectified_confidence
+        return None
+    
+    def get_rectification_reasoning(self, obj):
+        """Return rectification reasoning"""
+        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
+            return obj.rectification_reasoning
+        return None
+    
+    def get_rectified_debit(self, obj):
+        """Return rectified debit amount if available"""
+        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
+            return obj.rectified_debit_amount
+        return None
+    
+    def get_rectified_credit(self, obj):
+        """Return rectified credit amount if available"""
+        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
+            return obj.rectified_credit_amount
+        return None
 
     def get_debit(self, obj):
         """Return debit amount as string if transaction is debit type"""
@@ -76,6 +114,11 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'description': instance.description,
                 'debit': self.get_debit(instance),
                 'credit': self.get_credit(instance),
+                'rectified_debit': self.get_rectified_debit(instance),
+                'rectified_credit': self.get_rectified_credit(instance),
+                'is_rectified': self.get_is_rectified(instance),
+                'rectified_confidence': self.get_rectified_confidence(instance),
+                'rectification_reasoning': self.get_rectification_reasoning(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
                 "is_editable": ""
@@ -90,6 +133,11 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'description': instance.attribute.name if instance.attribute else 'Unknown Attribute',
                 'debit': self.get_debit(instance),
                 'credit': self.get_credit(instance),
+                'rectified_debit': None,
+                'rectified_credit': None,
+                'is_rectified': False,
+                'rectified_confidence': None,
+                'rectification_reasoning': None,
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
                 'offset_gl_account': GLAccountNestedSerializer(instance.offset_gl_account).data if instance.offset_gl_account else None,
                 "is_editable": "debit" if instance.transaction_type == 'debit' else "credit"
@@ -465,8 +513,9 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             "description",
             "debit",
             "credit",
+            "is_rectified",
             "gl_account",
-            "offset_gl_account", 
+            "offset_gl_account",
             "gl_account_id",
         ]
         read_only_fields = ["id"]
@@ -625,9 +674,12 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             if debit_amount is not None:
                 instance.transaction_type = 'debit'
                 instance.amount = debit_amount
+
             elif credit_amount is not None:
                 instance.transaction_type = 'credit'
                 instance.amount = credit_amount
+
+            instance.is_rectified = False  # Clear rectification on manual edit
 
         instance.save()
         return instance

@@ -319,6 +319,21 @@ class GeminiService:
         
         return JSONHelper.parse_json(raw_text)
     
+    def cretate_part_from_text(
+        self, 
+        text: str
+    ) -> types.Part:
+        """
+        Create a Gemini Part object from text.
+        
+        Args:
+            text: Text content
+            
+        Returns:
+            Gemini Part object
+        """
+        return types.Part.from_text(text=text)
+
     @staticmethod
     def create_part_from_bytes(
         data: bytes, 
@@ -425,10 +440,10 @@ class GeminiMixin:
             )
     
     @property
-    def gemini(self) -> GeminiService:
+    def gemini(self, model=None) -> GeminiService:
         """Get the Gemini service instance, initializing if needed."""
         if self._gemini_service is None:
-            self.init_gemini()
+            self.init_gemini(model=model)
         return self._gemini_service
     
     @property

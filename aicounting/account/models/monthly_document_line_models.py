@@ -62,7 +62,7 @@ class MonthlyDocumentBankKeyItem(models.Model):
         unique_together = ('document', 'page_number', 'key')
 
     def __str__(self):
-        return f"{self.document.doc_id} - {self.key}: {self.value}"
+        return f"{self.document.id} - {self.key}: {self.value}"
 
 
 class MonthlyDocumentBankLineItem(models.Model):
@@ -142,6 +142,27 @@ class MonthlyDocumentBankLineItem(models.Model):
         help_text="Raw credit amount as extracted from document"
     )
     
+    # AI Rectification fields (stored directly on line item)    
+    is_rectified = models.BooleanField(
+        default=False,
+        verbose_name="Is Rectified",
+        help_text="Whether AI determined this item needs correction and provided rectified amounts"
+    )
+    
+    rectified_confidence = models.FloatField(
+        verbose_name="Rectification Confidence Score",
+        null=True,
+        blank=True,
+        help_text="Confidence score (0.0-1.0) for the rectification suggestion"
+    )
+    
+    rectification_reasoning = models.TextField(
+        verbose_name="Rectification Reasoning",
+        null=True,
+        blank=True,
+        help_text="AI explanation for why rectification was suggested"
+    )
+
     # GL Classification fields (populated after classification pipeline)
     gl_account = models.ForeignKey(
         'DimAICGLAcct',
@@ -219,7 +240,7 @@ class MonthlyDocumentBankLineItem(models.Model):
         unique_together = ('document', 'page_number', 'line_number')
 
     def __str__(self):
-        return f"{self.document.doc_id} - Page {self.page_number}, Line {self.line_number}: {self.description[:50]}"
+        return f"{self.document.id} - Page {self.page_number}, Line {self.line_number}: {self.description[:50]}"
 
     @property
     def formatted_amount(self):
@@ -318,7 +339,7 @@ class MonthlyDocumentBankCheckItem(models.Model):
         ordering = ['page_number', 'check_number']
 
     def __str__(self):
-        return f"{self.document.doc_id} - Check #{self.check_number}: {self.payee} - {self.amount}"
+        return f"{self.document.id} - Check #{self.check_number}: {self.payee} - {self.amount}"
 
 
 class MonthlyDocumentAttributeItem(models.Model):
@@ -404,7 +425,7 @@ class MonthlyDocumentAttributeItem(models.Model):
         unique_together = ('document', 'attribute', 'page_number')
 
     def __str__(self):
-        return f"{self.document.doc_id} - Page {self.page_number} - {self.attribute.name}: {self.value}"
+        return f"{self.document.id} - Page {self.page_number} - {self.attribute.name}: {self.value}"
 
 
 class MonthlyTemplateManualAttributeItem(models.Model):

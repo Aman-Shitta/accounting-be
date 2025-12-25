@@ -167,7 +167,7 @@ class GLClassifier(OpeAIThread):
             logger.error("Monthly accounting models not available (possibly during migration).")
             return None
         try:
-            doc = MonthlyAccountingDocument.objects.get(doc_id=document_id)
+            doc = MonthlyAccountingDocument.objects.get(id=document_id)
         except MonthlyAccountingDocument.DoesNotExist:
             logger.error(f"MonthlyAccountingDocument with id {document_id} not found.")
             return None

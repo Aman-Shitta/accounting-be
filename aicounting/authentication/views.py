@@ -83,19 +83,24 @@ class SSOGenerateTokenView(GenericAPIView):
                     message='User does not belong to any required groups.'
                 )
             
-            group = groups[0]  # Assuming the first group is the one we care about
-            user_assigned_groups = [k for k, v in msal.GROUPS.items() if v == group]
-
-            if not user_assigned_groups:
+            # Check for customer or accountant groups in priority order
+            # Customer has higher priority than accountant
+            user_role = None
+            for role in ['customer', 'accountant']:
+                if msal.GROUPS.get(role) in groups:
+                    user_role = role
+                    break
+            
+            if not user_role:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='Unauthorized group access.'
+                    message='Unauthorized group access. User must be a customer or accountant.'
                 )
             
             user_name = ""
             customer_name = ""
-            if user_assigned_groups[0] == 'customer':
+            if user_role == 'customer':
                 customer = DimAICCustomer.objects.filter(system_user__email=email).first()
 
                 if not customer or not user_object_id:
@@ -117,7 +122,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 user_name = customer.customer_name
                 customer_name = user_name
 
-            elif user_assigned_groups[0] == 'accountant':
+            elif user_role == 'accountant':
 
                 accountant = DimAICAccountant.objects.filter(system_user__email=email).first()
                 if not accountant or not user_object_id:
