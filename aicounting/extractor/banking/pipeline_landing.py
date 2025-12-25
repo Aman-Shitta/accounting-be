@@ -546,15 +546,33 @@ class DocumentProcessor(BaseDocumentProcessor):
                 # No actual change in amounts, skip rectification
                 return False
 
-            # Update line item with rectification data
-            line_item_obj.debit_amount = rectified_debit
-            line_item_obj.credit_amount = rectified_credit
+            # Store the original values in rectified fields before updating
+            line_item_obj.rectified_debit_amount = rectified_debit
+            line_item_obj.rectified_credit_amount = rectified_credit
             line_item_obj.is_rectified = True
             line_item_obj.rectified_confidence = rectified_confidence
             line_item_obj.rectification_reasoning = reasoning
+            
+            # Update the actual debit_amount and credit_amount fields with rectified values
+            if rectified_debit:
+                line_item_obj.debit_amount = rectified_debit
+                # Update transaction_type and amount if debit was rectified
+                line_item_obj.transaction_type = 'debit'
+                line_item_obj.amount = self._parse_amount(rectified_debit)
+                
+            if rectified_credit:
+                line_item_obj.credit_amount = rectified_credit
+                # Update transaction_type and amount if credit was rectified
+                line_item_obj.transaction_type = 'credit'
+                line_item_obj.amount = self._parse_amount(rectified_credit)
+            
             line_item_obj.save(update_fields=[
                 'debit_amount', 
-                'credit_amount', 
+                'credit_amount',
+                'amount',
+                'transaction_type',
+                'rectified_debit_amount',
+                'rectified_credit_amount',
                 'is_rectified',
                 'rectified_confidence',
                 'rectification_reasoning'
