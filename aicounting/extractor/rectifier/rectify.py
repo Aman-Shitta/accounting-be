@@ -329,6 +329,7 @@ class DocumentRectifier(GeminiMixin):
                 rectified_items[idx]['rectification_reasoning'] = rect.get('reasoning')
                 
                 logger.info(
+                    f"Original Item {idx+1}: Debit: {line_items[idx].get('debit_amount')}, "
                     f"Item {idx+1}: Applied rectification - "
                     f"Debit: {rectified_items[idx]['rectified_debit_amount']}, "
                     f"Credit: {rectified_items[idx]['rectified_credit_amount']}, "
