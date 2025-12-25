@@ -65,14 +65,14 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     
     def get_rectified_debit(self, obj):
         """Return rectified debit amount if available"""
-        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
-            return obj.rectified_debit_amount
+        if isinstance(obj, MonthlyDocumentBankLineItem):
+            return str(obj.debit_amount)
         return None
     
     def get_rectified_credit(self, obj):
         """Return rectified credit amount if available"""
-        if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
-            return obj.rectified_credit_amount
+        if isinstance(obj, MonthlyDocumentBankLineItem):
+            return obj.credit_amount
         return None
 
     def get_debit(self, obj):
