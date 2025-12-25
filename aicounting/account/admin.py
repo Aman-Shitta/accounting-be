@@ -462,8 +462,6 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
     )
     readonly_fields = (
         'line_item',
-        'rectified_debit_amount',
-        'rectified_credit_amount', 
         'rectified_confidence',
         'needs_correction',
         'rectification_reasoning',
@@ -480,8 +478,6 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
             'fields': (
                 'needs_correction',
                 'corrected_field',
-                'rectified_debit_amount',
-                'rectified_credit_amount',
                 'rectified_confidence',
                 'rectification_reasoning'
             )
