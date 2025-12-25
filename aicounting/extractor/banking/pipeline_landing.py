@@ -547,14 +547,14 @@ class DocumentProcessor(BaseDocumentProcessor):
                 return False
 
             # Update line item with rectification data
-            line_item_obj.rectified_debit_amount = rectified_debit
-            line_item_obj.rectified_credit_amount = rectified_credit
+            line_item_obj.debit_amount = rectified_debit
+            line_item_obj.credit_amount = rectified_credit
             line_item_obj.is_rectified = True
             line_item_obj.rectified_confidence = rectified_confidence
             line_item_obj.rectification_reasoning = reasoning
             line_item_obj.save(update_fields=[
-                'rectified_debit_amount', 
-                'rectified_credit_amount', 
+                'debit_amount', 
+                'credit_amount', 
                 'is_rectified',
                 'rectified_confidence',
                 'rectification_reasoning'
