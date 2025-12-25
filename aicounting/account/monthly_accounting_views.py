@@ -926,7 +926,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 ).select_related(
                     'gl_account', 
                     'offset_gl_account',
-                    'rectification'  # Include rectification data
                 ).order_by('page_number', 'line_number')
                 
                 total_count = items.count()
@@ -944,21 +943,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 except Exception as e:
                     logger.warning(f"Could not retrieve default offset GL account: {e}")
                 
-                # Count items needing rectification
-                rectification_stats = {
-                    'total_items_needing_review': 0,
-                    'high_confidence_corrections': 0,
-                    'pending_review': 0
-                }
-                for item in items:
-                    if hasattr(item, 'rectification'):
-                        rect = item.rectification
-                        if rect.needs_correction:
-                            rectification_stats['total_items_needing_review'] += 1
-                            if rect.rectified_confidence and rect.rectified_confidence >= 0.85:
-                                rectification_stats['high_confidence_corrections'] += 1
-                            if rect.review_status == 'pending':
-                                rectification_stats['pending_review'] += 1
             else:
                 # Use AttributeItem for other document types (like sales)
                 attribute_items = MonthlyDocumentAttributeItem.objects.filter(
@@ -973,7 +957,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 
                 total_count = len(items)
                 default_offset_gl = None
-                rectification_stats = None
             
             serializer = MonthlyDocumentLineItemSerializer(items, many=True, context={'request': request})
             
@@ -992,10 +975,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             # Add default offset GL account for bank statements and credit cards
             if default_offset_gl:
                 response_data['default_offset_gl_account'] = default_offset_gl
-            
-            # Add rectification statistics if available
-            if rectification_stats:
-                response_data['rectification_stats'] = rectification_stats
             
             return create_api_response(
                 status.HTTP_200_OK, 
