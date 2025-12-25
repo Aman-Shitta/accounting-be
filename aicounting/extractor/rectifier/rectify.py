@@ -277,24 +277,37 @@ class DocumentRectifier(GeminiMixin):
         """
         Apply rectification corrections to line items.
         
+        When AI detects a correction is needed with sufficient confidence,
+        the debit_amount and credit_amount values are directly overwritten
+        with the corrected values. Rectification metadata is added for tracking.
+        
         Args:
             line_items: Original line items
             rectifications: Rectification suggestions from Gemini
             
         Returns:
-            Line items with rectification fields added
+            Line items with rectified values and rectification metadata
         """
         rectified_items = []
+        
+        # Helper function to clean null/empty values
+        def clean_amount_value(value):
+            """Convert string 'null', 'none', empty strings to None"""
+            if value is None:
+                return None
+            if isinstance(value, str):
+                value_lower = value.strip().lower()
+                if value_lower in ['null', 'none', '', 'n/a']:
+                    return None
+            return value
         
         for item in line_items:
             # Create a copy to avoid mutating original
             rectified_item = item.copy()
             
             # Initialize rectification fields
-            rectified_item['rectified_debit_amount'] = None
-            rectified_item['rectified_credit_amount'] = None
+            rectified_item['is_rectified'] = False
             rectified_item['rectified_confidence'] = None
-            rectified_item['needs_correction'] = False
             rectified_item['rectification_reasoning'] = None
             
             rectified_items.append(rectified_item)
@@ -311,30 +324,34 @@ class DocumentRectifier(GeminiMixin):
             
             # Only apply corrections with sufficient confidence AND needs_correction flag
             if needs_correction and confidence >= 0.7:
-                # Helper function to clean null/empty values
-                def clean_amount_value(value):
-                    """Convert string 'null', 'none', empty strings to None"""
-                    if value is None:
-                        return None
-                    if isinstance(value, str):
-                        value_lower = value.strip().lower()
-                        if value_lower in ['null', 'none', '', 'n/a']:
-                            return None
-                    return value
+                original_debit = rectified_items[idx].get('debit_amount')
+                original_credit = rectified_items[idx].get('credit_amount')
                 
-                rectified_items[idx]['needs_correction'] = True
-                rectified_items[idx]['rectified_debit_amount'] = clean_amount_value(rect.get('rectified_debit_amount'))
-                rectified_items[idx]['rectified_credit_amount'] = clean_amount_value(rect.get('rectified_credit_amount'))
-                rectified_items[idx]['rectified_confidence'] = confidence
-                rectified_items[idx]['rectification_reasoning'] = rect.get('reasoning')
+                rectified_debit = clean_amount_value(rect.get('rectified_debit_amount'))
+                rectified_credit = clean_amount_value(rect.get('rectified_credit_amount'))
                 
-                logger.info(
-                    f"Original Item {idx+1}: Debit: {line_items[idx].get('debit_amount')}, "
-                    f"Item {idx+1}: Applied rectification - "
-                    f"Debit: {rectified_items[idx]['rectified_debit_amount']}, "
-                    f"Credit: {rectified_items[idx]['rectified_credit_amount']}, "
-                    f"Confidence: {confidence}"
-                )
+                # Check if there's an actual change in values
+                has_debit_change = str(original_debit or '').strip() != str(rectified_debit or '').strip()
+                has_credit_change = str(original_credit or '').strip() != str(rectified_credit or '').strip()
+                
+                if has_debit_change or has_credit_change:
+                    # Directly overwrite the debit_amount and credit_amount with rectified values
+                    rectified_items[idx]['debit_amount'] = rectified_debit
+                    rectified_items[idx]['credit_amount'] = rectified_credit
+                    
+                    # Set rectification metadata
+                    rectified_items[idx]['is_rectified'] = True
+                    rectified_items[idx]['rectified_confidence'] = confidence
+                    rectified_items[idx]['rectification_reasoning'] = rect.get('reasoning')
+                    
+                    logger.info(
+                        f"Item {idx+1}: Applied rectification - "
+                        f"Original Debit: {original_debit} -> {rectified_debit}, "
+                        f"Original Credit: {original_credit} -> {rectified_credit}, "
+                        f"Confidence: {confidence}"
+                    )
+                else:
+                    logger.debug(f"Item {idx+1}: needs_correction=True but values unchanged, skipping")
             else:
                 # Log when no correction is needed
                 if not needs_correction:
