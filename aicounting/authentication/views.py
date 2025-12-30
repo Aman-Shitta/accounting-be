@@ -163,7 +163,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 "expires_in": result.get('expires_in'),
                 # "token_type": "Bearer",
                 "user_info": {
-                    "user_type": 'customer',
+                    "user_type": user_role,
                     "email": email,
                     "name": user_name,
                     "customer_name": f"{customer_name}"
