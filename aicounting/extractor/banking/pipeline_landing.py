@@ -269,10 +269,13 @@ class DocumentProcessor(BaseDocumentProcessor):
                     # check if check related transaction already exists
                     check_num = line_item.get("check_number", "")
 
-                    # replace any non-digit and decimal point characters
-                    check_num = re.sub(r'[^\d\.]', '', check_num)
-
                     check_num = str(check_num).lstrip('0').strip('*') if check_num else check_num
+
+                    if check_num:
+                        # replace any non-digit and decimal point characters
+                        check_num = re.sub(r'[^\d\.]', '', check_num)
+
+                    
                     if check_num and str(check_num).strip() and (check_num in checks_linked):
                         if len(checks_linked[check_num].description) > len(line_item.get("description", "")):
                             continue
@@ -459,8 +462,9 @@ class DocumentProcessor(BaseDocumentProcessor):
         check_number = check_data.get("check_number", "")
         check_number = str(check_number).lstrip('0').strip('*') if check_number else check_number
 
-        # replace any non-digit and decimal point characters
-        check_number = re.sub(r'[^\d\.]', '', check_number)
+        if check_number:
+            # replace any non-digit and decimal point characters
+            check_number = re.sub(r'[^\d\.]', '', check_number)
 
         if not check_number or str(check_number).strip() == '':
             return None
