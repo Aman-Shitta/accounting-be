@@ -4,9 +4,10 @@ from typing import List, Optional, Dict
 class PageClassification(BaseModel):
     page_types: List[str] = Field(
         ..., 
-        description="List of page types detected. Options: 'transaction_table', 'check_images', 'summary_table', 'other'. "
+        description="List of page types detected. Options: 'transaction_table', 'check_images', 'deposit_slips_images', 'summary_table', 'other'. "
                     "transaction_table: Contains transaction listings with dates, descriptions, amounts. "
                     "check_images: Contains images or details of cleared checks. "
+                    "deposit_slips_images: Contains images or details of deposit slips. "
                     "summary_table: Contains account summaries, beginning/ending balances. "
                     "other: Any other content."
     )
