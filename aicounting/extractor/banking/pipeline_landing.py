@@ -268,6 +268,10 @@ class DocumentProcessor(BaseDocumentProcessor):
                 for line_idx, line_item in enumerate(line_items_data):
                     # check if check related transaction already exists
                     check_num = line_item.get("check_number", "")
+
+                    # replace any non-digit and decimal point characters
+                    check_num = re.sub(r'[^\d\.]', '', check_num)
+
                     check_num = str(check_num).lstrip('0').strip('*') if check_num else check_num
                     if check_num and str(check_num).strip() and (check_num in checks_linked):
                         if len(checks_linked[check_num].description) > len(line_item.get("description", "")):
@@ -288,6 +292,9 @@ class DocumentProcessor(BaseDocumentProcessor):
                 checks = check_data.get("checks", [])
                 for check_item in checks:
                     check_obj = self._save_check_item(page_idx + 1, check_item)
+                    if check_obj is None:
+                        continue
+
                     stats["check_items"] += 1
                     
                     # Try to link check to line item
@@ -451,6 +458,13 @@ class DocumentProcessor(BaseDocumentProcessor):
         """
         check_number = check_data.get("check_number", "")
         check_number = str(check_number).lstrip('0').strip('*') if check_number else check_number
+
+        # replace any non-digit and decimal point characters
+        check_number = re.sub(r'[^\d\.]', '', check_number)
+
+        if not check_number or str(check_number).strip() == '':
+            return None
+
 
         parsed_clearing_date = self.format_date(check_data.get("clearing_date", "")) if check_data.get("clearing_date", "") else ""
         parsed_passing_date = self.format_date(check_data.get("passing_date", "")) if check_data.get("passing_date", "") else ""
