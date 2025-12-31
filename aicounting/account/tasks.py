@@ -52,7 +52,7 @@ def preprocess_document_markdown(doc_id: str):
             doc.save()
             return {"status": "skipped", "reason": "Document type doesn't require markdown"}
         
-        logger.error(f"Starting markdown pre-processing for document {doc.id}")
+        logger.info(f"Starting markdown pre-processing for document {doc.id}")
         doc.status = 'pre_processing'
         doc.save()
         
@@ -69,7 +69,7 @@ def preprocess_document_markdown(doc_id: str):
         
         # Split PDF into pages
         page_bytes_list = split_pdf_to_pages(file_bytes)
-        logger.error(f"Split PDF into {len(page_bytes_list)} pages")
+        logger.info(f"Split PDF into {len(page_bytes_list)} pages")
         
         # Initialize Landing AI parser
         landing_ai_key = settings.LANDING_AI_API_KEY
@@ -86,7 +86,7 @@ def preprocess_document_markdown(doc_id: str):
         for i, page_bytes in enumerate(page_bytes_list):
             page_num = i + 1
             try:
-                logger.error(f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
+                logger.info(f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
                 
                 # Parse page with Landing AI
                 result = parse(
@@ -112,7 +112,7 @@ def preprocess_document_markdown(doc_id: str):
                     "size": len(page_markdown)
                 })
                 
-                logger.error(f"Saved markdown for page {page_num} to {saved_path}")
+                logger.info(f"Saved markdown for page {page_num} to {saved_path}")
                 
             except Exception as e:
                 logger.error(f"Failed to process page {page_num}: {str(e)}")
@@ -137,7 +137,7 @@ def preprocess_document_markdown(doc_id: str):
         doc.status = 'pre_processed'
         doc.save()
         
-        logger.error(f"Markdown pre-processing complete for document {doc.id}")
+        logger.info(f"Markdown pre-processing complete for document {doc.id}")
         return {
             "status": "success",
             "total_pages": len(page_bytes_list),
@@ -199,7 +199,7 @@ def process_uploaded_document(
         start_time = time.time()
         special_rules = doc.input_file_snapshot.description if doc.input_file_snapshot else ""
         result = processor.start_process(file_bytes, md=True, special_rules=special_rules)
-        logger.error(f"Document processing time: {time.time() - start_time} seconds")
+        logger.info(f"Document processing time: {time.time() - start_time} seconds")
         processor.__release_resources__()
 
         if doc.doc_type in ['bank_statement', 'credit_card']:
@@ -218,7 +218,7 @@ def process_uploaded_document(
         output_path = f"processed_output/{doc.id}/processing_result.json"
         default_storage.save(output_path, ContentFile(output_json.encode('utf-8')))
         
-        logger.error(f"Document {doc.id} processed successfully: {result['processing_stats']}")
+        logger.info(f"Document {doc.id} processed successfully: {result['processing_stats']}")
 
 
     except Exception as e:
@@ -282,12 +282,12 @@ def enrich_check_transaction_descriptions(document_id: str) -> int:
                 line_item.save(update_fields=['description'])
                 
                 enriched_count += 1
-                logger.error(
+                logger.info(
                     f"Enriched check #{check_item.check_number} description: "
                     f"'{original_desc}' -> '{enriched_description}'"
                 )
         
-        logger.error(f"Enriched {enriched_count} check transaction descriptions for document {document_id}")
+        logger.info(f"Enriched {enriched_count} check transaction descriptions for document {document_id}")
         return enriched_count
         
     except Exception as e:
@@ -314,7 +314,7 @@ def classify_monthly_document_gl_accounts(document_id: str):
         input_file_classsifcation_rules = doc.input_file_snapshot.description
         
         # First, enrich check transaction descriptions with payee and memo info
-        logger.error(f"Enriching check descriptions for document {document_id}")
+        logger.info(f"Enriching check descriptions for document {document_id}")
         enrich_check_transaction_descriptions(document_id)
         
         # Get the input file configuration for GL mapping
@@ -409,7 +409,7 @@ def classify_monthly_document_gl_accounts(document_id: str):
             # Bulk update classified line items
             if updated_line_items:
                 MonthlyDocumentBankLineItem.objects.bulk_update(updated_line_items, ['gl_account'])
-                logger.error(f"Classified {len(updated_line_items)} line items for document {document_id}")
+                logger.info(f"Classified {len(updated_line_items)} line items for document {document_id}")
             else:
                 logger.error(f"No line items classified for document {document_id}")
 
@@ -417,7 +417,7 @@ def classify_monthly_document_gl_accounts(document_id: str):
             doc.status = "classified"
             doc.save()
 
-            logger.error(f"GL classification completed for document {document_id}")
+            logger.info(f"GL classification completed for document {document_id}")
 
         except Exception as e:
             logger.error(f"GL Classification failed for document {document_id}: {str(e)}")
