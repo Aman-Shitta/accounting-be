@@ -290,10 +290,20 @@ class DocumentProcessor(BaseDocumentProcessor):
 
                     stats["line_items"] += 1
                 
-                # Save check data
-                check_data = page_content.get("check_images_data", {})
-                checks = check_data.get("checks", [])
-                for check_item in checks:
+                # Save check table data (create line items if missing)
+                check_table_data = page_content.get("check_table_data", {})
+                table_checks = check_table_data.get("checks", [])
+                for check_item in table_checks:
+                    check_obj = self._save_check_item(page_idx + 1, check_item)
+                    if check_obj is None:
+                        continue
+                    stats["check_items"] += 1
+                    self._link_check_to_line_item(check_obj, create_if_missing=True)
+
+                # Save check images data (only link/update existing)
+                check_images_data = page_content.get("check_images_data", {})
+                image_checks = check_images_data.get("checks", [])
+                for check_item in image_checks:
                     check_obj = self._save_check_item(page_idx + 1, check_item)
                     if check_obj is None:
                         continue
@@ -301,7 +311,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     stats["check_items"] += 1
                     
                     # Try to link check to line item
-                    self._link_check_to_line_item(check_obj)
+                    self._link_check_to_line_item(check_obj, create_if_missing=False)
                 
                 stats["pages_processed"] += 1
         
@@ -314,9 +324,13 @@ class DocumentProcessor(BaseDocumentProcessor):
         """
         Parse amount string to Decimal.
         """
+        
+
         if not amount_str or str(amount_str).strip() in ['', 'null', 'none', '-']:
             return None
         
+        amount_str = re.sub(r'[^\d\.]', '', str(amount_str))
+
         try:
             # Clean the amount string
             clean_amount = str(amount_str).replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
@@ -487,7 +501,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         return check_item
     
-    def _link_check_to_line_item(self, check_item: MonthlyDocumentBankCheckItem):
+    def _link_check_to_line_item(self, check_item: MonthlyDocumentBankCheckItem, create_if_missing: bool = True):
         """
         Try to link a check item to its corresponding line item.
         """
@@ -502,10 +516,23 @@ class DocumentProcessor(BaseDocumentProcessor):
         ).first()
         
         if matching_line_item:
+            # Update description with payee and memo
+            new_desc_parts = []
+            if check_item.payee:
+                new_desc_parts.append(f"Payee: {check_item.payee}")
+            if check_item.memo:
+                new_desc_parts.append(f"Memo: {check_item.memo}")
+            
+            if new_desc_parts:
+                additional_desc = " - ".join(new_desc_parts)
+                if additional_desc not in matching_line_item.description:
+                    matching_line_item.description = f"{matching_line_item.description} - {additional_desc}"
+                    matching_line_item.save()
+
             check_item.related_line_item = matching_line_item
             check_item.save()
             logger.error(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
-        else:
+        elif create_if_missing:
             # Check not found in line items, add it as a new line item in the transaction table
             # Get the last line number for this page
             last_line_item = MonthlyDocumentBankLineItem.objects.filter(
@@ -540,4 +567,6 @@ class DocumentProcessor(BaseDocumentProcessor):
             check_item.related_line_item = new_line_item
             check_item.save()
             logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+        else:
+            logger.error(f"Check #{check_item.check_number} not found in line items. Skipping creation as create_if_missing=False.")
 

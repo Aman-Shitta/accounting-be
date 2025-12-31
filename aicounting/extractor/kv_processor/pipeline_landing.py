@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import os
 import logging
 import tempfile
@@ -363,6 +364,8 @@ class DocumentProcessor(BaseDocumentProcessor):
         if not amount_str or str(amount_str).strip() in ['', 'null', 'none', '-']:
             return None
         
+        amount_str = re.sub(r'[^\d\.]', '', str(amount_str))
+
         try:
             # Clean the amount string
             clean_amount = str(amount_str).replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
