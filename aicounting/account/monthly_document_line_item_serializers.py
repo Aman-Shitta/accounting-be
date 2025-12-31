@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal, InvalidOperation
 from django.db import transaction, models
 from rest_framework import serializers
@@ -171,7 +172,7 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
             return None
         try:
             # Remove commas and whitespace
-            clean_value = str(value).replace(',', '').strip()
+            clean_value = re.sub(r'[^\d\.]', '', str(clean_value))
             return Decimal(clean_value)
         except (InvalidOperation, ValueError):
             raise serializers.ValidationError("Invalid amount format.")
@@ -400,7 +401,7 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
             return None
         try:
             # Remove commas and whitespace
-            clean_value = str(value).replace(',', '').strip()
+            clean_value = re.sub(r'[^\d\.]', '', str(clean_value))
             return Decimal(clean_value)
         except (InvalidOperation, ValueError):
             raise serializers.ValidationError("Invalid amount format.")
@@ -557,7 +558,7 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             return None
         try:
             # Remove commas and whitespace
-            clean_value = str(value).replace(',', '').strip()
+            clean_value = re.sub(r'[^\d\.]', '', str(clean_value))
             return Decimal(clean_value)
         except (InvalidOperation, ValueError):
             raise serializers.ValidationError("Invalid amount format.")
