@@ -243,5 +243,5 @@ class GLClassifier(OpeAIThread):
                 logger.error(f"[ERROR] Exception processing page {page_num}: {e}")
                 continue  # Skip to next page on error
 
-        # self.delete_thread(self.thread_id)
+        self.delete_thread(self.thread_id)
         return results
