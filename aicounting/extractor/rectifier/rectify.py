@@ -5,10 +5,12 @@ This module provides AI-powered rectification of extracted banking data using
 Google Gemini to verify and provide probable corrections for transaction data 
 and check data extracted from bank statements.
 """
-
+import re
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
+from decimal import Decimal, InvalidOperation
+
 
 from google.genai import types
 
@@ -244,10 +246,6 @@ class DocumentRectifier(GeminiMixin):
                     "items": {
                         "type": "object",
                         "properties": {
-                            "needs_correction": {
-                                "type": "boolean",
-                                "description": "TRUE only if extracted amount differs from visual image. FALSE if amounts match exactly."
-                            },
                             "rectified_debit_amount": {
                                 "type": "string",
                                 "description": "The actual debit amount visible in the image (with commas). Empty string if no debit amount or if credit transaction."
@@ -265,7 +263,7 @@ class DocumentRectifier(GeminiMixin):
                                 "description": "Specific explanation: describe what you SEE in the image vs what was extracted. Be explicit about discrepancies or matches."
                             }
                         },
-                        "required": ["needs_correction", "rectified_debit_amount", "rectified_credit_amount", "confidence", "reasoning"]}
+                        "required": ["rectified_debit_amount", "rectified_credit_amount", "confidence", "reasoning"]}
                 }
             },
             "required": ["rectifications"]
@@ -293,16 +291,19 @@ class DocumentRectifier(GeminiMixin):
         rectified_items = []
         
         # Helper function to clean null/empty values
-        def clean_amount_value(value):
-            """Convert string 'null', 'none', empty strings to None"""
-            if value is None:
+        def _parse_amount(value):
+            """Parse amount string to Decimal, handling common formats"""
+            if value in (None, ""):
                 return None
-            if isinstance(value, str):
-                value_lower = value.strip().lower()
-                if value_lower in ['null', 'none', '', 'n/a']:
-                    return None
+            try:
+                # Remove commas and whitespace
+                value = re.sub(r'[^\d\.]', '', str(value))
+                return Decimal(value)
+            except Exception as e:
+                logger.warning(f"Failed to parse amount '{value}': {str(e)}")
+            
             return value
-        
+            
         for item in line_items:
             # Create a copy to avoid mutating original
             rectified_item = item.copy()
@@ -321,20 +322,29 @@ class DocumentRectifier(GeminiMixin):
                 logger.warning(f"Rectification index {idx} exceeds line items count {len(rectified_items)}")
                 break
             
-            needs_correction = rect.get('needs_correction', False)
             confidence = rect.get('confidence', 0.0)
+
+            original_debit = _parse_amount(rectified_items[idx].get('debit_amount'))
+            original_credit = _parse_amount(rectified_items[idx].get('credit_amount'))
             
-            # Only apply corrections with sufficient confidence AND needs_correction flag
-            if needs_correction and confidence >= 0.7:
-                original_debit = rectified_items[idx].get('debit_amount')
-                original_credit = rectified_items[idx].get('credit_amount')
-                
-                rectified_debit = clean_amount_value(rect.get('rectified_debit_amount'))
-                rectified_credit = clean_amount_value(rect.get('rectified_credit_amount'))
-                
+            rectified_debit = _parse_amount(rect.get('rectified_debit_amount'))
+            rectified_credit = _parse_amount(rect.get('rectified_credit_amount'))
+
+            needs_correction = False
+
+            if original_debit:
                 # Check if there's an actual change in values
                 has_debit_change = str(original_debit or '').strip() != str(rectified_debit or '').strip()
+                if has_debit_change:
+                    needs_correction = True
+
+            if original_credit:
                 has_credit_change = str(original_credit or '').strip() != str(rectified_credit or '').strip()
+                if has_credit_change:
+                    needs_correction = True
+        
+            # Only apply corrections with sufficient confidence AND needs_correction flag
+            if needs_correction and confidence >= 0.7:
                 
                 if has_debit_change or has_credit_change:
                     # Directly overwrite the debit_amount and credit_amount with rectified values

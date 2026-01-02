@@ -111,10 +111,6 @@ class DocumentProcessor(BaseDocumentProcessor):
                 
                 page_types_names = [pt['type'] if isinstance(pt, dict) else pt for pt in page_types]
 
-                self.pages_data[page_num] = {
-                    "page_types": page_types_names,
-                    "markdown": markdown_content,
-                }
 
                 logger.info(f"[DEBUG] Page {page_num} types names: {page_types_names}")
                 check_key = None
@@ -127,7 +123,6 @@ class DocumentProcessor(BaseDocumentProcessor):
                     )
                     # Store both extraction data and full response for metadata
                     page_result["transactions"] = transaction_response.extraction
-                    page_result["transaction_response"] = transaction_response  # Keep full response
                 
                 if "check_images" in page_types_names or "check_table" in page_types_names:
                     check_response = self.client.extract(
@@ -152,6 +147,12 @@ class DocumentProcessor(BaseDocumentProcessor):
                         'check_key':check_key
                     }
                 )
+
+                self.pages_data[page_num] = {
+                    "page_types": page_types_names,
+                    "markdown": markdown_content,
+                    'extracted_data': page_result
+                }
 
                 self.page_data.append({f"page_{page_num}": page_result})
                     
