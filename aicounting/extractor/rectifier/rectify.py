@@ -104,6 +104,8 @@ class DocumentRectifier(GeminiMixin):
             
             # Parse response
             rectified_data = JSONHelper.parse_json(response_text)
+
+            logger.info("Rectification data received from Gemini :: ", rectified_data)
             
             if not rectified_data or 'rectifications' not in rectified_data:
                 logger.warning("No valid rectification data returned from Gemini")
