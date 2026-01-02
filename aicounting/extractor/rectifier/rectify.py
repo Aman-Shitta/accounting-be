@@ -115,7 +115,7 @@ class DocumentRectifier(GeminiMixin):
             
             # Apply rectifications to line items
             rectifications = rectified_data.get('rectifications', [])
-            rectified_items = self._apply_rectifications(line_items, rectifications)
+            rectified_items, rectified_count = self._apply_rectifications(line_items, rectifications)
             
             # Update extracted data with rectified items
             extracted_data['transactions']['line_items'] = rectified_items
@@ -123,12 +123,12 @@ class DocumentRectifier(GeminiMixin):
             # Add metadata
             extracted_data['rectification_metadata'] = {
                 'total_items': len(line_items),
-                'rectified_items': len([r for r in rectifications if r.get('needs_correction', False)]),
+                'rectified_items': rectified_count,
                 'rectification_timestamp': datetime.now().isoformat()
             }
             
             logger.info(
-                f"Rectification complete: {len([r for r in rectifications if r.get('needs_correction', False)])} "
+                f"Rectification complete: {rectified_count} "
                 f"items corrected out of {len(items_to_rectify)}"
             )
             
@@ -273,7 +273,7 @@ class DocumentRectifier(GeminiMixin):
         self, 
         line_items: List[Dict[str, Any]], 
         rectifications: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Apply rectification corrections to line items.
         
@@ -289,6 +289,7 @@ class DocumentRectifier(GeminiMixin):
             Line items with rectified values and rectification metadata
         """
         rectified_items = []
+        rectified_count = 0
         
         # Helper function to clean null/empty values
         def _parse_amount(value):
@@ -362,6 +363,7 @@ class DocumentRectifier(GeminiMixin):
                         f"Original Credit: {original_credit} -> {rectified_credit}, "
                         f"Confidence: {confidence}"
                     )
+                    rectified_count += 1
                 else:
                     logger.debug(f"Item {idx+1}: needs_correction=True but values unchanged, skipping")
             else:
@@ -371,4 +373,4 @@ class DocumentRectifier(GeminiMixin):
                 elif confidence < 0.7:
                     logger.debug(f"Item {idx+1}: Low confidence ({confidence}) - skipping correction")
         
-        return rectified_items
+        return rectified_items, rectified_count
