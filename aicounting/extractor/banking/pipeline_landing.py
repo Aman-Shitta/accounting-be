@@ -5,6 +5,7 @@ import logging
 import time
 import tempfile
 import re
+import json
 from io import BytesIO
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
@@ -33,6 +34,19 @@ logger = logging.getLogger(__name__)
 from extractor.banking.models import *
 from extractor.banking.page_classifier import PageClassifier
 
+
+def convert_decimals_to_str(obj):
+    """
+    Recursively convert all Decimal objects to strings for JSON serialization.
+    """
+    if isinstance(obj, Decimal):
+        return str(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_decimals_to_str(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimals_to_str(item) for item in obj]
+    else:
+        return obj
 
 
 class DocumentProcessor(BaseDocumentProcessor):
@@ -195,7 +209,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
     def _save_control_totals(self):
         # Save control totals to document
-        self.document.control_item = self.control_totals
+        self.document.control_item = convert_decimals_to_str(self.control_totals)
         self.document.save()
     
     def _save_doc_metadata(self):
