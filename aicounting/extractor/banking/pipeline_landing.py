@@ -89,7 +89,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         for i, page_bytes in enumerate(page_bytes_list):
             page_num = i + 1
-            logger.error(f"Processing page {page_num}...")
+            logger.info(f"Processing page {page_num}...")
             try:
                 # generate file from bytes
                 temp_file = self.__generate_temp_file__(page_bytes)
@@ -105,7 +105,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
                 page_types = self.page_classifier.classify(page_bytes=page_bytes, mime_type=mime_type)
                 
-                logger.error(f"Page {page_num} classified as: {page_types}")
+                logger.info(f"Page {page_num} classified as: {page_types}")
 
                 page_result = {"page_types": page_types}
                 
@@ -116,7 +116,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     "markdown": markdown_content,
                 }
 
-                logger.error(f"[DEBUG] Page {page_num} types names: {page_types_names}")
+                logger.info(f"[DEBUG] Page {page_num} types names: {page_types_names}")
                 check_key = None
 
                 # 3. Extract Data based on classification
@@ -174,7 +174,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
         # Check if summary is incomplete and re-extract if needed
         if self.control_totals and self._is_summary_incomplete():
-            logger.error("Summary is incomplete, attempting re-extraction from combined pages")
+            logger.info("Summary is incomplete, attempting re-extraction from combined pages")
             relevant_pages = self._get_relevant_pages()
             if relevant_pages:
                 enhanced_summary = self._extract_summary_from_combined_pages(relevant_pages)
@@ -317,7 +317,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         
         # cleanup
         del(checks_linked)
-        logger.error(f"Saved extracted data: {stats}")
+        logger.info(f"Saved extracted data: {stats}")
         return stats
 
     def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
@@ -531,7 +531,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
             check_item.related_line_item = matching_line_item
             check_item.save()
-            logger.error(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
+            logger.info(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
         elif create_if_missing:
             # Check not found in line items, add it as a new line item in the transaction table
             # Get the last line number for this page
@@ -566,7 +566,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             # Link the check to the newly created line item
             check_item.related_line_item = new_line_item
             check_item.save()
-            logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+            logger.info(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
         else:
-            logger.error(f"Check #{check_item.check_number} not found in line items. Skipping creation as create_if_missing=False.")
+            logger.info(f"Check #{check_item.check_number} not found in line items. Skipping creation as create_if_missing=False.")
 
