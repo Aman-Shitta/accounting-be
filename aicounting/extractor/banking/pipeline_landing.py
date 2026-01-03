@@ -166,7 +166,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     'extracted_data': page_result
                 }
 
-                self.page_data.append({f"page_{page_num}": page_result})
+                # self.page_data.append({f"page_{page_num}": page_result})
                     
             except Exception as e:
                 logger.error(f"Error processing page {page_num}: {e}")
@@ -183,7 +183,6 @@ class DocumentProcessor(BaseDocumentProcessor):
                     pass
                 continue
         
-        self._save_doc_metadata()
 
         # Check if summary is incomplete and re-extract if needed
         if self.control_totals and self._is_summary_incomplete():
@@ -195,6 +194,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     self.control_totals = enhanced_summary
                     logger.error("Successfully re-extracted summary from combined pages")
 
+        self._save_doc_metadata()
         self._save_control_totals()
         processing_stats = self._save_extracted_data()
         
@@ -209,9 +209,12 @@ class DocumentProcessor(BaseDocumentProcessor):
         # Save control totals to document
         try:
             self.document.control_item = convert_decimals_to_float(self.control_totals)
+            self.document.save()
         except Exception as e:
-            logger.error(f"Failed to convert control totals for saving: {e}")
+            logger.error(f"Failed to convert control totals for saving: {self.control_totals} : {e}")
             self.document.control_item = {}
+        
+        self.pages_data['control_totals'] = self.document.control_item
         self.document.save()
     
     def _save_doc_metadata(self):
@@ -265,13 +268,17 @@ class DocumentProcessor(BaseDocumentProcessor):
             "check_items": 0,
             "pages_processed": 0
         }
-        page_data = self.page_data
+        
         checks_linked = dict()
 
         with transaction.atomic():
-            for page_idx, page_item in enumerate(page_data):
-                page_key = f"page_{page_idx + 1}"
-                page_content = page_item.get(page_key, {})
+            for page_idx, page_content in self.pages_data.items():
+
+                if not isinstance(page_idx, int):
+                    continue
+
+                # page_key = f"page_{page_idx + 1}"
+                # page_content = page_item.get(page_key, {})
                 
                 # Process transactions
                 transactions = page_content.get("transactions", {})
