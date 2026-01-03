@@ -320,7 +320,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                             checks_linked[check_num].description = line_item.get("description", "")
                             continue
 
-                    line_item_obj = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    line_item_obj = self._save_line_item(page_idx , line_idx + 1, line_item)
                     
                     if line_item_obj.is_check_transaction and line_item_obj.check_number:
                         checks_linked[line_item_obj.check_number] = line_item_obj
