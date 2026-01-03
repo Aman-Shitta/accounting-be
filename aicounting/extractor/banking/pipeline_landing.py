@@ -209,17 +209,26 @@ class DocumentProcessor(BaseDocumentProcessor):
         # Save control totals to document
         try:
             self.document.control_item = convert_decimals_to_float(self.control_totals)
+            self.pages_data['control_totals'] = self.document.control_item
             self.document.save()
         except Exception as e:
             logger.error(f"Failed to convert control totals for saving: {self.control_totals} : {e}")
             self.document.control_item = {}
-        
-        self.pages_data['control_totals'] = self.document.control_item
-        self.document.save()
+            self.pages_data['control_totals'] = {}
+            self.document.save()
     
     def _save_doc_metadata(self):
         # Save any document-level metadata if needed
-        self.document.markdown_metadata = self.pages_data
+        # Convert any Decimals in pages_data before saving
+        try:
+            import json
+            self.document.markdown_metadata = convert_decimals_to_float(self.pages_data)
+            self.document.save()
+        except Exception as e:
+            logger.error(f"Failed to convert markdown metadata for saving: {self.pages_data} : {e}")
+            self.document.markdown_metadata = {}
+            self.document.save()
+
     
     def _is_summary_incomplete(self) -> bool:
         """Check if summary has missing deposits or withdrawals."""
