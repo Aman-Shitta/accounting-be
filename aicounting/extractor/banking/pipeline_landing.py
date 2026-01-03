@@ -289,6 +289,11 @@ class DocumentProcessor(BaseDocumentProcessor):
                 # page_key = f"page_{page_idx + 1}"
                 # page_content = page_item.get(page_key, {})
                 
+                extracted_data = page_content.get("extracted_data", {})
+                if not extracted_data:
+                    continue
+                
+                transactions = extracted_data.get("transactions", {})
                 # Process transactions
                 transactions = page_content.get("transactions", {})
                 
