@@ -27,24 +27,23 @@ from account.models import (
 )
 from extractor.utils import split_pdf_to_pages
 
-logger = logging.getLogger(__name__)
-
-# --- Pydantic Models for Extraction Schemas ---
-
 from extractor.banking.models import *
 from extractor.banking.page_classifier import PageClassifier
 
 
-def convert_decimals_to_str(obj):
+logger = logging.getLogger(__name__)
+
+
+def convert_decimals_to_float(obj):
     """
     Recursively convert all Decimal objects to strings for JSON serialization.
     """
     if isinstance(obj, Decimal):
-        return str(obj)
+        return float(obj)
     elif isinstance(obj, dict):
-        return {key: convert_decimals_to_str(value) for key, value in obj.items()}
+        return {key: convert_decimals_to_float(value) for key, value in obj.items()}
     elif isinstance(obj, list):
-        return [convert_decimals_to_str(item) for item in obj]
+        return [convert_decimals_to_float(item) for item in obj]
     else:
         return obj
 
@@ -55,7 +54,6 @@ class DocumentProcessor(BaseDocumentProcessor):
         self.page_data = []
         self.pages_data = {}
         self.control_totals = {}
-        self.page_metadata = {}
         self.rectifier = self.get_rectifier()
         
         
@@ -209,7 +207,11 @@ class DocumentProcessor(BaseDocumentProcessor):
 
     def _save_control_totals(self):
         # Save control totals to document
-        self.document.control_item = convert_decimals_to_str(self.control_totals)
+        try:
+            self.document.control_item = convert_decimals_to_float(self.control_totals)
+        except Exception as e:
+            logger.error(f"Failed to convert control totals for saving: {e}")
+            self.document.control_item = {}
         self.document.save()
     
     def _save_doc_metadata(self):
@@ -237,8 +239,8 @@ class DocumentProcessor(BaseDocumentProcessor):
         """Extract summary from combined markdown of multiple pages."""
         combined_md = ""
         for num in page_numbers:
-            if num in self.page_metadata:
-                combined_md += f"\n\n--- Page {num} ---\n\n{self.page_metadata[num]['markdown']}"
+            if num in self.pages_data:
+                combined_md += f"\n\n--- Page {num} ---\n\n{self.pages_data[num]['markdown']}"
         
         if not combined_md:
             return {}
