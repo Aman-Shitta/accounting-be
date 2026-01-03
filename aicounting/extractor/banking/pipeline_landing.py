@@ -294,13 +294,12 @@ class DocumentProcessor(BaseDocumentProcessor):
                     continue
                 
                 transactions = extracted_data.get("transactions", {})
-                # Process transactions
-                transactions = page_content.get("transactions", {})
                 
                 # Save key items (summary data) - Not typically in transactions but if we had them
                 # In this new structure, summary is in self.control_totals, but let's check if transactions has key_items
                 # The schema for transactions is TransactionList which has line_items.
                 
+                # Process transactions
                 line_items_data = transactions.get("line_items", [])
                 
                 for line_idx, line_item in enumerate(line_items_data):
