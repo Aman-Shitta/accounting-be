@@ -44,8 +44,9 @@ class MonthlyAccountingDocumentProcessor:
     def set_doc_processor(self, doc_type: str):
         """Set the underlying DocumentProcessor instance."""
         if doc_type in ['bank_statement', 'credit_card']:
-            from extractor.banking.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
-            self.doc_processor = LandingDocumentProcessor(self.config, self.monthly_document)
+            # from extractor.banking.pipeline_landing import DocumentProcessor as LandingDocumentProcessor
+            from extractor.banking.pipeline_landing_v1 import DocumentProcessorV1
+            self.doc_processor = DocumentProcessorV1(self.config, self.monthly_document)
         elif doc_type in ['sales', 'payroll', 'misc']:
             from extractor.kv_processor.pipeline_landing import DocumentProcessor
             self.doc_processor = DocumentProcessor(self.config, self.monthly_document)

@@ -343,6 +343,14 @@ class DocumentRectifier(GeminiMixin):
                 has_credit_change = str(original_credit or '').strip() != str(rectified_credit or '').strip()
                 if has_credit_change:
                     needs_correction = True
+            
+            if not original_debit and not original_credit:
+                # Both original amounts are missing, check if rectified provides a value
+                if rectified_debit or rectified_credit:
+                    has_debit_change = bool(rectified_debit)
+                    has_credit_change = bool(rectified_credit)
+                    needs_correction = True
+
         
             # Only apply corrections with sufficient confidence AND needs_correction flag
             if needs_correction and confidence >= 0.7:
