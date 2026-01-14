@@ -332,6 +332,8 @@ class DocumentRectifier(GeminiMixin):
             rectified_credit = _parse_amount(rect.get('rectified_credit_amount'))
 
             needs_correction = False
+            has_debit_change = False
+            has_credit_change = False
 
             if original_debit:
                 # Check if there's an actual change in values
