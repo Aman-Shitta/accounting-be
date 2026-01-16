@@ -166,9 +166,9 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         
         return attrs
 
-    def _parse_amount(self, value):
+    def _parse_amount(self, clean_value):
         """Parse amount string to Decimal, handling common formats"""
-        if value in (None, ""):
+        if clean_value in (None, ""):
             return None
         try:
             # Remove commas and whitespace
@@ -395,9 +395,9 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         
         return attrs
 
-    def _parse_amount(self, value):
+    def _parse_amount(self, clean_value):
         """Parse amount string to Decimal, handling common formats"""
-        if value in (None, ""):
+        if clean_value in (None, ""):
             return None
         try:
             # Remove commas and whitespace
@@ -552,9 +552,9 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         
         return attrs
 
-    def _parse_amount(self, value):
+    def _parse_amount(self, clean_value):
         """Parse amount string to Decimal, handling common formats"""
-        if value in (None, ""):
+        if clean_value in (None, ""):
             return None
         try:
             # Remove commas and whitespace
