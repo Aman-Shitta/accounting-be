@@ -96,7 +96,13 @@ class DocumentProcessor(BaseDocumentProcessor):
         return parse_response
 
 
-    def process_document(self, file_bytes: bytes, mime_type: None, md=False, special_rules=""):
+    def process_document(self, file_bytes: bytes, **kwargs):
+        
+        """
+        Process the entire bank statement document page by page.
+        """
+        mime_type = kwargs.get("mime_type", "application/pdf")
+
         page_bytes_list = split_pdf_to_pages(file_bytes)
         
         for i, page_bytes in enumerate(page_bytes_list):

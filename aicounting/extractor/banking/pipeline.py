@@ -132,9 +132,9 @@ class PageClassifier:
             "response_schema": self.schema,
             "response_mime_type": "application/json",
             "temperature": 0.1,
-            "top_p": 0.8,
+            "top_p": 0.2,
             "top_k": 15,  # Reduced from 20 to 15 for more focused, cost-effective classification
-            "system_instruction": [classification_prompt],
+            "system_instruction": [self.prompt],
             "max_output_tokens": 500,  # Classification needs minimal output
         }
         
@@ -525,7 +525,10 @@ class DocumentProcessor(BaseDocumentProcessor):
                 logger.error("All JSON parsing attempts failed, returning default structure")
                 return expected_structure
 
-    def process_document(self, file_bytes: bytes, mime_type: str, md=False):
+    def process_document(self, file_bytes: bytes, **kwargs):
+
+        mime_type = kwargs.get("mime_type", "application/pdf")
+        md = kwargs.get("md", False)
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
         

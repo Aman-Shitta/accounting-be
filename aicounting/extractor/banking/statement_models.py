@@ -1,16 +1,29 @@
 from pydantic import BaseModel, Field
 from typing import List
 
+from decimal import Decimal
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+class AmountGrounding(BaseModel):
+    left: Annotated[Decimal, Field(..., description="left location coordinate of the amount on the page.")]
+    top: Annotated[Decimal, Field(..., description="Top location coordinate of the amount on the page.")]
+    right: Annotated[Decimal, Field(..., description="Right location coordinate of the amount amount on the page.")]
+    bottom:  Annotated[Decimal, Field(..., description="Bottom location coordinate of the amount amount on the page.")]
 
 class StatementTransaction(BaseModel):
     id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the statement.")
-    date: str = Field(..., description="Date of the transaction in mm/dd/yyyy format.")
+    date: str = Field(..., description="Transaction or check Date in mm/dd/yyyy format.")
     check_number: str = Field(..., description="Check number if applicable, otherwise an empty string.")
     check_written_date: str = Field(..., description="Date when the check was written in mm/dd/yyyy format, if applicable, otherwise an empty string.")
-    description: str = Field(..., description="Description of the transaction or check, with payee and memo information appended for checks if applicable.")
-    amount: float = Field(..., description="Amount of the transaction or check in positive value.")
+    description: str = Field(..., description="Description of the transaction or check, with payee and memo information appended for checks if applicable. You must resolve this information for all checks.")
+    amount: float = Field(..., gt=0, description="Amount of the transaction or check in positive value.")
+    y_coord: float = Field(..., description="top left location coordinate of the amount.")
+    # grounding: AmountGrounding = Field(..., description="Bounding box coordinates of the amount on the page.")
+    # local_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the page. Reset the counter to 1 at the beginning of each page.")
     type: str = Field(..., description="Indicates whether the transaction is a debit or credit. Use 'debit' or 'credit'.")
-    page_number: int = Field(..., description="Number of the page on which the transaction or check appears.")
+
 
 
 class StatementSummaryTotals(BaseModel):
