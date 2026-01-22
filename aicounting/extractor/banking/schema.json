@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bank Statement Transaction and Check Extraction Schema",
+  "description": "Schema for extracting all transactions and checks from a bank statement, including order, date, check number, check written date, description, amount, debit/credit indicator, page number, and appended payee/memo information for checks.",
+  "type": "object",
+  "properties": {
+    "transactions": {
+      "title": "Transactions and Checks",
+      "description": "An array of all transactions and checks listed in the statement, in the order they appear.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "global_id": {
+            "title": "Unique Identifier",
+            "description": "Numerical unique identifier indicating the order as listed on the statement.",
+            "type": "number"
+          },
+          "date": {
+            "title": "Transaction Date",
+            "description": "Transaction or check Date in mm/dd/yyyy format.",
+            "type": "string"
+          },
+          "check_number": {
+            "title": "Check Number",
+            "description": "Check number if applicable, otherwise an empty string.",
+            "type": "string"
+          },
+          "check_written_date": {
+            "title": "Check Written Date",
+            "description": "Date when the check was written in mm/dd/yyyy format, if applicable, otherwise an empty string.",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "description": "Description of the transaction or check, with payee and memo information appended for checks if applicable. You must resolve this information for all checks.  This is very important.",
+            "type": "string"
+          },
+          "amount": {
+            "title": "Amount",
+            "description": "Amount of the transaction or check in positive value.",
+            "type": "number"
+          },
+          "y_coord": {
+            "type": "integer",
+            "description": "top left location coordinate of the amount."
+          },
+          "local_id": {
+            "title": "Unique Identifier",
+            "description": "Numerical unique identifier indicating the order as listed on the page.  Reset the counter to 1 at the beginning of each page. When  new page starts the y_coord will reset.",
+            "type": "number"
+          },
+          "type": {
+            "title": "Debit or Credit",
+            "description": "Indicates whether the transaction is a debit or credit. Use 'debit' or 'credit'.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "global_id",
+          "date",
+          "check_number",
+          "check_written_date",
+          "description",
+          "amount",
+          "y_coord",
+          "local_id",
+          "type"
+        ]
+      }
+    },
+    "summary": {
+      "title": "Statement Summary",
+      "description": "Summary totals and balances from the bank statement.",
+      "type": "object",
+      "properties": {
+        "beginning_balance": {
+          "title": "Beginning Balance",
+          "description": "The starting balance at the beginning of the statement period.",
+          "type": "number"
+        },
+        "ending_balance": {
+          "title": "Ending Balance",
+          "description": "The ending balance at the end of the statement period.",
+          "type": "number"
+        },
+        "total_deposits": {
+          "title": "Total Deposits",
+          "description": "The total amount of all deposits/credits during the statement period.",
+          "type": "number"
+        },
+        "total_withdrawals": {
+          "title": "Total Withdrawals",
+          "description": "The total amount of all withdrawals/debits during the statement period.",
+          "type": "number"
+        },
+        "total_credits_count": {
+          "title": "Total Credits Count",
+          "description": "The total number of credit transactions.",
+          "type": "number"
+        },
+        "total_withdrawl_count": {
+          "title": "Total Withdrawals Count",
+          "description": "The total number of withdrawal transactions.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "beginning_balance",
+        "ending_balance",
+        "total_deposits",
+        "total_withdrawals",
+        "total_credits_count",
+        "total_withdrawl_count"
+      ]
+    }
+  },
+  "required": [
+    "transactions",
+    "summary"
+  ]
+}
