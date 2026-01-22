@@ -459,7 +459,7 @@ class GeminiMixin:
     def get_gemini_config(
         self,
         temperature: float = 0.2,
-        top_p: float = 0.95,
+        top_p: float = 0.2,
         top_k: int = 25,
         max_output_tokens: int = 8000,
         response_mime_type: Optional[str] = None,

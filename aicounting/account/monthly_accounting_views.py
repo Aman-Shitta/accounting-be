@@ -11,7 +11,9 @@ from user.models import DimAICClient
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
 from aicounting.response import create_api_response
-from .models import MonthlyAccountingDocument
+from account.models import MonthlyAccountingDocument
+          
+from extractor.services import DocumentProcessingService, UnsupportedDocTypeError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -552,105 +554,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             )
 
 
-class MonthlyAccountingDocumentStartExtractionView(generics.GenericAPIView):
-    """
-    Start extraction for a pre-processed document.
-    Can only be called after document status is 'pre_processed'.
-    """
-    authentication_classes = [authenticate.JSONWebTokenAuthentication]
-    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
-    
-    def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
-        """POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/extract/"""
-        try:
-            # Validate integers
-            for var_name, value in [("client ID", client_id), ("accounting ID", accounting_id), ("document ID", document_id)]:
-                try:
-                    int(value)
-                except ValueError:
-                    return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        f"Invalid {var_name}."
-                    )
-            
-            # Authorize access
-            user = request.user
-            if hasattr(user, 'customer_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.customer_profile
-                )
-            elif hasattr(user, 'accountant_profile'):
-                monthly_accounting = get_object_or_404(
-                    FactAICMonthlyAccounting.objects.select_related('client'),
-                    id=accounting_id,
-                    client_id=client_id,
-                    client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
-                )
-            else:
-                return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
-            
-            # Get document
-            try:
-                document = MonthlyAccountingDocument.objects.select_related('monthly_accounting').get(
-                    id=document_id,
-                    monthly_accounting=monthly_accounting
-                )
-            except MonthlyAccountingDocument.DoesNotExist:
-                return create_api_response(status.HTTP_404_NOT_FOUND, "Document not found.")
-            
-            # Check if document is ready for extraction
-            if document.status != 'pre_processed':
-                return create_api_response(
-                    status.HTTP_400_BAD_REQUEST,
-                    f"Document must be in 'pre_processed' status. Current status: {document.status}"
-                )
-            
-            # Start extraction based on document type
-            if document.doc_type in ['bank_statement', 'credit_card']:
-                config_params = dict(
-                    doc_type=document.doc_type,
-                    extract_line_items=True,
-                    line_items=[
-                        "date: The date of the transaction.",
-                        "description: A description of the transaction.",
-                        "debit amount: The debit amount of the transaction.",
-                        "credit amount: The credit amount of the transaction.",
-                    ],
-                    excluded_fields=[]
-                )
-                
-                from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
-                
-            else:
-                return create_api_response(
-                status.HTTP_400_BAD_REQUEST,
-                "This does not support extract.",
-                data={"error": str(e)}
-            )
-            
-            return create_api_response(
-                status.HTTP_200_OK,
-                "Extraction started successfully.",
-                data={
-                    "doc_uuid": str(document.id),
-                    "status": "extracting"
-                }
-            )
-            
-        except Exception as e:
-            logger.error(f"Error starting extraction for document {document_id}: {str(e)}")
-            return create_api_response(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while starting extraction.",
-                data={"error": str(e)}
-            )
-
-
 class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
     """Upload a file for a specific monthly accounting document (by PK) within an accounting session."""
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
@@ -715,45 +618,18 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.uploaded_by = request.user
             document.save()
             
-            logger.error(f"Starting processing for document {document.id} of type {document.doc_type}.")
+            logger.info(f"Starting processing for document {document.id} of type {document.doc_type}.")
 
-            # Trigger markdown pre-processing for bank statements and credit cards
-            if document.doc_type in ['bank_statement', 'credit_card']:
-
-                config_params = dict(
-                    doc_type=document.doc_type,
-                    extract_line_items=True,
-                    line_items=[
-                        "date: The date of the transaction.",
-                        "description: A description of the transaction.",
-                        "debit amount: The debit amount of the transaction.",
-                        "credit amount: The credit amount of the transaction.",
-                    ],
-                    excluded_fields=[]
-                )
-                from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
-
-            elif document.doc_type in ['sales', 'payroll', 'misc']:
+            try:
+                service = DocumentProcessingService(document)
+                task_id = service.start_processing()
+                logger.info(f"Started processing task {task_id} for document {document.id}")
                 
-                attributes = document.input_file_snapshot.attribute_snapshots.all()
-                key_items =[attri.name for attri in attributes]
-                key_items_formatted =[f"{attri.name}" + f": {attri.comments}" for attri in attributes]
-                
-                config_params = dict(
-                    doc_type=document.doc_type,
-                    extract_key_items=True,
-                    key_items=key_items,
-                    key_items_formatted=key_items_formatted,
-                    excluded_fields=[]
-                )
+                document.status = "extracting"
+                document.save()
 
-                # Trigger document processing tasks
-                from .tasks import process_uploaded_document
-                process_uploaded_document.delay(str(document.id), config_params)
-
-            else:
-                logger.error(f"Document type {document.doc_type} does not require processing.")
+            except UnsupportedDocTypeError as e:
+                logger.warning(f"Document type {document.doc_type} does not require processing: {e}")
 
             data = {
                 "doc_id": str(document.id),

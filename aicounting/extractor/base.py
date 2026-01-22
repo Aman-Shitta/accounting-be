@@ -1,6 +1,8 @@
 
 import sys
 import os
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional
 
 from django.conf import settings
 from google import genai
@@ -13,11 +15,71 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BaseDocumentProcessor(GeminiMixin):
+class AbstractDocumentProcessor(ABC):
+    """
+    Abstract base class defining the interface for all document processors.
+    
+    All concrete processor implementations (BankStatementProcessor, KVProcessor, etc.)
+    must implement these methods to ensure consistent behavior across the system.
+    """
+    
+    @abstractmethod
+    def process_document(
+        self,
+        file_bytes: bytes,
+        mime_type: str = "application/pdf",
+        md: bool = False,
+        special_rules: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Process a document and extract data.
+        
+        Args:
+            file_bytes: Raw bytes of the document file
+            mime_type: MIME type of the file
+            md: Whether to generate markdown output
+            special_rules: Additional extraction rules
+            
+        Returns:
+            Dict containing extracted data and processing stats
+        """
+        pass
+    
+    @abstractmethod
+    def save_results(self, extracted_data: Dict[str, Any]) -> None:
+        """
+        Save extracted data to the database.
+        
+        Args:
+            extracted_data: Data extracted from the document
+        """
+        pass
+    
+    @abstractmethod
+    def validate_input(self, file_bytes: bytes) -> bool:
+        """
+        Validate the input file before processing.
+        
+        Args:
+            file_bytes: Raw bytes of the document file
+            
+        Returns:
+            True if valid, raises exception otherwise
+        """
+        pass
+
+
+class BaseDocumentProcessor(GeminiMixin, AbstractDocumentProcessor):
     """
     Base document processor with Gemini AI capabilities.
     
     Extends GeminiMixin to provide shared AI functionality across all document processors.
+    Implements AbstractDocumentProcessor to ensure consistent interface.
+    
+    Subclasses must implement:
+        - process_document(): Main extraction logic
+        - save_results(): Database persistence
+        - validate_input(): Input validation
     """
     
     api_key = settings.GEMINI_API_KEY
@@ -30,6 +92,27 @@ class BaseDocumentProcessor(GeminiMixin):
         self.document = doc
         self.doc_type: str = config.doc_type
         self.prompt = prepare_prompt(config)
+        self.config = config  # Store config for subclass access
+    
+    # Default implementations that subclasses can override
+    def validate_input(self, file_bytes: bytes) -> bool:
+        """
+        Default validation - checks file_bytes is not empty.
+        Subclasses should override for document-specific validation.
+        """
+        if not file_bytes:
+            raise ValueError("Empty file provided")
+        return True
+    
+    def save_results(self, extracted_data: Dict[str, Any]) -> None:
+        """
+        Default implementation - does nothing.
+        Subclasses must override to implement actual persistence.
+        """
+        logger.warning(
+            f"{self.__class__.__name__}.save_results() not implemented. "
+            "Override in subclass to enable persistence."
+        )
     
     def _generate_content_stream(self, **kwargs):
         """
