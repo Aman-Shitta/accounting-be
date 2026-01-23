@@ -13,7 +13,7 @@ class AmountGrounding(BaseModel):
     bottom:  Annotated[Decimal, Field(..., description="Bottom location coordinate of the amount amount on the page.")]
 
 class StatementTransaction(BaseModel):
-    id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the statement.")
+    global_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the statement.")
     date: str = Field(..., description="Transaction or check Date in mm/dd/yyyy format.")
     check_number: str = Field(..., description="Check number if applicable, otherwise an empty string.")
     check_written_date: str = Field(..., description="Date when the check was written in mm/dd/yyyy format, if applicable, otherwise an empty string.")
@@ -21,7 +21,7 @@ class StatementTransaction(BaseModel):
     amount: float = Field(..., gt=0, description="Amount of the transaction or check in positive value.")
     y_coord: float = Field(..., description="top left location coordinate of the amount.")
     # grounding: AmountGrounding = Field(..., description="Bounding box coordinates of the amount on the page.")
-    # local_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the page. Reset the counter to 1 at the beginning of each page.")
+    local_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the page. Reset the counter to 1 at the beginning of each page.")
     type: str = Field(..., description="Indicates whether the transaction is a debit or credit. Use 'debit' or 'credit'.")
 
 
