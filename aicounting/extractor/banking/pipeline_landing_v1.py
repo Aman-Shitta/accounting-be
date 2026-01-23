@@ -137,13 +137,13 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             transactions.sort(key=lambda x: (x.get('grounding', {}).get('top'),))
             transactions.sort(
                 key=lambda x: (
-                    x.get('id'),
+                    x.get('global_id'),
                     x.get('y_coord')
                 ))
 
             metadata_transactions.sort(
                 key=lambda x: (
-                    x['id']['value'],
+                    x['global_id']['value'],
                     x['y_coord']['value']
                 ))
         except Exception as e:
@@ -174,7 +174,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
                         parts = ref_str.split('-')
                         if parts and parts[0].strip().isdigit():
                             actual_page_number_str = parts[0].strip()
-                            logger.debug(f"Found page reference for transaction {i} (id={transactions[i].get('id')}): page {actual_page_number_str} from field '{field_item}'")
+                            logger.debug(f"Found page reference for transaction {i} (global_id={transactions[i].get('global_id')}): page {actual_page_number_str} from field '{field_item}'")
                             break
 
                 
@@ -183,6 +183,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
                     # Convert from 0-indexed to 1-indexed page number
                     actual_page_number = int(actual_page_number_str) + 1
                     transactions[i]['page_number'] = actual_page_number
+                    transactions[i]['id'] = transactions[i]['local_id']
                     last_known_page_number = actual_page_number
 
                 if not actual_page_number_str:
