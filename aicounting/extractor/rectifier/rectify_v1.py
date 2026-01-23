@@ -163,9 +163,10 @@ Rules:
                             "date": {"type": "string", "description": "Transaction or check Date in mm/dd/yyyy format."},
                             "description": {"type": "string", "description": "Description of the transaction or check, with payee and memo information appended for checks if applicable."},
                             "amount": {"type": "number", "description": "Amount of the transaction or check in positive value."},
-                            "type": {"type": "string", "enum": ["debit", "credit"], "description": "Indicates whether the transaction is a debit or credit."}
+                            "type": {"type": "string", "enum": ["debit", "credit"], "description": "Indicates whether the transaction is a debit or credit."},
+                            "is_check_transaction": {"type": "boolean", "description": "Indicates if the transaction is a check."},
                         },
-                        "required": ["id", "date", "description", "amount", "type"]
+                        "required": ["id", "date", "description", "amount", "type", "is_check_transaction"]
                     }
                 }
             },
@@ -217,7 +218,7 @@ Rules:
             if self._items_match(line_item, gemini_item):
                 # Items match - check if amount needs update
                 line_amount = self._get_amount(line_item)
-                gemini_amount = gemini_item.get('amount')
+                gemini_amount = self._get_amount(gemini_item)
                 
                 if line_amount is None and gemini_amount is not None:
                     # Line item has no amount, use gemini's
@@ -260,7 +261,7 @@ Rules:
                     rectified_item['was_missing'] = False
                     
                     line_amount = self._get_amount(line_item)
-                    gemini_amount = gemini_item.get('amount')
+                    gemini_amount = self._get_amount(gemini_item)
                     
                     if line_amount is None and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
@@ -280,8 +281,14 @@ Rules:
                             match_found = True
                             break
                     
-                    if match_found:
+                    if match_found :
                         # Gemini has an extra item - insert it as missing
+                        # Skip check transactions - don't add them as missing
+                        if gemini_item.get('is_check_transaction', False):
+                            logger.info(f"Skipping extra check transaction from gemini at position {gemini_idx}")
+                            gemini_idx += 1
+                            continue
+                        
                         new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
                         new_item['is_rectified'] = True
                         new_item['was_missing'] = True
@@ -298,6 +305,12 @@ Rules:
                         gemini_idx += 1
             else:
                 # No more line_items - add remaining gemini items as missing
+                # Skip check transactions - don't add them as missing
+                if gemini_item.get('is_check_transaction', False):
+                    logger.info(f"Skipping trailing check transaction from gemini at position {gemini_idx}")
+                    gemini_idx += 1
+                    continue
+                
                 new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
                 new_item['is_rectified'] = True
                 new_item['was_missing'] = True
@@ -339,7 +352,7 @@ Rules:
                 
                 if self._items_match(line_item, gemini_item):
                     line_amount = self._get_amount(line_item)
-                    gemini_amount = gemini_item.get('amount')
+                    gemini_amount = self._get_amount(gemini_item)
                     
                     if line_amount is None and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
