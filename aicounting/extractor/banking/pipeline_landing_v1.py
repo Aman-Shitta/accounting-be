@@ -351,6 +351,11 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         """
         Apply rectified items back to the extracted_data transactions.
         
+        Since rectified_items already contains complete transaction dictionaries
+        with all fields (id, page_number, date, description, amount, type, 
+        is_check_transaction, check_number, is_rectified, was_missing), we can
+        use them directly.
+        
         Args:
             page_num: Page number being processed
             original_transactions: List of (index, transaction) tuples
@@ -358,72 +363,26 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         """
         transactions = self.extracted_data.get("transactions", [])
         
-        # Handle same length case - simple index mapping
+        # Same length - direct replacement at original indices
         if len(rectified_items) == len(original_transactions):
             for (orig_idx, _), rectified in zip(original_transactions, rectified_items):
-                # Update the original transaction with rectified data
-                transactions[orig_idx]['amount'] = rectified.get('amount')
-                transactions[orig_idx]['is_rectified'] = rectified.get('is_rectified', False)
-                transactions[orig_idx]['was_missing'] = rectified.get('was_missing', False)
+                # Preserve page_number from original if not in rectified
+                rectified.setdefault('page_number', page_num)
+                transactions[orig_idx] = rectified
         else:
-            # Handle case where rectified has more items (missing transactions added)
-            # First, update existing transactions
-            rectified_idx = 0
-            new_transactions = []
+            # Different lengths - replace existing and append new (was_missing) items
+            existing_items = [r for r in rectified_items if not r.get('was_missing', False)]
+            missing_items = [r for r in rectified_items if r.get('was_missing', False)]
             
-            for orig_idx, orig_txn in original_transactions:
-                if rectified_idx >= len(rectified_items):
-                    break
-                
-                rectified = rectified_items[rectified_idx]
-                
-                # Check if this is a missing item (was_missing flag)
-                while rectified.get('was_missing', False) and rectified_idx < len(rectified_items):
-                    # This is a new item - add it
-                    new_txn = {
-                        'page_number': page_num,
-                        'date': rectified.get('date', ''),
-                        'description': rectified.get('description', ''),
-                        'amount': rectified.get('amount'),
-                        'type': rectified.get('type', ''),
-                        'check_number': rectified.get('check_number', ''),
-                        'is_rectified': True,
-                        'was_missing': True,
-                    }
-                    new_transactions.append((orig_idx, new_txn))
-                    rectified_idx += 1
-                    if rectified_idx < len(rectified_items):
-                        rectified = rectified_items[rectified_idx]
-                    else:
-                        break
-                
-                if rectified_idx < len(rectified_items) and not rectified.get('was_missing', False):
-                    # Update existing transaction
-                    transactions[orig_idx]['amount'] = rectified.get('amount')
-                    transactions[orig_idx]['is_rectified'] = rectified.get('is_rectified', False)
-                    transactions[orig_idx]['was_missing'] = False
-                    rectified_idx += 1
+            # Update existing transactions
+            for (orig_idx, _), rectified in zip(original_transactions, existing_items):
+                rectified.setdefault('page_number', page_num)
+                transactions[orig_idx] = rectified
             
-            # Add any remaining missing items at the end
-            while rectified_idx < len(rectified_items):
-                rectified = rectified_items[rectified_idx]
-                if rectified.get('was_missing', False):
-                    new_txn = {
-                        'page_number': page_num,
-                        'date': rectified.get('date', ''),
-                        'description': rectified.get('description', ''),
-                        'amount': rectified.get('amount'),
-                        'type': rectified.get('type', ''),
-                        'check_number': rectified.get('check_number', ''),
-                        'is_rectified': True,
-                        'was_missing': True,
-                    }
-                    transactions.append(new_txn)
-                rectified_idx += 1
-            
-            # Insert new transactions at appropriate positions
-            for insert_idx, new_txn in sorted(new_transactions, reverse=True):
-                transactions.insert(insert_idx, new_txn)
+            # Append missing items (new transactions found during rectification)
+            for missing in missing_items:
+                missing.setdefault('page_number', page_num)
+                transactions.append(missing)
         
         self.extracted_data['transactions'] = transactions
 

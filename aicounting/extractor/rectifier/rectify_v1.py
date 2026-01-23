@@ -159,11 +159,11 @@ Rules:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "integer"},
-                            "date": {"type": "string"},
-                            "description": {"type": "string"},
-                            "amount": {"type": "number"},
-                            "type": {"type": "string", "enum": ["debit", "credit"]}
+                            "id": {"type": "integer", "description": "Numerical unique identifier indicating the order as listed on the statement."},
+                            "date": {"type": "string", "description": "Transaction or check Date in mm/dd/yyyy format."},
+                            "description": {"type": "string", "description": "Description of the transaction or check, with payee and memo information appended for checks if applicable."},
+                            "amount": {"type": "number", "description": "Amount of the transaction or check in positive value."},
+                            "type": {"type": "string", "enum": ["debit", "credit"], "description": "Indicates whether the transaction is a debit or credit."}
                         },
                         "required": ["id", "date", "description", "amount", "type"]
                     }
@@ -365,7 +365,7 @@ Rules:
                 return False
         
         # Compare descriptions using fuzzy matching
-        line_desc = str(line_item.get('description', '')).strip().lower()
+        line_desc = str(line_item.get('description', '')).strip().lower() if not line_item.get('is_check_transaction', False) else f'Check {line_item.get("check_number", "")}'
         gemini_desc = str(gemini_item.get('description', '')).strip().lower()
         
         if line_desc and gemini_desc:
