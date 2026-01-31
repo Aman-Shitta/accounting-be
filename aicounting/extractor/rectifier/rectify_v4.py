@@ -1201,166 +1201,45 @@ class TransactionRectifierV3:
         line_items: List[Dict[str, Any]],
         gemini_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Rectify when both lists have same length - index by index comparison."""
-        rectified = []
+        """
+        Rectify when both lists have same length using alignment (order-preserving).
         
-        for idx, (line_item, gemini_item) in enumerate(zip(line_items, gemini_items)):
-            rectified_item = line_item.copy()
-            rectified_item['is_rectified'] = False
-            rectified_item['was_missing'] = False
-            
-            # Check if description and date match
-            if self._items_match(line_item, gemini_item):
-                # Items match - check if amount needs update
-                line_amount = self._get_amount(line_item)
-                gemini_amount = self._get_amount(gemini_item)
-                
-                if line_amount is None and gemini_amount is not None:
-                    # Line item has no amount, use gemini's
-                    rectified_item['amount'] = gemini_amount
-                    rectified_item['is_rectified'] = True
-                    print(f"Added missing amount at index {idx}: {gemini_amount}")
-                elif line_amount != gemini_amount and gemini_amount is not None:
-                    # Amounts differ - use gemini's amount
-                    rectified_item['amount'] = gemini_amount
-                    rectified_item['is_rectified'] = True
-                    print(f"Updated amount at index {idx}: {line_amount} -> {gemini_amount}")
-            else:
-                # Items don't match at this index - keep original
-                logger.warning(f"Items don't match at index {idx}")
-            
-            rectified.append(rectified_item)
+        Old approach: index-by-index comparison (line[0] vs gemini[0], etc.)
+        Problem: Order drift causes cascading mismatches when items swap positions
         
-        return rectified
+        New approach: Use alignment to find best pairings even with reordering
+        """
+        return self._rectify_with_alignment(line_items, gemini_items)
 
     def _rectify_gemini_has_more(
         self,
         line_items: List[Dict[str, Any]],
         gemini_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Rectify when gemini has more items - find and insert missing."""
-        rectified = []
-        line_idx = 0
-        gemini_idx = 0
+        """
+        Rectify when gemini has more items using alignment (order-preserving).
         
-        while gemini_idx < len(gemini_items):
-            gemini_item = gemini_items[gemini_idx]
-            
-            if line_idx < len(line_items):
-                line_item = line_items[line_idx]
-                
-                if self._items_match(line_item, gemini_item):
-                    # Items match - update amount if needed
-                    rectified_item = line_item.copy()
-                    rectified_item['is_rectified'] = False
-                    rectified_item['was_missing'] = False
-                    
-                    line_amount = self._get_amount(line_item)
-                    gemini_amount = self._get_amount(gemini_item)
-                    
-                    if line_amount is None and gemini_amount is not None:
-                        rectified_item['amount'] = gemini_amount
-                        rectified_item['is_rectified'] = True
-                    elif line_amount != gemini_amount and gemini_amount is not None:
-                        rectified_item['amount'] = gemini_amount
-                        rectified_item['is_rectified'] = True
-                    
-                    rectified.append(rectified_item)
-                    line_idx += 1
-                    gemini_idx += 1
-                else:
-                    # Check if gemini item matches any upcoming line_item
-                    match_found = False
-                    for lookahead in range(line_idx, min(line_idx + 5, len(line_items))):
-                        if self._items_match(line_items[lookahead], gemini_item):
-                            match_found = True
-                            break
-                    
-                    if match_found :
-                        # Gemini has an extra item - insert it as missing
-                        # Skip check transactions - don't add them as missing
-                        if gemini_item.get('is_check_transaction', False):
-                            print(f"Skipping extra check transaction from gemini at position {gemini_idx}")
-                            gemini_idx += 1
-                            continue
-                        
-                        new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
-                        new_item['is_rectified'] = True
-                        new_item['was_missing'] = True
-                        rectified.append(new_item)
-                        print(f"Inserted missing item from gemini at position {len(rectified)}")
-                        gemini_idx += 1
-                    else:
-                        # No match found - keep line_item and move on
-                        rectified_item = line_item.copy()
-                        rectified_item['is_rectified'] = False
-                        rectified_item['was_missing'] = False
-                        rectified.append(rectified_item)
-                        line_idx += 1
-                        gemini_idx += 1
-            else:
-                # No more line_items - add remaining gemini items as missing
-                # Skip check transactions - don't add them as missing
-                if gemini_item.get('is_check_transaction', False):
-                    print(f"Skipping trailing check transaction from gemini at position {gemini_idx}")
-                    gemini_idx += 1
-                    continue
-                
-                new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
-                new_item['is_rectified'] = True
-                new_item['was_missing'] = True
-                rectified.append(new_item)
-                print(f"Added trailing item from gemini at position {len(rectified)}")
-                gemini_idx += 1
+        Old approach: Greedy matching with lookahead, inserted "missing" items
+        Problem: Lookahead didn't advance to matched position, causing drift
         
-        # Add any remaining line_items
-        while line_idx < len(line_items):
-            rectified_item = line_items[line_idx].copy()
-            rectified_item['is_rectified'] = False
-            rectified_item['was_missing'] = False
-            rectified.append(rectified_item)
-            line_idx += 1
-        
-        # Reassign IDs
-        for idx, item in enumerate(rectified):
-            item['id'] = idx + 1
-        
-        return rectified
+        New approach: Alignment handles insertions naturally via gap scoring
+        """
+        return self._rectify_with_alignment(line_items, gemini_items)
 
     def _rectify_line_items_has_more(
         self,
         line_items: List[Dict[str, Any]],
         gemini_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Rectify when line_items has more - update matched items only."""
-        rectified = []
-        gemini_idx = 0
+        """
+        Rectify when line_items has more using alignment (order-preserving).
         
-        for line_item in line_items:
-            rectified_item = line_item.copy()
-            rectified_item['is_rectified'] = False
-            rectified_item['was_missing'] = False
-            
-            # Try to find matching gemini item
-            if gemini_idx < len(gemini_items):
-                gemini_item = gemini_items[gemini_idx]
-                
-                if self._items_match(line_item, gemini_item):
-                    line_amount = self._get_amount(line_item)
-                    gemini_amount = self._get_amount(gemini_item)
-                    
-                    if line_amount is None and gemini_amount is not None:
-                        rectified_item['amount'] = gemini_amount
-                        rectified_item['is_rectified'] = True
-                    elif line_amount != gemini_amount and gemini_amount is not None:
-                        rectified_item['amount'] = gemini_amount
-                        rectified_item['is_rectified'] = True
-                    
-                    gemini_idx += 1
-            
-            rectified.append(rectified_item)
+        Old approach: Sequential matching, only advancing gemini_idx on match
+        Problem: Single mismatch causes all subsequent comparisons to be wrong
         
-        return rectified
+        New approach: Alignment treats extra line items as gaps naturally
+        """
+        return self._rectify_with_alignment(line_items, gemini_items)
 
     def _items_match(self, line_item: Dict, gemini_item: Dict) -> bool:
         """Check if two items match by description and date."""
@@ -1383,20 +1262,290 @@ class TransactionRectifierV3:
         
         return True
 
-    def _dates_match(self, date1: str, date2: str) -> bool:
-        """Check if two date strings represent the same date."""
-        if not date1 or not date2:
-            return True  # If either is missing, consider it a match
+    def _normalize_desc(self, item: Dict[str, Any]) -> str:
+        """
+        Normalize description for comparison.
         
-        # Extract numeric parts
+        Check transactions get special handling to match 'Check XXXX' format.
+        Regular transactions use lowercase description text.
+        """
+        if item.get('is_check_transaction', False):
+            return f"check {item.get('check_number', '')}".strip().lower()
+        return str(item.get('description', '')).strip().lower()
+
+    def _pair_score(self, line_item: Dict[str, Any], gemini_item: Dict[str, Any]) -> float:
+        """
+        Calculate similarity score between a line item and gemini item.
+        
+        Scoring weights:
+        - Date match: +3.0 (mismatch: -5.0) - Strong indicator
+        - Amount match (within 1 cent): +3.0 (mismatch: -2.0)
+        - Check number match: +4.0 (mismatch: -3.0) - Strongest indicator
+        - Description similarity: -1.0 to +1.0 (scaled from 0-1 ratio)
+        
+        Positive scores indicate good match, negative scores indicate mismatch.
+        Used by alignment algorithm to find best pairings.
+        """
+        score = 0.0
+
+        # Date matching: critical field with high weight
+        line_date = str(line_item.get('date', '')).strip()
+        gemini_date = str(gemini_item.get('date', '')).strip()
+        if line_date and gemini_date:
+            if self._dates_match(line_date, gemini_date):
+                score += 3.0
+            else:
+                score -= 5.0  # Heavy penalty for date mismatch
+
+        # Amount matching: important for verification
+        line_amount = self._get_amount(line_item)
+        gemini_amount = self._get_amount(gemini_item)
+        if line_amount is not None and gemini_amount is not None:
+            if abs(line_amount - gemini_amount) <= 0.01:  # Tolerance for rounding
+                score += 3.0
+            else:
+                score -= 2.0
+
+        # Check number matching: unique identifier, strongest signal
+        line_check = str(line_item.get('check_number', '') or '').strip()
+        gemini_check = str(gemini_item.get('check_nbr', '') or '').strip()
+        if line_check and gemini_check:
+            if line_check == gemini_check:
+                score += 4.0  # Highest weight - unique identifier
+            else:
+                score -= 3.0
+
+        # Description similarity: fuzzy matching with lower weight
+        line_desc = self._normalize_desc(line_item)
+        gemini_desc = self._normalize_desc(gemini_item)
+        if line_desc and gemini_desc:
+            similarity = SequenceMatcher(None, line_desc, gemini_desc).ratio()
+            # Map 0-1 similarity to -1 to +1 score range
+            score += (similarity - 0.5) * 2.0
+
+        return score
+
+    def _align_items(
+        self,
+        line_items: List[Dict[str, Any]],
+        gemini_items: List[Dict[str, Any]],
+        gap_penalty: float = -2.0,
+        min_match_score: float = 1.0,
+    ) -> List[Tuple[Optional[int], Optional[int]]]:
+        """
+        Order-preserving alignment using dynamic programming (Needleman-Wunsch style).
+        
+        This algorithm finds the optimal alignment between two sequences while:
+        1. Preserving relative order (no reordering)
+        2. Allowing items to be unmatched (gaps)
+        3. Maximizing total match score
+        
+        Args:
+            line_items: List of Landing AI extracted items
+            gemini_items: List of Gemini extracted items
+            gap_penalty: Score penalty for leaving an item unmatched
+            min_match_score: Minimum score to consider items matched
+            
+        Returns:
+            List of (line_idx, gemini_idx) pairs where None indicates gap/unmatched.
+            Example: [(0, 0), (1, None), (2, 1)] means:
+            - line[0] matched with gemini[0]
+            - line[1] has no match (gap in gemini)
+            - line[2] matched with gemini[1]
+        """
+        n = len(line_items)
+        m = len(gemini_items)
+
+        # DP table: dp[i][j] = best score for aligning line_items[0:i] with gemini_items[0:j]
+        dp = [[0.0] * (m + 1) for _ in range(n + 1)]
+        # Backtracking: tracks which move gave the best score
+        back = [[None] * (m + 1) for _ in range(n + 1)]
+
+        # Initialize: aligning with empty sequence incurs gap penalties
+        for i in range(1, n + 1):
+            dp[i][0] = dp[i - 1][0] + gap_penalty
+            back[i][0] = 'up'  # Skip line_item[i-1]
+        for j in range(1, m + 1):
+            dp[0][j] = dp[0][j - 1] + gap_penalty
+            back[0][j] = 'left'  # Skip gemini_item[j-1]
+
+        # Fill DP table
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                # Option 1: Match line[i-1] with gemini[j-1]
+                match_score = self._pair_score(line_items[i - 1], gemini_items[j - 1])
+                diag = dp[i - 1][j - 1] + match_score
+                
+                # Option 2: Skip line[i-1] (unmatched in line_items)
+                up = dp[i - 1][j] + gap_penalty
+                
+                # Option 3: Skip gemini[j-1] (unmatched in gemini_items)
+                left = dp[i][j - 1] + gap_penalty
+
+                # Choose best option
+                best = diag
+                move = 'diag'
+                if up > best:
+                    best = up
+                    move = 'up'
+                if left > best:
+                    best = left
+                    move = 'left'
+
+                dp[i][j] = best
+                back[i][j] = move
+
+        # Backtrack to recover alignment
+        aligned: List[Tuple[Optional[int], Optional[int]]] = []
+        i, j = n, m
+        while i > 0 or j > 0:
+            move = back[i][j]
+            if move == 'diag':
+                li = i - 1
+                gi = j - 1
+                # Check if match is strong enough to pair them
+                if self._pair_score(line_items[li], gemini_items[gi]) >= min_match_score:
+                    aligned.append((li, gi))  # Pair them
+                else:
+                    # Weak match - treat as separate gaps
+                    aligned.append((li, None))
+                    aligned.append((None, gi))
+                i -= 1
+                j -= 1
+            elif move == 'up':
+                # Line item has no match
+                aligned.append((i - 1, None))
+                i -= 1
+            else:  # move == 'left'
+                # Gemini item has no match
+                aligned.append((None, j - 1))
+                j -= 1
+
+        aligned.reverse()  # We built it backwards
+        return aligned
+
+    def _update_amount_from_gemini(
+        self,
+        rectified_item: Dict[str, Any],
+        line_item: Dict[str, Any],
+        gemini_item: Dict[str, Any],
+    ) -> None:
+        """
+        Update amount in rectified item using Gemini's extracted value.
+        
+        Logic:
+        1. If Gemini has no amount, keep original (no update)
+        2. If Landing AI has no amount, use Gemini's (fill missing)
+        3. If amounts differ by > 1 cent, use Gemini's (correction)
+        
+        Modifies rectified_item in place, sets is_rectified flag on update.
+        """
+        line_amount = self._get_amount(line_item)
+        gemini_amount = self._get_amount(gemini_item)
+
+        # Nothing to update if Gemini has no amount
+        if gemini_amount is None:
+            return
+
+        # Fill missing amount from Landing AI
+        if line_amount is None:
+            rectified_item['amount'] = gemini_amount
+            rectified_item['is_rectified'] = True
+            return
+
+        # Correct differing amount (beyond rounding tolerance)
+        if abs(line_amount - gemini_amount) > 0.01:
+            rectified_item['amount'] = gemini_amount
+            rectified_item['is_rectified'] = True
+
+    def _rectify_with_alignment(
+        self,
+        line_items: List[Dict[str, Any]],
+        gemini_items: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Unified rectification using alignment-based matching.
+        
+        Replaces the old index-by-index comparison with intelligent alignment that:
+        - Handles order drift (items swapped or slightly out of sequence)
+        - Tolerates missing items in either source
+        - Updates amounts from Gemini when matched
+        - Inserts missing non-check transactions from Gemini
+        
+        Process:
+        1. Align items using dynamic programming to find best pairings
+        2. For matched pairs: update amount from Gemini if needed
+        3. For unmatched line items: keep as-is (Landing AI extraction)
+        4. For unmatched Gemini items: insert if not check transaction
+        5. Reassign sequential IDs
+        """
+        rectified: List[Dict[str, Any]] = []
+        alignment = self._align_items(line_items, gemini_items)
+
+        print(f"Alignment result: {alignment}")
+
+        for li, gi in alignment:
+            if li is not None and gi is not None:
+
+                # Both matched: update amount from Gemini
+                line_item = line_items[li]
+                gemini_item = gemini_items[gi]
+
+                # print(f"Matched Line ID ``{line_item['description']} | {line_item['amount']}` with Gemini ID {gemini_item['description']} | {gemini_item['amount']}`")
+
+                rectified_item = line_item.copy()
+                rectified_item['is_rectified'] = False
+                rectified_item['was_missing'] = False
+                self._update_amount_from_gemini(rectified_item, line_item, gemini_item)
+                rectified.append(rectified_item)
+            elif li is not None:
+                # Line item has no match: keep original from Landing AI
+                rectified_item = line_items[li].copy()
+                rectified_item['is_rectified'] = False
+                rectified_item['was_missing'] = False
+                rectified.append(rectified_item)
+            else:
+                # Gemini item has no match: insert if not a check
+                # Skip check transactions to avoid duplicates from check image processing
+                gemini_item = gemini_items[gi]
+                if gemini_item.get('is_check_transaction', False) or gemini_item.get('check_nbr'):
+                    continue
+                new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
+                new_item['is_rectified'] = True
+                new_item['was_missing'] = True
+                # print("Inserting missing item from Gemini:", new_item)
+                rectified.append(new_item)
+
+        # Reassign sequential IDs after alignment
+        for idx, item in enumerate(rectified, start=1):
+            item['id'] = idx
+
+        return rectified
+
+    def _dates_match(self, date1: str, date2: str) -> bool:
+        """
+        Check if two date strings represent the same date.
+        
+        Stricter matching compared to previous version to reduce false positives:
+        - If either date is missing, consider it a match (permissive for missing data)
+        - Extract numeric parts and compare in order (not sorted) to avoid 01/02 == 02/01
+        - Fallback: compare normalized strings (removing separators)
+        
+        This prevents matching dates like "12/01" with "01/12" which was possible
+        in the old sorted comparison.
+        """
+        if not date1 or not date2:
+            return True  # If either is missing, consider it a match (permissive)
+        
+        # Extract numeric parts in order (not sorted to avoid swapping month/day)
         nums1 = re.findall(r'\d+', date1)
         nums2 = re.findall(r'\d+', date2)
-        
-        # Compare numeric parts
-        if sorted(nums1) == sorted(nums2):
+
+        # Exact sequence match (e.g., ['12', '01', '2025'] == ['12', '01', '2025'])
+        if nums1 and nums2 and nums1 == nums2:
             return True
-        
-        # Direct comparison after stripping
+
+        # Fallback: normalized string comparison
         return date1.replace('/', '').replace('-', '') == date2.replace('/', '').replace('-', '')
 
     def _get_amount(self, item: Dict) -> Optional[float]:
