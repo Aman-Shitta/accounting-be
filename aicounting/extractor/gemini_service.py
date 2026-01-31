@@ -319,7 +319,7 @@ class GeminiService:
         
         return JSONHelper.parse_json(raw_text)
     
-    def cretate_part_from_text(
+    def create_part_from_text(
         self, 
         text: str
     ) -> types.Part:
@@ -333,6 +333,14 @@ class GeminiService:
             Gemini Part object
         """
         return types.Part.from_text(text=text)
+
+    def create_user_content_type(self, parts: List[types.Part]) -> types.Content:
+
+        content = types.Content(
+            role="user",
+            parts=[*parts]
+        )
+        return content
 
     @staticmethod
     def create_part_from_bytes(

@@ -284,9 +284,12 @@ class GLClassificationService:
         logger.info(f"Enriched {enriched_count} check descriptions for document {self.document.id}")
         return enriched_count
     
-    def classify_line_items(self) -> int:
+    def classify_line_items(self, batch_size: int = 10) -> int:
         """
-        Classify GL accounts for line items.
+        Classify GL accounts for line items in batches.
+        
+        Args:
+            batch_size: Number of items per classification batch (default 10)
         
         Returns:
             Number of line items classified
@@ -319,32 +322,75 @@ class GLClassificationService:
         
         if assistant_id:
             try:
-                classifier = GLClassifier(
-                    assistant_id=assistant_id,
-                    vector_store_ids=vector_store_ids,
-                    special_rules=input_file_rules
-                )
-                classified_pages = classifier.classify(str(self.document.id)) or {}
+                # Get all line items ordered by page and line number
+                line_items_qs = MonthlyDocumentBankLineItem.objects.filter(
+                    document=self.document
+                ).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
                 
                 # Apply default offset GL
                 default_offset_gl = self._get_default_offset_gl()
-                
-                # Get line items
-                line_items_qs = MonthlyDocumentBankLineItem.objects.filter(
-                    document=self.document
-                ).select_related('gl_account', 'offset_gl_account')
-                
-                # Set default offset GL
                 line_items_qs.update(offset_gl_account=default_offset_gl)
                 
-                # Build lookup dict
+                # Re-fetch after update
+                line_items_list = list(line_items_qs)
+                
+                if not line_items_list:
+                    logger.info(f"No line items to classify for document {self.document.id}")
+                    return 0
+                
+                # Build batches of items (batch_size items at a time)
+                batches = []
+                for i in range(0, len(line_items_list), batch_size):
+                    batch = line_items_list[i:i + batch_size]
+                    batches.append(batch)
+                
+                logger.info(f"Processing {len(line_items_list)} items in {len(batches)} batches of {batch_size}")
+                
+                # Accumulate all classified results
+                all_classified_pages = {}
+                
+                for batch_idx, batch in enumerate(batches):
+                    try:
+                        # Build extracted data structure for this batch
+                        batch_extracted = self._build_batch_extracted_data(batch)
+                        
+                        # Create classifier for this batch
+                        classifier = GLClassifier(
+                            assistant_id=assistant_id,
+                            vector_store_ids=vector_store_ids,
+                            special_rules=input_file_rules
+                        )
+                        
+                        # Classify the batch
+                        batch_results = classifier.classify_extracted_data(batch_extracted)
+                        
+                        # Merge results into accumulated dict
+                        for page_num, page_data in (batch_results or {}).items():
+                            if page_num not in all_classified_pages:
+                                all_classified_pages[page_num] = {}
+                            if isinstance(page_data, dict):
+                                all_classified_pages[page_num].update(page_data)
+                            elif isinstance(page_data, list):
+                                # Convert list to dict keyed by id
+                                for item in page_data:
+                                    item_id = item.get('id')
+                                    if item_id:
+                                        all_classified_pages[page_num][item_id] = item
+                        
+                        logger.info(f"Batch {batch_idx + 1}/{len(batches)} classified successfully")
+                        
+                    except Exception as e:
+                        logger.error(f"Error classifying batch {batch_idx + 1}: {e}")
+                        continue
+                
+                # Build lookup dict for line items
                 line_items_by_page = {}
-                for li in line_items_qs:
+                for li in line_items_list:
                     line_items_by_page.setdefault(li.page_number, {})[li.line_number] = li
                 
-                # Apply classifications
+                # Apply accumulated classifications
                 updated_items = []
-                for page_num, page_data in classified_pages.items():
+                for page_num, page_data in all_classified_pages.items():
                     iterable = page_data.values() if isinstance(page_data, dict) else page_data
                     for cls_item in iterable:
                         try:
@@ -379,6 +425,43 @@ class GLClassificationService:
         
         logger.info(f"Classified {classified_count} line items for document {self.document.id}")
         return classified_count
+    
+    def _build_batch_extracted_data(self, line_items: list) -> dict:
+        """
+        Build extracted data structure for a batch of line items.
+        
+        Args:
+            line_items: List of MonthlyDocumentBankLineItem objects
+            
+        Returns:
+            Dict structured as {page_number: {"line_items": {line_number: {...}}}}
+        """
+        extracted = {}
+        
+        for li in line_items:
+            page_dict = extracted.setdefault(li.page_number, {"line_items": {}})
+            txn_type = li.transaction_type
+            
+            # Derive debit/credit raw fields for compatibility
+            debit_amount = None
+            credit_amount = None
+            if txn_type == 'debit':
+                debit_amount = float(li.amount) if li.amount is not None else None
+            elif txn_type == 'credit':
+                credit_amount = float(li.amount) if li.amount is not None else None
+            else:
+                if li.amount is not None:
+                    debit_amount = float(li.amount)
+            
+            page_dict["line_items"][li.line_number] = {
+                "id": li.line_number,
+                "description": li.description or "",
+                "debit_amount": debit_amount,
+                "credit_amount": credit_amount,
+                "transaction_type": txn_type or ("debit" if debit_amount else "credit")
+            }
+        
+        return extracted
     
     def _get_default_offset_gl(self):
         """Get default offset GL account from input file snapshot."""

@@ -16,7 +16,7 @@ class StatementTransaction(BaseModel):
     global_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the statement.")
     date: str = Field(..., description="Transaction or check Date in mm/dd/yyyy format.")
     check_number: str = Field(..., description="Check number if applicable, otherwise an empty string.")
-    check_written_date: str = Field(..., description="Date when the check was written in mm/dd/yyyy format, if applicable, otherwise an empty string.")
+    # check_written_date: str = Field(..., description="Date when the check was written in mm/dd/yyyy format, if applicable, otherwise an empty string.")
     description: str = Field(..., description="Description of the transaction or check, with payee and memo information appended for checks if applicable. You must resolve this information for all checks.  This is very important.")
     amount: float = Field(..., gt=0, description="Amount of the transaction or check in positive value.")
     y_coord: float = Field(..., description="top left location coordinate of the amount.")
