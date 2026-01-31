@@ -479,7 +479,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
 
         # Extract rectification metadata
         is_rectified = txn_data.get("is_rectified", False)
-        # was_missing = txn_data.get("was_missing", False)
+        was_missing = txn_data.get("was_missing", False)
         
         # Create line item
         line_item = MonthlyDocumentBankLineItem.objects.create(
@@ -496,7 +496,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             check_number=check_number if is_check_transaction else None,
             # Rectification fields
             is_rectified=is_rectified,
-            # was_missing=was_missing,
+            was_missing=was_missing,
             gl_account=None,
             offset_gl_account=None
         )
