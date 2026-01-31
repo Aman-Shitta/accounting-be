@@ -708,7 +708,6 @@ def validate_transactions_payload(payload: Dict[str, Any]) -> List[Dict[str, Any
 
 def send_to_gemini_paginated(
     json_data: Dict[str, Any],
-    output_txt_path: str = "assistant_extracted_output.txt",
 ) -> List[Dict[str, Any]]:
     """
     Sends ALL pages in a single Gemini request (instead of per-page).
@@ -838,46 +837,45 @@ def chk_img_validate_transactions_payload(payload: Dict[str, Any]) -> List[Dict[
 # this is for parsing out information from the checks.  we send one page at a time here so we can classify each page
 def chk_img_send_to_gemini_paginated(
     json_data: Dict[str, Any],
-    output_txt_path: str = "chk_img_assistant_extracted_output.txt",
 ) -> List[Dict[str, Any]]:
     all_transactions: List[Dict[str, Any]] = []
     global_id = 1
 
-    with open(output_txt_path, "a", encoding="utf-8") as gemini_log:
-        for page in json_data.get("pages", []):
-            # --- PATCH: stitch split rows on this page before sending to Gemini ---
-            page = dict(page)
-            page["rows"] = stitch_split_rows(page.get("rows", []) or [])
+    # with open(output_txt_path, "a", encoding="utf-8") as gemini_log:
+    for page in json_data.get("pages", []):
+        # --- PATCH: stitch split rows on this page before sending to Gemini ---
+        page = dict(page)
+        page["rows"] = stitch_split_rows(page.get("rows", []) or [])
 
-            page_payload = {"page": page}
-            page_json = json.dumps(page_payload, ensure_ascii=False, indent=2)
+        page_payload = {"page": page}
+        page_json = json.dumps(page_payload, ensure_ascii=False, indent=2)
 
-            prompt = GEMINI_CHK_IMG_PREFIX + "\n\nPAGE_CONTENT:\n" + page_json
+        prompt = GEMINI_CHK_IMG_PREFIX + "\n\nPAGE_CONTENT:\n" + page_json
 
-            # print(f"\n📤 Sending page {page.get('page_number')} to Gemini...")
-            # raw = call_gemini(prompt)
-            # print("\n📥 Gemini response:")
-            # print(raw)
-            # gemini_log.write(raw + "\n")
+        # print(f"\n📤 Sending page {page.get('page_number')} to Gemini...")
+        # raw = call_gemini(prompt)
+        # print("\n📥 Gemini response:")
+        # print(raw)
+        # gemini_log.write(raw + "\n")
 
-            raw = call_gemini(prompt)
+        raw = call_gemini(prompt)
 
-            parsed = parse_gemini_json(raw)
-            validated = chk_img_validate_transactions_payload(parsed)
+        parsed = parse_gemini_json(raw)
+        validated = chk_img_validate_transactions_payload(parsed)
 
-            for t in validated:
-                all_transactions.append({
-                    "id": global_id,
-                    "page_number": page.get("page_number"),
-                    "date": t["date"],
-                    "check_nbr": t["check_nbr"],
-                    "payee": t["payee"],
-                    "check_written_date": t["check_written_date"],
-                    "amount": t["amount"],
-                    "for_memo": t["for_memo"]
-                })
-                global_id += 1
-            time.sleep(15)
+        for t in validated:
+            all_transactions.append({
+                "id": global_id,
+                "page_number": page.get("page_number"),
+                "date": t["date"],
+                "check_nbr": t["check_nbr"],
+                "payee": t["payee"],
+                "check_written_date": t["check_written_date"],
+                "amount": t["amount"],
+                "for_memo": t["for_memo"]
+            })
+            global_id += 1
+        time.sleep(15)
 
     return all_transactions
     # return parsed
@@ -983,14 +981,14 @@ def process_bytes(file_bytes: str):
     project_id = "574468961041"
     location = "us"
     processor_id = "2bb41ba31124bd77"
-    service_account_json = "aicounting-2025v1-5a38719e49c0.json"
+    # service_account_json = "aicounting-2025v1-5a38719e49c0.json"
 
     result_json = process_document_ai(
         file_bytes=file_bytes,
         project_id=project_id,
         location=location,
         processor_id=processor_id,
-        service_account_json=service_account_json,
+        # service_account_json=service_account_json,
     )
 
     transactions = send_to_gemini_paginated(result_json)
@@ -1460,7 +1458,7 @@ def get_rectifier():
 
 
 def main():
-    file_path = "Dec_2025_Bank_Statement.pdf"
+    file_path = "/home/aman/Downloads/20260122_163930_Dec_2025_Bank_Statement.pdf"
 
     file_bytes = open(file_path, "rb").read()
 
