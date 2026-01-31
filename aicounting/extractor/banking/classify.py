@@ -209,6 +209,22 @@ class GLClassifier(OpeAIThread):
             logger.error("No extracted data found.")
             return {}
 
+        return self.classify_extracted_data(extracted_data)
+
+    def classify_extracted_data(self, extracted_data: dict):
+        """
+        Classify GL accounts for pre-built extracted data.
+        
+        Args:
+            extracted_data: Dict structured as {page_number: {"line_items": {...}}}
+            
+        Returns:
+            Dict of classified results by page
+        """
+        if not extracted_data:
+            logger.error("No extracted data provided.")
+            return {}
+
         self.create_thread(self.vector_store_ids)
 
         results = {}
