@@ -29,6 +29,8 @@ from extractor.banking.statement_models import (
     BankStatementExtraction
 )
 
+# from extractor.rectifier.rectify_v2 import DocumentAIProcessor
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,9 +64,10 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         self.landing_metadata: Dict = {}
         self.page_bytes_list: List[bytes] = []  # Store page bytes for rectification
         self.gemini_output: Dict[str, List] = {}  # Store gemini output per page
-        
+        self.rectified_data: Dict = {}
+
         # Initialize rectifier
-        self.rectifier = self._get_rectifier()
+        self.transaction_rectifier = self._get_transactions_rectifier()
         
         # Initialize LandingAI client
         api_key = settings.LANDING_AI_API_KEY
@@ -72,16 +75,19 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             logger.error("LANDING_AI_API_KEY not found in settings or env.")
         
         self.client = LandingAIADE(apikey=api_key)
+        # self.doc_ai = DocumentAIProcessor()
         
         # Prepare the unified extraction schema
         self.extraction_schema = pydantic_to_json_schema(BankStatementExtraction)
 
-    def _get_rectifier(self):
+    def _get_transactions_rectifier(self):
         """Initialize and return the document rectifier."""
         # from extractor.rectifier.rectify import DocumentRectifier
         # return DocumentRectifier()
-        from extractor.rectifier.rectify_v1 import get_rectifier_v1
-        return get_rectifier_v1()
+        # from extractor.rectifier.rectify_v2 import get_rectifier
+
+        from extractor.rectifier.rectify_v4 import get_rectifier
+        return get_rectifier()
 
     def _generate_temp_file(self, file_bytes: bytes) -> tempfile.NamedTemporaryFile:
         """Generate a temporary file from bytes for LandingAI processing."""
@@ -212,9 +218,9 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         
         try:
             # Step 0: Split PDF into pages for later rectification
-            logger.info("Splitting PDF into pages...")
-            self.page_bytes_list = split_pdf_to_pages(file_bytes)
-            logger.info(f"Document has {len(self.page_bytes_list)} pages")
+            # logger.info("Splitting PDF into pages...")
+            # self.page_bytes_list = split_pdf_to_pages(file_bytes)
+            # logger.info(f"Document has {len(self.page_bytes_list)} pages")
             
             # Step 1: Generate temp file and parse entire document
             logger.info("Parsing entire document to markdown...")
@@ -240,8 +246,14 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             self.brute_page_fix()
             # Step 3: Rectify amounts page by page
             logger.info("Rectifying extracted amounts...")
-            self._rectify_transactions()
-            
+
+            # raw_doc_data = self.doc_ai.process(
+            #     page_bytes=file_bytes,
+            #     mime_type="application/pdf"
+            # )
+
+            self._rectify(file_bytes)
+
             # Step 4: Post-process and extract control totals
             self._process_control_totals()
 
@@ -283,142 +295,25 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         
         logger.info(f"Control totals extracted: {self.control_totals}")
 
-    def _rectify_transactions(self):
-        """
-        Rectify transaction amounts page by page using the DocumentRectifier.
-        
-        This method:
-        1. Groups transactions by page_number
-        2. Converts each page's transactions to rectifier format
-        3. Calls rectifier for each page with page image
-        4. Updates transactions with rectified data
-        5. Stores gemini output per page
-        """
-        transactions = self.extracted_data.get("transactions", [])
-        
-        if not transactions:
-            logger.info("No transactions to rectify")
-            return
-        
-        # Group transactions by page number
-        transactions_by_page = defaultdict(list)
-        
-        for idx, txn in enumerate(transactions):
-            page_num = txn.get("page_number", 1)
-            transactions_by_page[page_num].append((idx, txn))
-        
-        logger.info(f"Rectifying transactions across {len(transactions_by_page)} pages")
-        
-        # Process each page
-        for page_num, page_transactions in transactions_by_page.items():
-            try:
-                # Get page bytes (page_num is 1-indexed, list is 0-indexed)
-                page_idx = page_num - 1
-                if page_idx < 0 or page_idx >= len(self.page_bytes_list):
-                    logger.warning(f"Page {page_num} out of range, skipping rectification")
-                    continue
-                
-                page_bytes = self.page_bytes_list[page_idx]
-                
-                # Convert to rectifier format
-                line_items = self._convert_to_rectifier_format(page_num, [t[1] for t in page_transactions])
-                
-                # Call rectifier
-                rectified_items, gemini_items = self.rectifier.rectify_document(
-                    page_bytes=page_bytes,
-                    line_items=line_items,
-                    config={"check_key": None}
-                )
-                
-                # Store gemini output for this page
-                self.gemini_output[f"page_{page_num}"] = gemini_items
-                
-                # Update transactions with rectified data
-                self._apply_rectified_items(page_num, page_transactions, rectified_items)
-                
-                logger.info(f"Page {page_num}: Rectified {len(page_transactions)} transactions")
-                
-            except Exception as e:
-                logger.error(f"Error rectifying page {page_num}: {e}")
-                continue
+    def _rectify(self, file_bytes):
 
-    def _apply_rectified_items(
-        self, 
-        page_num: int, 
-        original_transactions: List[tuple], 
-        rectified_items: List[Dict]
-    ):
-        """
-        Apply rectified items back to the extracted_data transactions.
-        
-        Since rectified_items already contains complete transaction dictionaries
-        with all fields (id, page_number, date, description, amount, type, 
-        is_check_transaction, check_number, is_rectified, was_missing), we can
-        use them directly.
-        
-        Args:
-            page_num: Page number being processed
-            original_transactions: List of (index, transaction) tuples
-            rectified_items: List of rectified items from rectifier
-        """
         transactions = self.extracted_data.get("transactions", [])
-        
-        # Same length - direct replacement at original indices
-        if len(rectified_items) == len(original_transactions):
-            for (orig_idx, _), rectified in zip(original_transactions, rectified_items):
-                # Preserve page_number from original if not in rectified
-                rectified.setdefault('page_number', page_num)
-                transactions[orig_idx] = rectified
-        else:
-            # Different lengths - replace existing and append new (was_missing) items
-            existing_items = [r for r in rectified_items if not r.get('was_missing', False)]
-            missing_items = [r for r in rectified_items if r.get('was_missing', False)]
-            
-            # Update existing transactions
-            for (orig_idx, _), rectified in zip(original_transactions, existing_items):
-                rectified.setdefault('page_number', page_num)
-                transactions[orig_idx] = rectified
-            
-            # Append missing items (new transactions found during rectification)
-            for missing in missing_items:
-                missing.setdefault('page_number', page_num)
-                transactions.append(missing)
-        
-        self.extracted_data['transactions'] = transactions
 
-    def _convert_to_rectifier_format(self, page, transactions: List[Dict]) -> List[Dict]:
-        """
-        Convert transactions from new schema format to rectifier format.
-        
-        New schema: {"amount": 100.0, "type": "debit", ...}
-        Rectifier format: {"debit_amount": "100.0", "credit_amount": "", ...}
-        """
-        line_items = []
-        
-        for idx, txn in enumerate(transactions):
-            
-            line_item = {
-                "id": idx+1,
-                "page_number": page,
-                "date": txn.get("date", ""),
-                "description": txn.get("description", ""),
-                "amount": txn.get("amount", ""),
-                "type": txn.get("type", "").lower(),
-                "is_check_transaction": bool(txn.get("check_number")),
-                "check_number": txn.get("check_number", ""),
+        self.rectified_data = dict(
+            {
+                'transactions': [],
+                'summary': self.extracted_data.get('summary', {}),
+                'rectifier_items': []
             }
-            
-            # # Set amount in appropriate column based on type
-            # if amount is not None:
-            #     amount_str = str(amount)
-            #     if txn_type == "debit":
-            #         line_item["debit_amount"] = amount_str
-            #     elif txn_type == "credit":
-            #         line_item["credit_amount"] = amount_str
-            
-            line_items.append(line_item)
-        
-        return line_items
+        )
+
+        rectified_items, rectifier_items = self.transaction_rectifier.rectify_document(
+            file_bytes,
+            master_data=transactions,
+        )
+        self.rectified_data['transactions'] = rectified_items
+        self.rectified_data['rectifier_items'] = rectifier_items
+   
 
     def _save_control_totals(self):
         """Save control totals to document."""
@@ -439,7 +334,8 @@ class DocumentProcessorV1(BaseDocumentProcessor):
                 "extracted_data": convert_decimals_to_float(self.extracted_data),
                 "control_totals": convert_decimals_to_float(self.control_totals),
                 "landing_metadata": convert_decimals_to_float(self.landing_metadata),
-                "gemini_output": convert_decimals_to_float(self.gemini_output)
+                "gemini_output": convert_decimals_to_float(self.gemini_output),
+                "rectifier_items": convert_decimals_to_float(self.rectified_data.get("rectifier_items", []))
             }
             self.document.markdown_metadata = metadata
             self.document.save()
@@ -517,8 +413,8 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             "pages_processed": set()
         }
         
-        transactions = self.extracted_data.get("transactions", [])
-        
+        transactions = self.rectified_data.get("transactions", [])
+
         if not transactions:
             logger.warning("No transactions found in extracted data")
             return {"line_items": 0, "check_items": 0, "pages_processed": 0}
