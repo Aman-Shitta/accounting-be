@@ -1086,6 +1086,7 @@ class TransactionRectifierV3:
                 'is_check_transaction': item.get('is_check_transaction', False),
                 'is_rectified': False,
                 'was_missing': False,
+                'was_compared': False,
             }
             # Preserve any additional fields from master_data
             for key in ['grounding', 'global_id', 'local_id', 'y_coord']:
@@ -1496,13 +1497,16 @@ class TransactionRectifierV3:
                 rectified_item = line_item.copy()
                 rectified_item['is_rectified'] = False
                 rectified_item['was_missing'] = False
+                rectified_item['was_compared'] = True
                 self._update_amount_from_gemini(rectified_item, line_item, gemini_item)
                 rectified.append(rectified_item)
             elif li is not None:
                 # Line item has no match: keep original from Landing AI
+                # Mark as unmatched to highlight in red in UI
                 rectified_item = line_items[li].copy()
                 rectified_item['is_rectified'] = False
                 rectified_item['was_missing'] = False
+                rectified_item['was_compared'] = False
                 rectified.append(rectified_item)
             else:
                 # Gemini item has no match: insert if not a check
@@ -1512,7 +1516,8 @@ class TransactionRectifierV3:
                     continue
                 new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
                 new_item['is_rectified'] = True
-                new_item['was_missing'] = True
+                new_item['was_missing'] = True  # Gemini item not in Landing AI
+                new_item['was_compared'] = True  # Was compared but didn't match any Landing AI item
                 # print("Inserting missing item from Gemini:", new_item)
                 rectified.append(new_item)
 
@@ -1573,6 +1578,7 @@ class TransactionRectifierV3:
             'check_number': gemini_item.get('check_nbr', ''),
             'is_rectified': False,
             'was_missing': False,
+            'was_compared': False,
         }
         return new_item
 
@@ -1597,6 +1603,7 @@ class TransactionRectifierV3:
                 'check_number': gemini_item.get('check_nbr', ''),
                 'is_rectified': False,
                 'was_missing': True,  # All items are "missing" from Landing AI perspective
+                'was_compared': False,  # Gemini items, not Landing AI unmatched
             }
             converted.append(item)
         return converted

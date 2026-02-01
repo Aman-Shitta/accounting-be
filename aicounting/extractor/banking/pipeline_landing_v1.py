@@ -480,6 +480,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         # Extract rectification metadata
         is_rectified = txn_data.get("is_rectified", False)
         was_missing = txn_data.get("was_missing", False)
+        was_compared = txn_data.get("was_compared", False)
         
         # Create line item
         line_item = MonthlyDocumentBankLineItem.objects.create(
@@ -497,6 +498,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             # Rectification fields
             is_rectified=is_rectified,
             was_missing=was_missing,
+            was_compared=was_compared,
             gl_account=None,
             offset_gl_account=None
         )
