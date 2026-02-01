@@ -29,7 +29,7 @@ from google import genai
 # =====================
 
 
-client = genai.Client(api_key=settings.GOOGLE_GEMINI_API_KEY)
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 MODEL_NAME = "gemini-2.5-flash-lite"
 
 
