@@ -149,6 +149,25 @@ class MonthlyDocumentBankLineItem(models.Model):
         help_text="Whether AI determined this item needs correction and provided rectified amounts"
     )
     
+    was_missing = models.BooleanField(
+        default=False,
+        verbose_name="Was Missing",
+        help_text="Whether this item was missing from Landing AI and added from Gemini extraction"
+    )
+    
+    was_compared = models.BooleanField(
+        default=False,
+        verbose_name="No Rectifier Match",
+        help_text="Whether no suitable rectifier was found for this line item"
+    )
+    # bounding_box = models.JSONField(
+    #     verbose_name="Bounding Box",
+    #     null=True,
+    #     blank=True,
+    #     default=dict,
+    #     help_text="Bounding box coordinates of the line item on the page"
+    # )
+
     rectified_confidence = models.FloatField(
         verbose_name="Rectification Confidence Score",
         null=True,

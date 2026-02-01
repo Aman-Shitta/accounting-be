@@ -34,6 +34,8 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     rectified_debit = serializers.SerializerMethodField()
     rectified_credit = serializers.SerializerMethodField()
     is_rectified = serializers.SerializerMethodField()
+    was_missing = serializers.SerializerMethodField()
+    was_compared = serializers.SerializerMethodField()
     rectified_confidence = serializers.SerializerMethodField()
     rectification_reasoning = serializers.SerializerMethodField()
     gl_account = GLAccountNestedSerializer(read_only=True)
@@ -52,6 +54,18 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
             return obj.is_rectified
         return False
     
+    def get_was_missing(self, obj):
+        """Return was_missing flag"""
+        if isinstance(obj, MonthlyDocumentBankLineItem):
+            return obj.was_missing
+        return False
+    
+    def get_was_compared(self, obj):
+        """Return was_compared flag"""
+        if isinstance(obj, MonthlyDocumentBankLineItem):
+            return obj.was_compared
+        return False
+
     def get_rectified_confidence(self, obj):
         """Return rectification confidence score"""
         if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
@@ -118,6 +132,8 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'rectified_debit': self.get_rectified_debit(instance),
                 'rectified_credit': self.get_rectified_credit(instance),
                 'is_rectified': self.get_is_rectified(instance),
+                'was_missing': self.get_was_missing(instance),
+                'was_compared': self.get_was_compared(instance),
                 'rectified_confidence': self.get_rectified_confidence(instance),
                 'rectification_reasoning': self.get_rectification_reasoning(instance),
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
@@ -137,6 +153,8 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
                 'rectified_debit': None,
                 'rectified_credit': None,
                 'is_rectified': False,
+                'was_missing': False,
+                'was_compared': False,
                 'rectified_confidence': None,
                 'rectification_reasoning': None,
                 'gl_account': GLAccountNestedSerializer(instance.gl_account).data if instance.gl_account else None,
