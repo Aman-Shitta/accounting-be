@@ -2,6 +2,7 @@ from __future__ import annotations
 from asyncio.log import logger
 from decimal import Decimal
 from difflib import SequenceMatcher
+import logging
 
 from google.cloud import documentai_v1 as documentai
 import json
@@ -12,6 +13,10 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Set, Union
 from collections import Counter
 
+from django.conf import settings    
+
+logger = logging.getLogger(__name__)
+    
 # OLD:
 # import google.generativeai as genai
 
@@ -21,14 +26,10 @@ from google import genai
 
 # =========================
 # CONFIGURATION
-# =========================
+# =====================
 
-# OLD:
-# genai.configure(api_key="REDACTED-GOOGLE-API-KEY")
-# model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
-# NEW:
-client = genai.Client(api_key="REDACTED-GOOGLE-API-KEY")
+client = genai.Client(api_key=settings.GOOGLE_GEMINI_API_KEY)
 MODEL_NAME = "gemini-2.5-flash-lite"
 
 
@@ -46,7 +47,8 @@ def extract_text_from_anchor(text_anchor, full_text: str) -> str:
             end = seg.end_index
             if start is not None and end is not None:
                 result.append(full_text[start:end])
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to extract text segment: {e}")
             continue
     return "".join(result)
 
@@ -375,7 +377,7 @@ Visual/layout indicators (at least one):
 - Horizontal check layout
 - Numeric amount box on the right (e.g., $1,234.56)
 - Signature line near bottom right
-- Check number printed top-right and/or bottom
+- Check number logger.infoed top-right and/or bottom
 
 Negative indicators (if present, likely NOT a check):
 
@@ -548,7 +550,8 @@ def _gemini_response_to_text(resp) -> str:
                     chunks.append(t)
             out = "".join(chunks)
             return out
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to reconstruct Gemini response from candidates/parts: {e}")
             pass
 
     return ""
@@ -634,7 +637,7 @@ def parse_gemini_json(text: str) -> Dict[str, Any]:
         m = _JSON_OBJECT_RE.search(text)
         if not m:
             # raise ValueError("No JSON object found in Gemini response")
-            print("No JSON object found in Gemini response")
+            logger.info("No JSON object found in Gemini response")
             return {}
         else: 
             return json.loads(m.group(0))
@@ -728,10 +731,10 @@ def send_to_gemini_paginated(
     prompt = GEMINI_PREFIX + "\n\nPAGE_CONTENT:\n" + payload_json
 
     # with open(output_txt_path, "a", encoding="utf-8") as gemini_log:
-    #     print(f"\n📤 Sending {len(stitched_pages)} pages to Gemini in one request...")
+    #     logger.info(f"\n📤 Sending {len(stitched_pages)} pages to Gemini in one request...")
     #     raw = call_gemini(prompt)
-    #     print("\n📥 Gemini response:")
-    #     print(raw)
+    #     logger.info("\n📥 Gemini response:")
+    #     logger.info(raw)
     #     gemini_log.write(raw + "\n")
 
     raw = call_gemini(prompt)
@@ -852,10 +855,10 @@ def chk_img_send_to_gemini_paginated(
 
         prompt = GEMINI_CHK_IMG_PREFIX + "\n\nPAGE_CONTENT:\n" + page_json
 
-        # print(f"\n📤 Sending page {page.get('page_number')} to Gemini...")
+        # logger.info(f"\n📤 Sending page {page.get('page_number')} to Gemini...")
         # raw = call_gemini(prompt)
-        # print("\n📥 Gemini response:")
-        # print(raw)
+        # logger.info("\n📥 Gemini response:")
+        # logger.info(raw)
         # gemini_log.write(raw + "\n")
 
         raw = call_gemini(prompt)
@@ -1034,28 +1037,28 @@ class TransactionRectifierV3:
         
         try:
             # Step 1: Extract transactions using Gemini via process_bytes
-            print(f"Processing document with Gemini rectifier...")
+            logger.info(f"Processing document with Gemini rectifier...")
             rectifier_items = process_bytes(file_bytes)
-            print(f"Gemini extracted {len(rectifier_items)} transactions")
+            logger.info(f"Gemini extracted {len(rectifier_items)} transactions")
             
             # Step 2: Normalize master_data (from Landing AI)
             line_items = self._normalize_master_data(master_data)
-            print(f"Landing AI has {len(line_items)} transactions")
+            logger.info(f"Landing AI has {len(line_items)} transactions")
             
             if not rectifier_items:
-                print("No transactions extracted by Gemini, returning original data")
+                logger.info("No transactions extracted by Gemini, returning original data")
                 return line_items, rectifier_items
             
             # Step 3: Compare and rectify
             rectified_transactions = self._compare_and_rectify(line_items, rectifier_items)
-            print(f"Rectification complete: {len(rectified_transactions)} transactions")
+            logger.info(f"Rectification complete: {len(rectified_transactions)} transactions")
             
         except Exception as e:
             import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"Exception in rectify_document: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
-            print(f"Error: {e}")
+            logger.info(f"Exception in rectify_document: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            logger.info(f"Error: {e}")
             # Return original master_data on error
             rectified_transactions = self._normalize_master_data(master_data)
         
@@ -1126,7 +1129,7 @@ class TransactionRectifierV3:
         
         # If no line_items (no Landing AI data), use gemini items directly
         if not line_items:
-            print("No master data from Landing AI, using Gemini items directly")
+            logger.info("No master data from Landing AI, using Gemini items directly")
             return self._convert_gemini_to_line_items(gemini_items)
         
         # Group items by page
@@ -1136,7 +1139,7 @@ class TransactionRectifierV3:
         # Get all unique page numbers from both sources
         all_pages = sorted(set(line_pages.keys()) | set(gemini_pages.keys()))
         
-        print(f"Processing {len(all_pages)} pages: {all_pages}")
+        logger.info(f"Processing {len(all_pages)} pages: {all_pages}")
         
         # Rectify each page independently
         all_rectified: List[Dict[str, Any]] = []
@@ -1145,7 +1148,7 @@ class TransactionRectifierV3:
             page_line_items = line_pages.get(page_num, [])
             page_gemini_items = gemini_pages.get(page_num, [])
             
-            print(f"Page {page_num}: {len(page_line_items)} line items, {len(page_gemini_items)} gemini items")
+            logger.info(f"Page {page_num}: {len(page_line_items)} line items, {len(page_gemini_items)} gemini items")
             
             # Rectify this page
             page_rectified = self._rectify_page(page_line_items, page_gemini_items, page_num)
@@ -1179,13 +1182,13 @@ class TransactionRectifierV3:
         
         if not page_line_items:
             # No line items for this page, convert gemini items
-            print(f"Page {page_num}: No Landing AI data, using Gemini items")
+            logger.info(f"Page {page_num}: No Landing AI data, using Gemini items")
             return self._convert_gemini_to_line_items(page_gemini_items)
         
         len_line = len(page_line_items)
         len_gemini = len(page_gemini_items)
 
-        print(f"Page {page_num}: Line items = {len_line}, Gemini items = {len_gemini}")
+        logger.info(f"Page {page_num}: Line items = {len_line}, Gemini items = {len_gemini}")
         
         if len_line == len_gemini:
             # Same length - simple index-by-index comparison
@@ -1483,7 +1486,7 @@ class TransactionRectifierV3:
         rectified: List[Dict[str, Any]] = []
         alignment = self._align_items(line_items, gemini_items)
 
-        print(f"Alignment result: {alignment}")
+        logger.info(f"Alignment result: {alignment}")
 
         for li, gi in alignment:
             if li is not None and gi is not None:
@@ -1492,7 +1495,7 @@ class TransactionRectifierV3:
                 line_item = line_items[li]
                 gemini_item = gemini_items[gi]
 
-                # print(f"Matched Line ID ``{line_item['description']} | {line_item['amount']}` with Gemini ID {gemini_item['description']} | {gemini_item['amount']}`")
+                # logger.info(f"Matched Line ID ``{line_item['description']} | {line_item['amount']}` with Gemini ID {gemini_item['description']} | {gemini_item['amount']}`")
 
                 rectified_item = line_item.copy()
                 rectified_item['is_rectified'] = False
@@ -1518,7 +1521,7 @@ class TransactionRectifierV3:
                 new_item['is_rectified'] = True
                 new_item['was_missing'] = True  # Gemini item not in Landing AI
                 new_item['was_compared'] = True  # Was compared but didn't match any Landing AI item
-                # print("Inserting missing item from Gemini:", new_item)
+                # logger.info("Inserting missing item from Gemini:", new_item)
                 rectified.append(new_item)
 
         # Reassign sequential IDs after alignment
@@ -1562,7 +1565,8 @@ class TransactionRectifierV3:
             return float(amount)
         try:
             return float(amount)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to convert amount '{amount}' to float: {e}")
             return None
 
     def _create_item_from_gemini(self, gemini_item: Dict, template: Dict) -> Dict:
@@ -1625,14 +1629,14 @@ def main():
     rect = get_rectifier()
     rectified, rectifier_items = rect.rectify_document(file_bytes, sample_master_data)
     
-    print(f"\n=== Rectification Results ===")
-    print(f"Rectified transactions: {len(rectified)}")
-    print(f"Rectifier items (from Gemini): {len(rectifier_items)}")
+    logger.info(f"\n=== Rectification Results ===")
+    logger.info(f"Rectified transactions: {len(rectified)}")
+    logger.info(f"Rectifier items (from Gemini): {len(rectifier_items)}")
     
     # Show sample rectified items
     if rectified:
-        print(f"\nSample rectified item:")
-        print(json.dumps(rectified[0], indent=2))
+        logger.info(f"\nSample rectified item:")
+        logger.info(json.dumps(rectified[0], indent=2))
 
 
 if __name__ == "__main__":
