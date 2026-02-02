@@ -345,13 +345,20 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             self.document.markdown_metadata = {}
             self.document.save()
 
+    def _truncate_decimal_to_2_places(self, value: Decimal) -> Decimal:
+        """Truncate Decimal to 2 decimal places without rounding."""
+        # Use quantize with ROUND_DOWN to truncate
+        from decimal import ROUND_DOWN
+        return value.quantize(Decimal('0.01'), rounding=ROUND_DOWN)
+
     def _parse_amount(self, amount_value) -> Optional[Decimal]:
-        """Parse amount to Decimal."""
+        """Parse amount to Decimal, truncated to 2 decimal places."""
         if amount_value is None:
             return None
         
         if isinstance(amount_value, (int, float)):
-            return Decimal(str(amount_value))
+            value = Decimal(str(amount_value))
+            return self._truncate_decimal_to_2_places(value)
         
         amount_str = str(amount_value).strip()
         if amount_str in ['', 'null', 'none', '-']:
@@ -361,7 +368,8 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         amount_str = re.sub(r'[^\d\.\-]', '', amount_str)
         
         try:
-            return Decimal(amount_str)
+            value = Decimal(amount_str)
+            return self._truncate_decimal_to_2_places(value)
         except (InvalidOperation, ValueError, TypeError) as e:
             logger.error(f"Failed to parse amount '{amount_value}': {e}")
             return None

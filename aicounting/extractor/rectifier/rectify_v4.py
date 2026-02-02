@@ -643,14 +643,20 @@ def parse_gemini_json(text: str) -> Dict[str, Any]:
             return json.loads(m.group(0))
 
 
+def _truncate_to_2_decimals(value: float) -> float:
+    """Truncate float to 2 decimal places without rounding."""
+    # Multiply by 100, truncate to int, divide by 100
+    return int(value * 100) / 100
+
+
 def _coerce_amount(v: Any) -> float:
     if isinstance(v, (int, float)):
-        return float(v)
+        return _truncate_to_2_decimals(float(v))
     if isinstance(v, str):
         s = v.strip().replace("$", "").replace(",", "")
         if s.startswith("(") and s.endswith(")"):
             s = "-" + s[1:-1]
-        return float(s)
+        return _truncate_to_2_decimals(float(s))
     raise ValueError(f"Invalid amount type: {type(v)}")
 
 
@@ -1301,14 +1307,11 @@ class TransactionRectifierV3:
             else:
                 score -= 5.0  # Heavy penalty for date mismatch
 
-        # Amount matching: important for verification
-        line_amount = self._get_amount(line_item)
-        gemini_amount = self._get_amount(gemini_item)
-        if line_amount is not None and gemini_amount is not None:
-            if abs(line_amount - gemini_amount) <= 0.01:  # Tolerance for rounding
-                score += 3.0
-            else:
-                score -= 2.0
+        # Amount matching: NOT used for pairing score
+        # Reason: The purpose of rectification is to CORRECT wrong amounts.
+        # If we penalize amount mismatches, items with incorrect amounts won't pair,
+        # defeating the purpose. Pair based on identifying fields (date, description,
+        # check number), then correct the amount after pairing.
 
         # Check number matching: unique identifier, strongest signal
         line_check = str(line_item.get('check_number', '') or '').strip()
@@ -1458,7 +1461,7 @@ class TransactionRectifierV3:
             return
 
         # Correct differing amount (beyond rounding tolerance)
-        if abs(line_amount - gemini_amount) > 0.01:
+        if line_amount !=  gemini_amount:
             rectified_item['amount'] = gemini_amount
             rectified_item['is_rectified'] = True
 
@@ -1508,7 +1511,7 @@ class TransactionRectifierV3:
                 # Mark as unmatched to highlight in red in UI
                 rectified_item = line_items[li].copy()
                 rectified_item['is_rectified'] = False
-                rectified_item['was_missing'] = False
+                rectified_item['was_missing'] = True
                 rectified_item['was_compared'] = False
                 rectified.append(rectified_item)
             else:
@@ -1518,9 +1521,9 @@ class TransactionRectifierV3:
                 if gemini_item.get('is_check_transaction', False) or gemini_item.get('check_nbr'):
                     continue
                 new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
-                new_item['is_rectified'] = True
+                new_item['is_rectified'] = False
                 new_item['was_missing'] = True  # Gemini item not in Landing AI
-                new_item['was_compared'] = True  # Was compared but didn't match any Landing AI item
+                new_item['was_compared'] = False  # Was compared but didn't match any Landing AI item
                 # logger.info("Inserting missing item from Gemini:", new_item)
                 rectified.append(new_item)
 
@@ -1529,6 +1532,43 @@ class TransactionRectifierV3:
             item['id'] = idx
 
         return rectified
+
+    def _format_date(self, date_str: str) -> str:
+        """
+        Format date string to standard DD-Month-YYYY format.
+        Handles formats like: Jun1, 2025 | 1 June 2025 | 06/01/2025 | 6-1-2025
+        """
+        from dateutil import parser
+        
+        if not date_str or not str(date_str).strip():
+            return date_str
+        
+        date_str = str(date_str).strip()
+        
+        month_names = {
+            1: "January", 2: "February", 3: "March", 4: "April",
+            5: "May", 6: "June", 7: "July", 8: "August",
+            9: "September", 10: "October", 11: "November", 12: "December"
+        }
+        
+        try:
+            parsed_date = parser.parse(date_str, dayfirst=False, fuzzy=True)
+            day = parsed_date.day
+            month_name = month_names[parsed_date.month]
+            year = parsed_date.year
+            return f"{day:02d}-{month_name}-{year}"
+        except (ValueError, parser.ParserError) as e:
+            # Try MM/YYYY pattern (assume day 01)
+            match = re.match(r'(\d{1,2})[/-](\d{4})', date_str)
+            if match:
+                month, year = match.groups()
+                month_num = int(month)
+                if 1 <= month_num <= 12:
+                    month_name = month_names[month_num]
+                    return f"01-{month_name}-{year}"
+            
+            logger.warning(f"Could not parse date format: {date_str}")
+            return date_str
 
     def _dates_match(self, date1: str, date2: str) -> bool:
         """
@@ -1545,26 +1585,28 @@ class TransactionRectifierV3:
         if not date1 or not date2:
             return True  # If either is missing, consider it a match (permissive)
         
-        # Extract numeric parts in order (not sorted to avoid swapping month/day)
-        nums1 = re.findall(r'\d+', date1)
-        nums2 = re.findall(r'\d+', date2)
+        _format_date1 = self._format_date(date1)
+        _format_date2 = self._format_date(date2)
 
         # Exact sequence match (e.g., ['12', '01', '2025'] == ['12', '01', '2025'])
-        if nums1 and nums2 and nums1 == nums2:
+        if _format_date1 == _format_date2:
             return True
 
         # Fallback: normalized string comparison
-        return date1.replace('/', '').replace('-', '') == date2.replace('/', '').replace('-', '')
+        return False
 
     def _get_amount(self, item: Dict) -> Optional[float]:
-        """Extract amount from line item."""
+        """Extract amount from line item, truncated to 2 decimal places."""
         amount = item.get('amount')
         if amount is None:
             return None
-        if isinstance(amount, Decimal):
-            return float(amount)
         try:
-            return float(amount)
+            if isinstance(amount, Decimal):
+                value = float(amount)
+            else:
+                value = float(amount)
+            # Truncate to 2 decimal places without rounding
+            return int(value * 100) / 100
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to convert amount '{amount}' to float: {e}")
             return None
