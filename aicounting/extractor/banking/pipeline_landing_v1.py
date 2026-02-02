@@ -53,6 +53,9 @@ class DocumentProcessorV1(BaseDocumentProcessor):
     Simplified document processor that processes the entire bank statement document
     at once using the BankStatementExtraction schema, then post-processes and saves
     the extracted data to the database.
+    
+    Supports debug storage for saving intermediate processing files to Azure for
+    tracking and debugging purposes.
     """
     
     def __init__(self, config: Configuration, doc: MonthlyAccountingDocument):
@@ -65,6 +68,9 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         self.page_bytes_list: List[bytes] = []  # Store page bytes for rectification
         self.gemini_output: Dict[str, List] = {}  # Store gemini output per page
         self.rectified_data: Dict = {}
+        
+        # Debug storage for saving intermediate files (optional)
+        self.debug_storage = None
 
         # Initialize rectifier
         self.transaction_rectifier = self._get_transactions_rectifier()
@@ -79,6 +85,16 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         
         # Prepare the unified extraction schema
         self.extraction_schema = pydantic_to_json_schema(BankStatementExtraction)
+    
+    def set_debug_storage(self, debug_storage):
+        """
+        Set the debug storage helper for saving intermediate files.
+        
+        Args:
+            debug_storage: DocumentDebugStorage instance
+        """
+        self.debug_storage = debug_storage
+        logger.info(f"Debug storage enabled for document {self.document.id}")
 
     def _get_transactions_rectifier(self):
         """Initialize and return the document rectifier."""
@@ -213,6 +229,11 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         3. Extract all transactions and summary using the unified schema
         4. Rectify amounts page by page
         5. Post-process and save to database
+        
+        Saves debug files at each stage if debug_storage is configured:
+        - Parsed markdown to _debug_files/02_parsed_markdown/
+        - Extracted data to _debug_files/03_extracted_data/
+        - Rectified data to _debug_files/04_rectified_data/
         """
         temp_file = None
         
@@ -234,6 +255,11 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             
             logger.info(f"Extracted {len(self.markdown_content)} characters of markdown")
             
+            # Save parsed markdown to debug folder
+            if self.debug_storage:
+                self.debug_storage.save_parsed_markdown(self.markdown_content, "full_document_markdown.md")
+                logger.info("Saved parsed markdown to debug folder")
+            
             # Step 2: Extract structured data using unified schema
             logger.info("Extracting transactions and summary from document...")
             self._extract_data()
@@ -242,8 +268,34 @@ class DocumentProcessorV1(BaseDocumentProcessor):
                 logger.error("No data extracted from document")
                 return {"status": "error", "message": "Failed to extract data from document"}
             
+            # Save extracted data to debug folder (before rectification)
+            if self.debug_storage:
+                self.debug_storage.save_extracted_data(
+                    convert_decimals_to_float(self.extracted_data),
+                    "landing_ai_extracted_data.json"
+                )
+                if self.extracted_meta_data:
+                    self.debug_storage.save_extracted_metadata(
+                        convert_decimals_to_float(self.extracted_meta_data),
+                        "landing_ai_extraction_metadata.json"
+                    )
+                if self.landing_metadata:
+                    self.debug_storage.save_extracted_data(
+                        convert_decimals_to_float(self.landing_metadata),
+                        "landing_ai_response_metadata.json"
+                    )
+                logger.info("Saved extracted data to debug folder")
+            
             print("landing_metadata :: ", self.landing_metadata)
             self.brute_page_fix()
+            
+            # Save data after page fix
+            if self.debug_storage:
+                self.debug_storage.save_extracted_data(
+                    convert_decimals_to_float(self.extracted_data),
+                    "extracted_data_after_page_fix.json"
+                )
+            
             # Step 3: Rectify amounts page by page
             logger.info("Rectifying extracted amounts...")
 
@@ -253,6 +305,18 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             # )
 
             self._rectify(file_bytes)
+            
+            # Save rectified data to debug folder
+            if self.debug_storage:
+                self.debug_storage.save_rectified_data(
+                    convert_decimals_to_float(self.rectified_data),
+                    "rectified_transactions.json"
+                )
+                if self.rectified_data.get("rectifier_items"):
+                    self.debug_storage.save_rectifier_items(
+                        convert_decimals_to_float(self.rectified_data.get("rectifier_items", []))
+                    )
+                logger.info("Saved rectified data to debug folder")
 
             # Step 4: Post-process and extract control totals
             self._process_control_totals()
@@ -273,6 +337,15 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            
+            # Save error to debug folder
+            if self.debug_storage:
+                self.debug_storage.save_error_log(e, {
+                    "stage": "process_document",
+                    "has_markdown": bool(self.markdown_content),
+                    "has_extracted_data": bool(self.extracted_data)
+                })
+            
             return {"status": "error", "message": str(e)}
             
         finally:
