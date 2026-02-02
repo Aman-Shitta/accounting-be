@@ -2,87 +2,78 @@
 Azure Storage Path Management and Naming Convention
 
 This module defines a unified, trackable directory structure for all Azure blob storage uploads.
-It provides consistency across the entire application and makes document tracking easy.
+It provides consistency across the entire application and makes document tracking easy and audit-ready.
 
 Structure:
     customer_<customer_name>_<customer_id>/
         client_<client_name>_<client_id>/
             input_files/
                 YYYY-MM-DD/
-                    filename.ext
-            je_exports/
+                    <filename>
+            je_templates/
                 YYYY-MM-DD/
-                    filename.ext
-            monthly_accounting/
+                    <filename>
+            client_documents/
                 YYYY-MM-DD/
-                    filename.ext
-                documents/
-                    doc_id/
-                        markdown/
-                            document.md
-                processed_documents/
-                    doc_id/
-                        output_file.ext
-                    processed_output/
-                        data_file.ext
+                    <filename>
+            accounting/
+                YYYY-MM-DD/
+                    <doc_id>/
+                        original_document.pdf
+                        snapshots/
+                            input_file_snapshot_<timestamp>.pdf
+                            je_template_snapshot_<timestamp>.csv
+                        processing_artifacts/
+                            01_raw_input/
+                            02_ocr_output/
+                            03_landing_ai/
+                            04_gemini_ai/
+                            05_document_ai/
+                            06_rectification/
+                            07_final_je/
 """
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 
 class AzureStoragePathConstants:
     """Constants for Azure storage paths"""
     
-    # Date format for daily folders (DD-MM-YYYY as requested)
-    DATE_FORMAT = "%d-%m-%Y"
+    # Date format for daily folders
+    DATE_FORMAT = "%Y-%m-%d"
     
-    # Folder names
+    # Root Level Folders
     CLIENT_DOCUMENTS = "client_documents"
     INPUT_FILES = "input_files"
+    JE_TEMPLATES = "je_templates"
+    
+    # Accounting Structure
     ACCOUNTING = "accounting"
-    ACCOUNTING_SNAPSHOT = "accounting_snapshots"
-    OUTPUT_FILES = "output_files"
     
-    # Legacy/Internal folders (kept for reference or internal use)
-    DOCUMENTS = "documents"
-    PROCESSED_DOCUMENTS = "processed_documents"
-    PROCESSED_OUTPUT = "processed_output"
-    MARKDOWN = "markdown"
+    # Subfolders within accounting/<date>/<doc_id>/
+    SNAPSHOTS = "snapshots"
+    PROCESSING_ARTIFACTS = "processing_artifacts"
     
-    # Special folders
-    TEMPLATES = "templates"
-    BACKUPS = "backups"
-    REPORTS = "reports"
-    TEMP = "temp"
+    # Process Artifact Stages (formerly debug_files)
+    ARTIFACT_RAW = "01_raw_input"
+    ARTIFACT_OCR = "02_ocr_output"
+    ARTIFACT_LANDING_AI = "03_landing_ai"
+    ARTIFACT_GEMINI_AI = "04_gemini_ai"
+    ARTIFACT_DOCUMENT_AI = "05_document_ai"
+    ARTIFACT_RECTIFICATION = "06_rectification"
+    ARTIFACT_FINAL_JE = "07_final_je"
+    
+    # Legacy/Mapping for backward compatibility
+    LEGACY_DOCUMENTS = "documents"
+    LEGACY_PROCESSED_DOCUMENTS = "processed_documents"
+    LEGACY_OUTPUT_FILES = "output_files"
 
 
 class AzureBlobPathBuilder:
     """
     Builds trackable, standardized paths for Azure blob storage uploads.
-    
-    Example:
-        builder = AzureBlobPathBuilder(customer_id=1, customer_name="ACME Corp", 
-                                       client_id=2, client_name="New York Branch")
-        
-        # Input files
-        path = builder.input_files_path(filename="statement.pdf")
-        # => customer_ACME Corp_1/client_New York Branch_2/input_files/2025-11-14/statement.pdf
-        
-        # Monthly accounting documents
-        path = builder.monthly_accounting_document_path(
-            filename="document.pdf",
-            doc_id="uuid-123"
-        )
-        # => customer_ACME Corp_1/client_New York Branch_2/monthly_accounting/documents/uuid-123/document.pdf
-        
-        # Processed output
-        path = builder.processed_output_path(
-            doc_id="uuid-123",
-            filename="output.json"
-        )
-        # => customer_ACME Corp_1/client_New York Branch_2/monthly_accounting/processed_documents/processed_output/output.json
     """
     
     def __init__(
@@ -94,12 +85,6 @@ class AzureBlobPathBuilder:
     ):
         """
         Initialize the path builder.
-        
-        Args:
-            customer_id: Customer ID
-            customer_name: Customer name (will be sanitized)
-            client_id: Client ID
-            client_name: Client name (will be sanitized)
         """
         self.customer_id = customer_id
         self.customer_name = self._sanitize_name(customer_name)
@@ -114,18 +99,8 @@ class AzureBlobPathBuilder:
     
     @staticmethod
     def _sanitize_name(name: str) -> str:
-        """
-        Sanitize names for use in paths (remove special characters, spaces to underscores).
-        
-        Args:
-            name: Name to sanitize
-            
-        Returns:
-            Sanitized name
-        """
-        # Replace spaces with underscores
+        """Sanitize names for use in paths."""
         name = name.replace(" ", "_")
-        # Remove special characters except underscores and hyphens
         name = "".join(c for c in name if c.isalnum() or c in "_-")
         return name.lower()
     
@@ -135,22 +110,15 @@ class AzureBlobPathBuilder:
         return datetime.now().strftime(AzureStoragePathConstants.DATE_FORMAT)
     
     def _add_timestamp_to_filename(self, filename: str) -> str:
-        """
-        Add timestamp to filename to ensure uniqueness.
-        
-        Args:
-            filename: Original filename
-            
-        Returns:
-            Filename with timestamp
-        """
+        """Add timestamp to filename to ensure uniqueness."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if "." in filename:
             name, ext = filename.rsplit(".", 1)
             return f"{timestamp}_{name}.{ext}"
         return f"{timestamp}_{filename}"
     
-    # ========== INPUT FILES ==========
+    # ========== ROOT LEVEL INPUTS ==========
+    
     def input_files_path(
         self,
         filename: str,
@@ -158,8 +126,7 @@ class AzureBlobPathBuilder:
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for input files.
-        Structure: customer_*/client_*/input_files/DD-MM-YYYY/filename.ext
+        Path: customer_*/client_*/input_files/YYYY-MM-DD/filename
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
@@ -174,317 +141,208 @@ class AzureBlobPathBuilder:
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for client documents.
-        Structure: customer_*/client_*/client_documents/DD-MM-YYYY/filename.ext
+        Path: customer_*/client_*/client_documents/YYYY-MM-DD/filename
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
         return f"{self.base_path}/{AzureStoragePathConstants.CLIENT_DOCUMENTS}/{date_folder}/{filename}"
-    
-    # ========== ACCOUNTING ==========
-    def accounting_input_files_path(
+        
+    def je_template_path(
         self,
         filename: str,
         add_timestamp: bool = True,
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for accounting input files.
-        Structure: customer_*/client_*/accounting/input_files/DD-MM-YYYY/filename.ext
+        Path: customer_*/client_*/je_templates/YYYY-MM-DD/filename
         """
         date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
         
+        return f"{self.base_path}/{AzureStoragePathConstants.JE_TEMPLATES}/{date_folder}/{filename}"
+
+    # ========== ACCOUNTING DOCUMENTS ==========
+    
+    def _get_accounting_base_path(self, date_folder: str, doc_id: str) -> str:
+        """
+        Helper: customer_*/client_*/accounting/YYYY-MM-DD/doc_id/
+        """
         return (
             f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
-            f"{AzureStoragePathConstants.INPUT_FILES}/{date_folder}/{filename}"
+            f"{date_folder}/{doc_id}"
         )
-    
-    def accounting_snapshots_input_files_path(
-        self,
-        filename: str,
-        add_timestamp: bool = True,
-        custom_date: Optional[str] = None
-    ) -> str:
-        """
-        Generate path for accounting input files.
-        Structure: customer_*/client_*/accounting/input_files/DD-MM-YYYY/filename.ext
-        """
-        date_folder = custom_date or self._get_today_folder()
-        if add_timestamp:
-            filename = self._add_timestamp_to_filename(filename)
-        
-        return (
-            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING_SNAPSHOT}/"
-            f"{AzureStoragePathConstants.INPUT_FILES}/{date_folder}/{filename}"
-        )
-    
-
-    def accounting_output_files_path(
-        self,
-        filename: str,
-        add_timestamp: bool = True,
-        custom_date: Optional[str] = None
-    ) -> str:
-        """
-        Generate path for accounting output files.
-        Structure: customer_*/client_*/accounting/output_files/DD-MM-YYYY/filename.ext
-        """
-        date_folder = custom_date or self._get_today_folder()
-        if add_timestamp:
-            filename = self._add_timestamp_to_filename(filename)
-        
-        return (
-            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
-            f"{AzureStoragePathConstants.OUTPUT_FILES}/{date_folder}/{filename}"
-        )
-
-    # ========== LEGACY / ALIAS METHODS ==========
-    # These ensure backward compatibility while enforcing new structure
-    
-    def je_exports_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
-        """Alias for accounting output files"""
-        return self.accounting_output_files_path(filename, add_timestamp, custom_date)
-    
-    def monthly_accounting_upload_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
-        """Alias for accounting input files"""
-        return self.accounting_input_files_path(filename, add_timestamp, custom_date)
-    
-    def customer_documents_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
-        """Alias for client documents"""
-        return self.client_documents_path(filename, add_timestamp, custom_date)
 
     def monthly_accounting_document_path(
         self,
         filename: str,
         doc_id: str,
-        add_timestamp: bool = True
+        add_timestamp: bool = True,
+        custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for extracted/processed monthly accounting documents.
-        Structure: customer_*/client_*/accounting/documents/doc_id/filename.ext
+        Path: customer_*/client_*/accounting/YYYY-MM-DD/doc_id/filename
         """
+        date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
+            
+        base = self._get_accounting_base_path(date_folder, doc_id)
+        return f"{base}/{filename}"
         
-        return (
-            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
-            f"{AzureStoragePathConstants.DOCUMENTS}/{doc_id}/{filename}"
-        )
-    
-    def markdown_document_path(
+    def accounting_snapshot_path(
         self,
-        doc_id: str,
-        filename: str = "document.md",
-        add_timestamp: bool = False
-    ) -> str:
-        """
-        Generate path for markdown versions of documents.
-        Structure: customer_*/client_*/accounting/documents/doc_id/markdown/document.md
-        """
-        if add_timestamp:
-            filename = self._add_timestamp_to_filename(filename)
-        
-        return (
-            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
-            f"{AzureStoragePathConstants.DOCUMENTS}/{doc_id}/"
-            f"{AzureStoragePathConstants.MARKDOWN}/{filename}"
-        )
-    
-    # ========== PROCESSED DOCUMENTS ==========
-    def processed_document_path(
-        self,
-        doc_id: str,
         filename: str,
-        add_timestamp: bool = True
+        doc_id: str,
+        add_timestamp: bool = True,
+        custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for processed document files.
-        Structure: customer_*/client_*/accounting/processed_documents/doc_id/filename.ext
+        Path: customer_*/client_*/accounting/YYYY-MM-DD/doc_id/snapshots/filename
         """
+        date_folder = custom_date or self._get_today_folder()
         if add_timestamp:
             filename = self._add_timestamp_to_filename(filename)
-        
-        return (
-            f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING}/"
-            f"{AzureStoragePathConstants.PROCESSED_DOCUMENTS}/{doc_id}/{filename}"
-        )
+            
+        base = self._get_accounting_base_path(date_folder, doc_id)
+        return f"{base}/{AzureStoragePathConstants.SNAPSHOTS}/{filename}"
+
+    # ========== PROCESSING ARTIFACTS (COMPLIANCE/DEBUG) ==========
     
-    def processed_output_path(
+    def _get_artifact_path(
         self,
+        doc_id: str, 
+        stage_folder: str, 
         filename: str,
         add_timestamp: bool = True,
         custom_date: Optional[str] = None
     ) -> str:
         """
-        Generate path for batch processed output files.
-        Structure: customer_*/client_*/accounting/output_files/DD-MM-YYYY/filename.ext
+        Helper for artifacts: .../accounting/YYYY-MM-DD/doc_id/processing_artifacts/<stage>/filename
         """
-        # Mapped to accounting/output_files as per new structure
-        return self.accounting_output_files_path(filename, add_timestamp, custom_date)
-
-    
-    # ========== UTILITY PATHS ==========
-    def get_base_customer_path(self) -> str:
-        """Get base customer path."""
-        return f"customer_{self.customer_name}_{self.customer_id}"
-    
-    def get_base_client_path(self) -> str:
-        """Get base customer/client path."""
-        return self.base_path
-    
-    def list_all_document_paths(self, doc_id: str) -> dict:
-        """
-        Get all possible paths for a specific document ID for easy reference.
-        
-        Args:
-            doc_id: Document ID
+        date_folder = custom_date or self._get_today_folder()
+        if add_timestamp:
+            filename = self._add_timestamp_to_filename(filename)
             
-        Returns:
-            Dictionary with all related paths
-        """
-        return {
-            "document": self.monthly_accounting_document_path("doc.pdf", doc_id),
-            "markdown": self.markdown_document_path(doc_id),
-            "processed": self.processed_document_path(doc_id, "output.json"),
-            "base_folder": (
-                f"{self.base_path}/{AzureStoragePathConstants.MONTHLY_ACCOUNTING}/"
-                f"{AzureStoragePathConstants.DOCUMENTS}/{doc_id}"
-            ),
-        }
+        base = self._get_accounting_base_path(date_folder, doc_id)
+        return (
+            f"{base}/{AzureStoragePathConstants.PROCESSING_ARTIFACTS}/"
+            f"{stage_folder}/{filename}"
+        )
+
+    def artifact_raw_input_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_RAW, filename, **kwargs)
+
+    def artifact_ocr_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_OCR, filename, **kwargs)
+
+    def artifact_landing_ai_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_LANDING_AI, filename, **kwargs)
+        
+    def artifact_gemini_ai_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_GEMINI_AI, filename, **kwargs)
+        
+    def artifact_document_ai_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_DOCUMENT_AI, filename, **kwargs)
+        
+    def artifact_rectification_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_RECTIFICATION, filename, **kwargs)
+        
+    def artifact_final_je_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_FINAL_JE, filename, **kwargs)
+
+    # ========== ALIASES FOR COMPATIBILITY (MAPPED TO ARTIFACTS) ==========
+    
+    def debug_base_path(self, doc_id: str) -> str:
+        """Alias: Returns the processing_artifacts folder path (assuming today for date if not context)"""
+        # Note: This is tricky without date. We assume today effectively for new calls.
+        # For read operations, full path should be stored in DB.
+        date_folder = self._get_today_folder()
+        return (
+            f"{self._get_accounting_base_path(date_folder, doc_id)}/"
+            f"{AzureStoragePathConstants.PROCESSING_ARTIFACTS}"
+        )
+    
+    def debug_raw_input_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self.artifact_raw_input_path(doc_id, filename, **kwargs)
+    
+    def debug_parsed_markdown_path(self, doc_id: str, filename: str = "parsed_markdown.md", **kwargs) -> str:
+        return self.artifact_ocr_path(doc_id, filename, **kwargs)
+        
+    def debug_extracted_data_path(self, doc_id: str, filename: str = "extracted_data.json", **kwargs) -> str:
+        return self.artifact_landing_ai_path(doc_id, filename, **kwargs) # Defaulting to Landing AI for 'extracted'
+        
+    def debug_rectified_data_path(self, doc_id: str, filename: str = "rectified_data.json", **kwargs) -> str:
+        return self.artifact_rectification_path(doc_id, filename, **kwargs)
+        
+    def debug_classified_data_path(self, doc_id: str, filename: str = "classified_data.json", **kwargs) -> str:
+        # Mapping classified to final JE area or rectification depending on pipeline step, using rectification for now
+        return self.artifact_rectification_path(doc_id, filename, **kwargs)
+        
+    def debug_final_output_path(self, doc_id: str, filename: str = "final_output.json", **kwargs) -> str:
+        return self.artifact_final_je_path(doc_id, filename, **kwargs)
+
+    def accounting_output_files_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
+        """Legacy alias: maps to main accounting folder or could map to JE templates if they are exports."""
+        # Mapping to JE templates as that seems to be the intent of 'output files' usually (JE Exports)
+        return self.je_template_path(filename, add_timestamp, custom_date)
 
 
 class AzureBlobPathValidator:
     """
-    Validates and parses Azure blob paths against the naming convention.
-    Useful for tracking and debugging document flow.
+    Validates and parses Azure blob paths.
     """
     
     @staticmethod
     def parse_path(blob_path: str) -> Optional[dict]:
         """
         Parse a blob path and extract components.
-        
-        Args:
-            blob_path: Full blob path
-            
-        Returns:
-            Dictionary with parsed components or None if invalid format
-            
-        Example:
-            >>> path = "customer_acme_corp_1/client_ny_branch_2/input_files/2025-11-14/file.pdf"
-            >>> AzureBlobPathValidator.parse_path(path)
-            {
-                'customer_name': 'acme_corp',
-                'customer_id': '1',
-                'client_name': 'ny_branch',
-                'client_id': '2',
-                'type': 'input_files',
-                'date': '2025-11-14',
-                'filename': 'file.pdf'
-            }
+        Supports both NEW and OLD structures.
         """
         try:
             parts = blob_path.strip("/").split("/")
-            
             if len(parts) < 3:
                 return None
             
-            # Parse customer and client
+            # Base Extraction
             customer_parts = parts[0].split("_")
             client_parts = parts[1].split("_")
             
-            if len(customer_parts) < 3 or len(client_parts) < 3:
-                return None
-            
-            customer_id = customer_parts[-1]
-            customer_name = "_".join(customer_parts[1:-1])
-            
-            client_id = client_parts[-1]
-            client_name = "_".join(client_parts[1:-1])
+            result = {
+                "customer_id": customer_parts[-1] if len(customer_parts) > 1 else None,
+                "client_id": client_parts[-1] if len(client_parts) > 1 else None,
+                "full_path": blob_path,
+                "type": parts[2]
+            }
             
             doc_type = parts[2]
             
-            result = {
-                "customer_id": customer_id,
-                "customer_name": customer_name,
-                "client_id": client_id,
-                "client_name": client_name,
-                "type": doc_type,
-                "full_path": blob_path,
-            }
+            # 1. NEW STRUCTURE PARSING
+            # accounting/YYYY-MM-DD/doc_id/...
+            if doc_type == AzureStoragePathConstants.ACCOUNTING:
+                if len(parts) >= 5:
+                    result["date"] = parts[3]
+                    result["doc_id"] = parts[4]
+                    if len(parts) >= 6:
+                        result["category"] = parts[5] # e.g. snapshots, processing_artifacts
+                        result["filename"] = parts[-1]
             
-            # Parse remaining parts based on document type
-            if doc_type in ["input_files", "je_exports"]:
+            # input_files/YYYY-MM-DD/filename
+            elif doc_type in [AzureStoragePathConstants.INPUT_FILES, AzureStoragePathConstants.CLIENT_DOCUMENTS, AzureStoragePathConstants.JE_TEMPLATES]:
                 if len(parts) >= 5:
                     result["date"] = parts[3]
                     result["filename"] = parts[4]
-            elif doc_type == "monthly_accounting":
-                if len(parts) >= 4:
-                    if parts[3] == "documents":
-                        result["category"] = "documents"
-                        if len(parts) >= 5:
-                            result["doc_id"] = parts[4]
-                        if len(parts) >= 6:
-                            if parts[5] == "markdown":
-                                result["subtype"] = "markdown"
-                            result["filename"] = parts[6] if len(parts) > 6 else None
-                    elif parts[3] == "processed_documents":
-                        result["category"] = "processed_documents"
-                        if len(parts) >= 5:
-                            if parts[4] == "processed_output":
-                                result["subtype"] = "processed_output"
-                                if len(parts) >= 6:
-                                    result["filename"] = parts[5]
-                            else:
-                                result["doc_id"] = parts[4]
-                                if len(parts) >= 6:
-                                    result["filename"] = parts[5]
-                    else:
-                        result["date"] = parts[3]
-                        if len(parts) >= 5:
-                            result["filename"] = parts[4]
-            
+
             return result
         except Exception:
             return None
-    
-    @staticmethod
-    def validate_path(blob_path: str) -> "Tuple[bool, str]":
-        """
-        Validate a path against the naming convention.
-        
-        Args:
-            blob_path: Path to validate
-            
-        Returns:
-            Tuple (is_valid, message)
-        """
-        parsed = AzureBlobPathValidator.parse_path(blob_path)
-        
-        if not parsed:
-            return False, "Invalid path format. Expected: customer_<name>_<id>/client_<name>_<id>/..."
-        
-        # Additional validations
-        if not parsed.get("customer_id").isdigit():
-            return False, "Customer ID must be numeric"
-        
-        if not parsed.get("client_id").isdigit():
-            return False, "Client ID must be numeric"
-        
-        if parsed.get("date") and not _is_valid_date(parsed["date"]):
-            return False, f"Invalid date format: {parsed['date']}. Expected YYYY-MM-DD"
-        
-        return True, "Valid path"
-
 
 def _is_valid_date(date_str: str) -> bool:
-    """Check if date string is in YYYY-MM-DD format."""
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
         return True
     except ValueError:
         return False
+
