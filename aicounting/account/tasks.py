@@ -26,6 +26,7 @@ from .models import DimAICGLAcct
 from agentic_doc.parse import parse
 from agentic_doc.config import ParseConfig
 from extractor.utils import split_pdf_to_pages
+from aicounting.file_upload_helper import DocumentDebugStorage
 
 logger = logging.getLogger(__name__)
 
@@ -231,9 +232,8 @@ def process_uploaded_document(
         #     doc.save()
        
         # Save processing output
-        output_json = json.dumps(result, indent=2, default=str)
-        output_path = f"processed_output/{doc.id}/processing_result.json"
-        default_storage.save(output_path, ContentFile(output_json.encode('utf-8')))
+        debug_storage = DocumentDebugStorage(doc)
+        debug_storage.save_final_output(result, "processing_result.json")
         
         logger.info(f"Document {doc.id} processed successfully: {result.get('processing_stats', {})}")
         

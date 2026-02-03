@@ -16,6 +16,7 @@ from django.db import transaction
 
 # Local imports
 
+from aicounting.file_upload_helper import DocumentDebugStorage
 from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
 from account.models.monthly_document_line_models import (
     MonthlyDocumentBankKeyItem,
@@ -144,6 +145,14 @@ class MonthlyAccountingDocumentProcessor:
         # Get processor class from registry
         processor_class = ProcessorRegistry.get(doc_type)
         self.doc_processor = processor_class(self.config, self.monthly_document)
+
+        # Initialize and set debug storage
+        try:
+            debug_storage = DocumentDebugStorage(self.monthly_document)
+            if hasattr(self.doc_processor, 'set_debug_storage'):
+                self.doc_processor.set_debug_storage(debug_storage)
+        except Exception as e:
+            logger.warning(f"Failed to initialize debug storage: {e}")
 
     def __release_resources__(self):
         """Release resources held by the processor."""

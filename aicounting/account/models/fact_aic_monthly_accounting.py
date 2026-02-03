@@ -136,7 +136,6 @@ class FactAICMonthlyAccounting(models.Model):
     def create_snapshots(self):
         """Create snapshots of current templates and input files configuration"""
         from .dim_aic_je_template_header_model import DimAICJETemplateHeader
-        from .dim_aic_input_files import DimAicInputFiles
         from .dim_aic_je_freq_model import DimAICJEFreq
         
         # Get monthly frequency templates
