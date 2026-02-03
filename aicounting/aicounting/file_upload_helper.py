@@ -128,19 +128,12 @@ def upload_to_montly_accounting_folder(instance, filename):
 
 def upload_to_monthly_accounting_snapshot_folder(instance, filename):
     """
-    Upload to: .../accounting/YYYY-MM-DD/<doc_id>/snapshots/filename
+    Upload to: .../accounting_snapshots/YYYY-MM-DD/filename
     Used by: Snapshots
     """
     builder = get_blob_path_builder(instance)
-    # Try to find the related document ID if possible, otherwise use instance ID
-    doc_id = 'unknown'
-    if hasattr(instance, 'monthly_accounting_document'):
-        doc_id = str(instance.monthly_accounting_document.id)
-    elif hasattr(instance, 'id'):
-        doc_id = str(instance.id)
-
     if builder:
-        return builder.accounting_snapshot_path(filename, doc_id=doc_id, add_timestamp=True)
+        return builder.accounting_snapshots_path(filename, add_timestamp=True)
     return f"accounting_snapshots/{_add_timestamp_to_filename(filename)}"
 
 

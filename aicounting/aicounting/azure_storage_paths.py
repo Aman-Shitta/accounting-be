@@ -48,12 +48,12 @@ class AzureStoragePathConstants:
     CLIENT_DOCUMENTS = "client_documents"
     INPUT_FILES = "input_files"
     JE_TEMPLATES = "je_templates"
+    ACCOUNTING_SNAPSHOTS = "accounting_snapshots"
     
     # Accounting Structure
     ACCOUNTING = "accounting"
     
     # Subfolders within accounting/<date>/<doc_id>/
-    SNAPSHOTS = "snapshots"
     PROCESSING_ARTIFACTS = "processing_artifacts"
     
     # Process Artifact Stages (formerly debug_files)
@@ -163,6 +163,21 @@ class AzureBlobPathBuilder:
             filename = self._add_timestamp_to_filename(filename)
         
         return f"{self.base_path}/{AzureStoragePathConstants.JE_TEMPLATES}/{date_folder}/{filename}"
+
+    def accounting_snapshots_path(
+        self,
+        filename: str,
+        add_timestamp: bool = True,
+        custom_date: Optional[str] = None
+    ) -> str:
+        """
+        Path: customer_*/client_*/accounting_snapshots/YYYY-MM-DD/filename
+        """
+        date_folder = custom_date or self._get_today_folder()
+        if add_timestamp:
+            filename = self._add_timestamp_to_filename(filename)
+        
+        return f"{self.base_path}/{AzureStoragePathConstants.ACCOUNTING_SNAPSHOTS}/{date_folder}/{filename}"
 
     # ========== ACCOUNTING DOCUMENTS ==========
     
