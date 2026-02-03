@@ -342,9 +342,9 @@ class DocumentDebugStorage:
     
     def save_final_output(self, final_output: Dict, filename: str = "final_output.json") -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_final_je_path(self.doc_id, filename)
+            path = self._path_builder.artifact_final_summary_path(self.doc_id, filename)
         else:
-            path = f"debug_files/{self.doc_id}/07_final_je/{filename}"
+            path = f"debug_files/{self.doc_id}/07_final_summary/{filename}"
         return self._save_json(final_output, path)
     
     def save_processing_summary(self, summary: Dict) -> Optional[str]:

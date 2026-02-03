@@ -63,7 +63,7 @@ class AzureStoragePathConstants:
     ARTIFACT_GEMINI_AI = "04_gemini_ai"
     ARTIFACT_DOCUMENT_AI = "05_document_ai"
     ARTIFACT_RECTIFICATION = "06_rectification"
-    ARTIFACT_FINAL_JE = "07_final_je"
+    ARTIFACT_FINAL_SUMMARY = "07_final_summary"
     
     # Legacy/Mapping for backward compatibility
     LEGACY_DOCUMENTS = "documents"
@@ -265,8 +265,8 @@ class AzureBlobPathBuilder:
     def artifact_rectification_path(self, doc_id: str, filename: str, **kwargs) -> str:
         return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_RECTIFICATION, filename, **kwargs)
         
-    def artifact_final_je_path(self, doc_id: str, filename: str, **kwargs) -> str:
-        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_FINAL_JE, filename, **kwargs)
+    def artifact_final_summary_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_FINAL_SUMMARY, filename, **kwargs)
 
     # ========== ALIASES FOR COMPATIBILITY (MAPPED TO ARTIFACTS) ==========
     
@@ -297,7 +297,7 @@ class AzureBlobPathBuilder:
         return self.artifact_rectification_path(doc_id, filename, **kwargs)
         
     def debug_final_output_path(self, doc_id: str, filename: str = "final_output.json", **kwargs) -> str:
-        return self.artifact_final_je_path(doc_id, filename, **kwargs)
+        return self.artifact_final_summary_path(doc_id, filename, **kwargs)
 
     def accounting_output_files_path(self, filename: str, add_timestamp: bool = True, custom_date: Optional[str] = None) -> str:
         """Legacy alias: maps to main accounting folder or could map to JE templates if they are exports."""
