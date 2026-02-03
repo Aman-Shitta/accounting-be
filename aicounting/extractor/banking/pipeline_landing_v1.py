@@ -293,7 +293,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
             if self.debug_storage:
                 self.debug_storage.save_extracted_data(
                     convert_decimals_to_float(self.extracted_data),
-                    "extracted_data_after_page_fix.json"
+                    "extracted_data_after_page_number_fix.json"
                 )
             
             # Step 3: Rectify amounts page by page
@@ -383,6 +383,7 @@ class DocumentProcessorV1(BaseDocumentProcessor):
         rectified_items, rectifier_items = self.transaction_rectifier.rectify_document(
             file_bytes,
             master_data=transactions,
+            debug_storage=self.debug_storage
         )
         self.rectified_data['transactions'] = rectified_items
         self.rectified_data['rectifier_items'] = rectifier_items

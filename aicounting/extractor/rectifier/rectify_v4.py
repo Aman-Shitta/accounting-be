@@ -986,7 +986,7 @@ def process(document_path: str):
     return filtered_page_txns
 
 
-def process_bytes(file_bytes: str):
+def process_bytes(file_bytes: str, debug_storage=None):
     project_id = "574468961041"
     location = "us"
     processor_id = "2bb41ba31124bd77"
@@ -1000,9 +1000,27 @@ def process_bytes(file_bytes: str):
         # service_account_json=service_account_json,
     )
 
+    if debug_storage:
+        try:
+            debug_storage.save_rectified_data(result_json, "document_ai_raw_output.json")
+        except Exception as e:
+            logger.warning(f"Failed to save document_ai_raw_output: {e}")
+
     transactions = send_to_gemini_paginated(result_json)
 
+    if debug_storage:
+        try:
+            debug_storage.save_rectified_data(transactions, "gemini_extracted_transactions.json")
+        except Exception as e:
+            logger.warning(f"Failed to save gemini_extracted_transactions: {e}")
+
     chk_img_transactions = chk_img_send_to_gemini_paginated(result_json)
+
+    if debug_storage:
+        try:
+            debug_storage.save_rectified_data(chk_img_transactions, "gemini_check_image_transactions.json")
+        except Exception as e:
+            logger.warning(f"Failed to save gemini_check_image_transactions: {e}")
 
     filtered_page_txns = remove_pages_with_high_check_counts(
         checks_json=chk_img_transactions,
@@ -1024,7 +1042,8 @@ class TransactionRectifierV3:
     def rectify_document(
         self,
         file_bytes: bytes,
-        master_data: List[Dict[str, Any]]
+        master_data: List[Dict[str, Any]],
+        debug_storage=None
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Process and rectify the document using Gemini extraction.
@@ -1032,6 +1051,7 @@ class TransactionRectifierV3:
         Args:
             file_bytes: Raw PDF bytes to process
             master_data: List of transactions from Landing AI extraction
+            debug_storage: Optional debug storage helper
         
         Returns:
             Tuple of (rectified_transactions, rectifier_items)
@@ -1044,7 +1064,7 @@ class TransactionRectifierV3:
         try:
             # Step 1: Extract transactions using Gemini via process_bytes
             logger.info(f"Processing document with Gemini rectifier...")
-            rectifier_items = process_bytes(file_bytes)
+            rectifier_items = process_bytes(file_bytes, debug_storage=debug_storage)
             logger.info(f"Gemini extracted {len(rectifier_items)} transactions")
             
             # Step 2: Normalize master_data (from Landing AI)
