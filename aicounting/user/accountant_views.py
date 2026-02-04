@@ -9,7 +9,7 @@ from aicounting.msal_conf import MsalGraphConf
 from user.services import create_user_for_accountant
 from .constants import AccountantInviteViewMessages, AccountantListViewMessages
 
-from authentication.permissions import IsCustomer
+from authentication.permissions import IsCustomer, IsCustomerOrAccountant
 from authentication.authenticate import JSONWebTokenAuthentication
 
 
@@ -107,7 +107,7 @@ class AccountantListView(GenericAPIView):
     """
     serializer_class = DimAICAccountantSerializer
     authentication_classes = [JSONWebTokenAuthentication]
-    permission_classes = [IsCustomer]
+    permission_classes = [IsCustomerOrAccountant]
 
     def get_queryset(self):
         request_user = self.request.user
