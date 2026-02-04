@@ -24,6 +24,7 @@ from .monthly_document_line_models import (
     MonthlyDocumentAttributeItem,
     MonthlyTemplateManualAttributeItem
 )
+from .classification_queue_model import ClassificationQueue
 
 
 __all__ = [
@@ -48,5 +49,6 @@ __all__ = [
     'MonthlyDocumentBankLineItem',
     'MonthlyDocumentBankCheckItem',
     'MonthlyDocumentAttributeItem',
-    'MonthlyTemplateManualAttributeItem'
+    'MonthlyTemplateManualAttributeItem',
+    'ClassificationQueue'
 ]
