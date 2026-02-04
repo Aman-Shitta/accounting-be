@@ -14,6 +14,8 @@ from django.core.files.storage import default_storage
 from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
 from extractor.config_factory import DocumentConfigFactory, DocumentConfig, DocumentType
 
+from celery import chain
+
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +130,6 @@ class DocumentProcessingService:
             process_uploaded_document,
             classify_document_gl_accounts_task
         )
-        from celery import chain
         
         doc_id = str(self.document.id)
         config_dict = self.config.to_dict()
@@ -284,12 +285,9 @@ class GLClassificationService:
         logger.info(f"Enriched {enriched_count} check descriptions for document {self.document.id}")
         return enriched_count
     
-    def classify_line_items(self, batch_size: int = 10) -> int:
+    def classify_line_items(self) -> int:
         """
-        Classify GL accounts for line items in batches.
-        
-        Args:
-            batch_size: Number of items per classification batch (default 10)
+        Classify GL accounts for all line items in the document.
         
         Returns:
             Number of line items classified
@@ -338,59 +336,29 @@ class GLClassificationService:
                     logger.info(f"No line items to classify for document {self.document.id}")
                     return 0
                 
-                # Build batches of items (batch_size items at a time)
-                batches = []
-                for i in range(0, len(line_items_list), batch_size):
-                    batch = line_items_list[i:i + batch_size]
-                    batches.append(batch)
+                logger.info(f"Processing {len(line_items_list)} line items for classification")
                 
-                logger.info(f"Processing {len(line_items_list)} items in {len(batches)} batches of {batch_size}")
+                # Build extracted data structure for all line items
+                extracted_data = self._build_extracted_data(line_items_list)
                 
-                # Accumulate all classified results
-                all_classified_pages = {}
+                # Create classifier
+                classifier = GLClassifier(
+                    assistant_id=assistant_id,
+                    vector_store_ids=vector_store_ids,
+                    special_rules=input_file_rules
+                )
                 
-                for batch_idx, batch in enumerate(batches):
-                    try:
-                        # Build extracted data structure for this batch
-                        batch_extracted = self._build_batch_extracted_data(batch)
-                        
-                        # Create classifier for this batch
-                        classifier = GLClassifier(
-                            assistant_id=assistant_id,
-                            vector_store_ids=vector_store_ids,
-                            special_rules=input_file_rules
-                        )
-                        
-                        # Classify the batch
-                        batch_results = classifier.classify_extracted_data(batch_extracted)
-                        
-                        # Merge results into accumulated dict
-                        for page_num, page_data in (batch_results or {}).items():
-                            if page_num not in all_classified_pages:
-                                all_classified_pages[page_num] = {}
-                            if isinstance(page_data, dict):
-                                all_classified_pages[page_num].update(page_data)
-                            elif isinstance(page_data, list):
-                                # Convert list to dict keyed by id
-                                for item in page_data:
-                                    item_id = item.get('id')
-                                    if item_id:
-                                        all_classified_pages[page_num][item_id] = item
-                        
-                        logger.info(f"Batch {batch_idx + 1}/{len(batches)} classified successfully")
-                        
-                    except Exception as e:
-                        logger.error(f"Error classifying batch {batch_idx + 1}: {e}")
-                        continue
+                # Classify all items at once
+                classified_pages = classifier.classify_extracted_data(extracted_data)
                 
                 # Build lookup dict for line items
                 line_items_by_page = {}
                 for li in line_items_list:
                     line_items_by_page.setdefault(li.page_number, {})[li.line_number] = li
                 
-                # Apply accumulated classifications
+                # Apply classifications
                 updated_items = []
-                for page_num, page_data in all_classified_pages.items():
+                for page_num, page_data in (classified_pages or {}).items():
                     iterable = page_data.values() if isinstance(page_data, dict) else page_data
                     for cls_item in iterable:
                         try:
@@ -426,7 +394,7 @@ class GLClassificationService:
         logger.info(f"Classified {classified_count} line items for document {self.document.id}")
         return classified_count
     
-    def _build_batch_extracted_data(self, line_items: list) -> dict:
+    def _build_extracted_data(self, line_items: list) -> dict:
         """
         Build extracted data structure for a batch of line items.
         
