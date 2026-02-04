@@ -279,16 +279,23 @@ class OpenAIAssistant(OpeAIClient):
         try:
             from django.core.files.storage import default_storage
             from django.core.files.base import ContentFile
+            from aicounting.azure_storage_paths import AzureBlobPathBuilder
             
-            # Create path in processed_documents folder
+            # Use AzureBlobPathBuilder for proper path structure
             if self.customer and self.client_obj:
-                json_path = f"customer_{self.customer.customer_name.lower().replace(' ', '_')}_{self.customer.id}/client_{self.client_obj.client_name.lower().replace(' ', '_')}_{self.client_obj.id}/processed_documents/{json_filename}"
+                builder = AzureBlobPathBuilder(
+                    customer_id=self.customer.id,
+                    customer_name=self.customer.customer_name or "Unknown",
+                    client_id=self.client_obj.id,
+                    client_name=self.client_obj.client_name or "Unknown"
+                )
+                json_path = builder.client_documents_path(json_filename, add_timestamp=True)
             else:
-                json_path = f"processed_documents/client_{self.client_id}/{json_filename}"
+                json_path = f"client_documents/{json_filename}"
             
             # Save to Azure storage
             default_storage.save(json_path, ContentFile(json_content.encode('utf-8')))
-            logger.error(f"Saved JSON version to Azure: {json_path}")
+            logger.info(f"Saved JSON version to Azure: {json_path}")
             
         except Exception as e:
             logger.error(f"Error saving JSON to Azure for {json_filename}: {e}")

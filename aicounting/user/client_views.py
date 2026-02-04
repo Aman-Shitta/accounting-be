@@ -396,7 +396,7 @@ class DocumentUploadView(generics.GenericAPIView):
 class ClientAssignAccountantsView(generics.GenericAPIView):
     """Append accountants to a client (without replacing existing ones)"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = ClientAccountantAssignmentSerializer
 
     def get_object(self, client_id):
@@ -528,7 +528,7 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
 class ClientUnassignAccountantsView(generics.GenericAPIView):
     """Unassign specific accountants from a client"""
     authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
     serializer_class = DimAICAccountantSerializer
 
     def get_object(self, client_id):

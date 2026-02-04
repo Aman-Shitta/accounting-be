@@ -258,7 +258,11 @@ def process_uploaded_document(
 @shared_task
 def classify_document_gl_accounts_task(_previous_result=None, document_id: str = None):
     """
-    Celery task wrapper for GL account classification.
+    Enqueue a document for GL account classification.
+    
+    Instead of processing immediately, this adds the document to a queue.
+    The queue is processed by Celery Beat to ensure only one classification
+    runs per client at a time.
     
     Can be used standalone or chained after process_uploaded_document.
     The _previous_result parameter allows this to be used in a Celery chain.
@@ -268,33 +272,135 @@ def classify_document_gl_accounts_task(_previous_result=None, document_id: str =
         document_id: UUID string of the MonthlyAccountingDocument
         
     Returns:
-        dict: Classification result with status and count
+        dict: Queue result with status
     """
     try:
-        from extractor.services import GLClassificationService
+        from account.models import MonthlyAccountingDocument, ClassificationQueue
         
-        service = GLClassificationService.from_document_id(document_id)
-        classified_count = service.classify_line_items()
+        doc = MonthlyAccountingDocument.objects.get(id=document_id)
         
-        # Update document status
-        doc = service.document
-        doc.status = "classified"
-        doc.save()
+        # Get client_id for queue grouping
+        client_id = str(doc.monthly_accounting.client_id)
         
-        logger.info(f"GL classification completed for document {document_id}")
+        # Enqueue for processing
+        queue_item = ClassificationQueue.enqueue(
+            document=doc,
+            client_id=client_id
+        )
+        
+        logger.info(
+            f"Document {document_id} queued for classification "
+            f"(queue_id: {queue_item.id}, client: {client_id})"
+        )
         
         return {
-            "status": "success",
+            "status": "queued",
             "doc_id": document_id,
-            "classified_count": classified_count
+            "queue_id": str(queue_item.id),
+            "client_id": client_id
         }
         
+    except MonthlyAccountingDocument.DoesNotExist:
+        logger.error(f"Document not found: {document_id}")
+        return {"status": "error", "error": f"Document not found: {document_id}"}
     except Exception as e:
-        logger.error(f"GL Classification failed for document {document_id}: {str(e)}")
+        logger.error(f"Failed to queue classification for document {document_id}: {str(e)}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
         return {"status": "error", "error": str(e)}
+
+
+@shared_task
+def process_classification_queue_task():
+    """
+    Celery Beat task to process the classification queue.
+    
+    This task runs periodically and processes ONE pending classification
+    per client. This ensures each client's assistant is only used by one
+    task at a time.
+    
+    Returns:
+        dict: Processing summary
+    """
+    from account.models import ClassificationQueue
+    from extractor.services import GLClassificationService
+    
+    # Get all clients with pending work
+    pending_clients = ClassificationQueue.get_all_pending_clients()
+    
+    if not pending_clients:
+        return {"status": "idle", "message": "No pending classifications"}
+    
+    results = []
+    
+    for client_id in pending_clients:
+        # Get next item for this client (returns None if one is already processing)
+        queue_item = ClassificationQueue.get_next_for_client(client_id)
+        
+        if not queue_item:
+            # Already processing for this client, skip
+            continue
+        
+        # Mark as processing
+        queue_item.mark_processing()
+        document_id = str(queue_item.document_id)
+        
+        try:
+            logger.info(
+                f"Processing classification queue item {queue_item.id} "
+                f"for document {document_id} (client: {client_id})"
+            )
+            
+            # Run the actual classification
+            service = GLClassificationService.from_document_id(document_id)
+            classified_count = service.classify_line_items()
+            
+            # Update document status
+            doc = service.document
+            doc.status = "classified"
+            doc.save()
+            
+            # Mark queue item as completed
+            queue_item.mark_completed()
+            
+            logger.info(
+                f"Classification completed for document {document_id}: "
+                f"{classified_count} items classified"
+            )
+            
+            results.append({
+                "queue_id": str(queue_item.id),
+                "doc_id": document_id,
+                "status": "completed",
+                "classified_count": classified_count
+            })
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(
+                f"Classification failed for document {document_id}: {error_msg}"
+            )
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
+            
+            # Mark as failed (will retry if retries remaining)
+            queue_item.mark_failed(error_msg)
+            
+            results.append({
+                "queue_id": str(queue_item.id),
+                "doc_id": document_id,
+                "status": "failed",
+                "error": error_msg,
+                "will_retry": queue_item.status == ClassificationQueue.Status.PENDING
+            })
+    
+    return {
+        "status": "processed",
+        "processed_count": len(results),
+        "results": results
+    }
 
 
 def process_and_classify_document(doc_id: str, config_params: dict):
