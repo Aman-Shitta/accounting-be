@@ -111,7 +111,11 @@ class AccountantListView(GenericAPIView):
 
     def get_queryset(self):
         request_user = self.request.user
-        customer = request_user.customer_profile
+
+        if hasattr(request_user, 'accountant_profile'):
+            customer = request_user.accountant_profile.customer
+        else:
+            customer = request_user.customer_profile
         return customer.accountants.all()
 
     def get(self, request):
