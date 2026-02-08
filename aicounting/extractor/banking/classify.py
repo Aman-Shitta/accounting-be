@@ -157,12 +157,11 @@ class GLClassifier(OpeAIThread):
             logger.error("No extracted data provided.")
             return {}
 
-        self.create_thread(self.vector_store_ids)
-
         results = {}
 
         for page_num, page_data in extracted_data.items():
             try:
+                self.create_thread(self.vector_store_ids)
                 line_items = page_data.get("line_items", {})
                 if not line_items:
                     logger.error(f"[DEBUG] No line items found for page {page_num}")
@@ -191,5 +190,6 @@ class GLClassifier(OpeAIThread):
                 logger.error(f"[ERROR] Exception processing page {page_num}: {e}")
                 continue  # Skip to next page on error
 
-        self.delete_thread(self.thread_id)
+            self.delete_thread(self.thread_id)
+
         return results
