@@ -52,15 +52,15 @@ AccountantListViewMessages = {
 }
 
 
-# Admin Customer Invite Messages
-CustomerInviteViewMessages = {
-    "success": "Customer invitation sent successfully. The customer will receive an email to complete registration.",
-    "error": "Failed to send customer invitation. Please try again.",
+AzureInviteViewMessages = {
+    "success": "Invitation sent successfully. The user will receive an email to complete registration.",
+    "error": "Failed to send invitation. Please try again.",
     "validation_error": "Please correct the errors in the form and try again.",
-    "already_exists": "A customer with this email already exists.",
+    "already_exists": "A user with this email already exists.",
     "azure_error": "Failed to send invitation through Azure. Please try again later.",
 }
 
+    
 # Contact View Messages
 ContactCreateViewMessages = {
     "success": "Contact created successfully.",

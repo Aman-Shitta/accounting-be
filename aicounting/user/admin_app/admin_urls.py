@@ -9,5 +9,5 @@ admin_urlpatterns = [
     path('dashboard/', AdminDashboardView.as_view(), name='admin_dashboard'),
     # Customer management
     path('customers/', CustomerListView.as_view(), name='customer_list'),
-    path('invite/', AzureInviteView.as_view(), name='customer_invite'),
+    path('invite/<str:user_type>/', AzureInviteView.as_view(), name='user_invite'),
 ]

@@ -4,8 +4,12 @@ from .invite_serializers import AzureInviteCustomerSerializer
 from rest_framework import status
 from aicounting.msal_conf import MsalGraphConf
 
-from user.services import create_user_for_customer
-from user.constants import CustomerInviteViewMessages
+from user.services import (
+    create_user_for_customer,
+    create_user_for_reviewer
+)
+
+from user.constants import AzureInviteViewMessages
 
 from authentication.permissions import IsSuperUser
 from authentication.authenticate import AdminJWTAuthentication
@@ -25,7 +29,7 @@ class AzureInviteView(GenericAPIView):
     
     msal_graph = MsalGraphConf()
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         data = request.data
         email = data.get("email")
         customer_name = data.get("customer_name", "")
@@ -33,7 +37,7 @@ class AzureInviteView(GenericAPIView):
         city = data.get("city", "")
         state_abrevation = data.get("state_abrevation", "")
         zip_code = data.get("zip_code", None)
-        user_type = 'customer'
+        user_type = kwargs.get("user_type", "customer")
 
         # Get the requesting user (authenticated superuser)
         request_user = request.user
@@ -43,25 +47,39 @@ class AzureInviteView(GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message=CustomerInviteViewMessages["validation_error"],
+                message=AzureInviteViewMessages["validation_error"],
                 errors=serializer.errors
             )
         
-        # Check if customer already exists
-        customer, error_message = create_user_for_customer(
-            request_user=request_user,
-            customer_name=customer_name,
-            email=email,
-            street=street,
-            city=city,
-            state_abrevation=state_abrevation,
-            zip_code=zip_code
-        )
+        if user_type not in ['customer', 'reviewer']:
+            return create_api_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message="Invalid user type for invitation."
+            )
+        
+        if user_type == 'customer':
+            # Check if customer already exists
+            added_user, error_message = create_user_for_customer(
+                request_user=request_user,
+                customer_name=customer_name,
+                email=email,
+                street=street,
+                city=city,
+                state_abrevation=state_abrevation,
+                zip_code=zip_code
+            )
+
+        elif user_type == 'reviewer':
+            # For reviewer, we don't need to create a customer record, just check if reviewer already exists
+            added_user, error_message = create_user_for_reviewer(
+                request_user=request_user,
+                user_email=email
+            )
 
         if error_message:
             # Determine if it's an "already exists" error
             if "already exists" in error_message.lower():
-                message = CustomerInviteViewMessages["already_exists"]
+                message = AzureInviteViewMessages["already_exists"]
             else:
                 message = error_message
             return create_api_response(
@@ -88,18 +106,17 @@ class AzureInviteView(GenericAPIView):
         if not invite_result.get("success"):
             logger.error("[DEBUG] Azure invite failed:", invite_result.get("error"))
             # If Azure invite fails, we should clean up the created customer
-            customer.system_user.delete()
+            added_user.system_user.delete()
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message=CustomerInviteViewMessages["azure_error"]
+                message=AzureInviteViewMessages["azure_error"]
             )
 
         return create_api_response(
             status_code=status.HTTP_201_CREATED,
-            message=CustomerInviteViewMessages["success"],
+            message=AzureInviteViewMessages["success"],
             data={
-                "customer_id": customer.id,
-                "customer_name": customer.customer_name,
+                "user_id": added_user.id,
                 "email": email,
                 "verification_status": "pending",
                 "azure_invite": invite_result
