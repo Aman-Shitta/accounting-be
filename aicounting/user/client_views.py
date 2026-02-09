@@ -400,11 +400,19 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
     serializer_class = ClientAccountantAssignmentSerializer
 
     def get_object(self, client_id):
-        """Get client instance for the authenticated customer"""
-        customer = self.request.user.customer_profile
+        """Get client instance for the authenticated customer or accountant"""
+        customer = getattr(self.request.user, 'customer_profile', None)
+        accountant = getattr(self.request.user, 'accountant_profile', None)
+
         if customer:
             try:
                 return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        elif accountant:
+            try:
+                # Return client assigned to this accountant
+                return DimAICClient.objects.get(assigned_accountants=accountant, id=client_id)
             except DimAICClient.DoesNotExist:
                 return None
         return None
@@ -421,7 +429,7 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                     "Client not found or you don't have permission to modify it."
                 )
 
-            customer = request.user.customer_profile
+            customer = client.customer
             serializer = self.get_serializer(
                 client, 
                 data=request.data, 
@@ -532,11 +540,19 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
     serializer_class = DimAICAccountantSerializer
 
     def get_object(self, client_id):
-        """Get client instance for the authenticated customer"""
-        customer = self.request.user.customer_profile
+        """Get client instance for the authenticated customer or accountant"""
+        customer = getattr(self.request.user, 'customer_profile', None)
+        accountant = getattr(self.request.user, 'accountant_profile', None)
+
         if customer:
             try:
                 return DimAICClient.objects.get(customer=customer, id=client_id)
+            except DimAICClient.DoesNotExist:
+                return None
+        elif accountant:
+            try:
+                # Return client assigned to this accountant
+                return DimAICClient.objects.get(assigned_accountants=accountant, id=client_id)
             except DimAICClient.DoesNotExist:
                 return None
         return None

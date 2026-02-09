@@ -41,9 +41,9 @@ class DimAICContact(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'dim_aic_contact'
-        verbose_name = "AIC Contact"
-        verbose_name_plural = "AIC Contacts"
+        db_table = 'contact'
+        verbose_name = "Contact"
+        verbose_name_plural = "Contacts"
         unique_together = ('client_id', 'contact_email')
 
     def clean(self):

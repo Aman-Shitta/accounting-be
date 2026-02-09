@@ -43,9 +43,9 @@ class DimAICClient(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
     class Meta:
-        db_table = 'dim_aic_client'
-        verbose_name = "AIC Client"
-        verbose_name_plural = "AIC Clients"
+        db_table = 'client'
+        verbose_name = "Client"
+        verbose_name_plural = "Clients"
 
     def __str__(self):
         return f"{self.client_name} (ID: {self.client_id})"

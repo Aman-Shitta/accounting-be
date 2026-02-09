@@ -4,6 +4,7 @@ from .dim_aic_assistant_model import DimAICAssistant
 from .dim_aic_client_model import DimAICClient, DimAICClientDocument
 from .dim_aic_contact_model import DimAICContact
 from .dim_aic_customer_model import DimAICCustomer
+from .dim_aic_reviewer_model import DimAICReviewer
 
 __all__ = [
     "DimAICAccountant",
@@ -12,4 +13,5 @@ __all__ = [
     "DimAICClientDocument",
     "DimAICContact",
     "DimAICCustomer",
+    "DimAICReviewer"
 ]

@@ -80,9 +80,9 @@ class DimAICAssistant(models.Model):
     )
     
     class Meta:
-        db_table = 'dim_aic_assistant'
-        verbose_name = "AIC Assistant"
-        verbose_name_plural = "AIC Assistants"
+        db_table = 'assistant'
+        verbose_name = "Assistant"
+        verbose_name_plural = "Assistants"
     
     def __str__(self):
         return f"Assistant for {self.client.client_name}"
