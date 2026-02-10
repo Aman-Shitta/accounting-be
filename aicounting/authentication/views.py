@@ -8,12 +8,19 @@ from rest_framework.generics import GenericAPIView
 # Local imports
 from aicounting.msal_conf import MsalConf
 from aicounting.response import create_api_response
-from user.models import DimAICCustomer, DimAICAccountant
+
+from user.models import (
+    DimAICCustomer,
+    DimAICAccountant,
+    DimAICReviewer
+)
 
 
 from rest_framework import permissions
 from authentication.permissions import IsCustomerOrAccountant
 from authentication import authenticate
+
+from authentication.constants import *
 
 msal = MsalConf()
 
@@ -21,7 +28,7 @@ class SSOLoginView(GenericAPIView):
     def get(self, request):        
         auth_url = msal.MSAL_APP.get_authorization_request_url(
             msal.SCOPE,
-            redirect_uri=msal.REDIRECT_URI
+            redirect_uri=msal.AUTH_REDIRECT_URI
         )
         
         return create_api_response(
@@ -46,7 +53,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 result = msal.MSAL_APP.acquire_token_by_authorization_code(
                     code,
                     scopes=msal.SCOPE,
-                    redirect_uri=msal.REDIRECT_URI
+                    redirect_uri=msal.AUTH_REDIRECT_URI
                 )
             except Exception as e:
                 return create_api_response(
@@ -86,7 +93,7 @@ class SSOGenerateTokenView(GenericAPIView):
             # Check for customer or accountant groups in priority order
             # Customer has higher priority than accountant
             user_role = None
-            for role in ['customer', 'accountant']:
+            for role in USER_GROUPS:
                 if msal.GROUPS.get(role) in groups:
                     user_role = role
                     break
@@ -100,7 +107,8 @@ class SSOGenerateTokenView(GenericAPIView):
             
             user_name = ""
             customer_name = ""
-            if user_role == 'customer':
+
+            if user_role == CUSTOMER:
                 customer = DimAICCustomer.objects.filter(system_user__email=email).first()
 
                 if not customer or not user_object_id:
@@ -122,7 +130,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 user_name = customer.customer_name
                 customer_name = user_name
 
-            elif user_role == 'accountant':
+            elif user_role == ACCOUNTANT:
 
                 accountant = DimAICAccountant.objects.filter(system_user__email=email).first()
                 if not accountant or not user_object_id:
@@ -143,6 +151,27 @@ class SSOGenerateTokenView(GenericAPIView):
 
                 user_name = accountant.username
                 customer_name = accountant.customer.customer_name
+
+            elif user_role == REVIEWER:
+                
+                reviewer = DimAICReviewer.objects.filter(system_user__email=email).first()
+                if not reviewer or not user_object_id:
+                    return create_api_response(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        data=None,
+                        message='Unauthorized Reviewer. Please contact admin.'
+                    )
+                if not reviewer.verified:
+                    reviewer.azure_id = user_object_id
+                    reviewer.verified = True
+                
+                reviewer.refresher_token = refresh_token
+                reviewer.save()
+
+                reviewer.system_user.is_active = True
+                reviewer.system_user.save()
+
+                user_name = reviewer.email
             else:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -166,7 +195,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     "user_type": user_role,
                     "email": email,
                     "name": user_name,
-                    "customer_name": f"{customer_name}"
+                    "customer_name": f"{customer_name}" 
                 }
             }
             

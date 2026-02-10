@@ -84,10 +84,10 @@ class DimAICCustomer(models.Model):
 
     class Meta:
         # Define the table name in the database
-        db_table = 'dim_aic_customer'
+        db_table = 'customer'
         # Set the verbose name for the model, used in the Django admin interface
-        verbose_name = "AIC Customer"
-        verbose_name_plural = "AIC Customers"
+        verbose_name = "Customer"
+        verbose_name_plural = "Customers"
 
     def generate_unique_cust_id(self):
         """

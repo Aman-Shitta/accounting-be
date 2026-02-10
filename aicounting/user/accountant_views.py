@@ -1,4 +1,3 @@
-
 from aicounting.response import create_api_response
 from rest_framework.generics import GenericAPIView
 from .accountant_serializers import AzureInviteAccountantSerializer
@@ -72,11 +71,15 @@ class AzureAccountantInviteView(GenericAPIView):
             )
 
         # Send Azure AD B2C invite
+        message_body = f"""Hi There, You have been invited to join our platform as an accountant by {customer.customer_name}. Please click the link below to accept the invitation and set up your account. We look forward to having you on board!"""
+
         invite_result = self.msal_graph.send_azure_invite_with_group(
             email=user_email, 
             first_name=first_name, 
             last_name=last_name, 
-            user_type=user_type
+            user_type=user_type,
+            redirect_url=self.msal_graph.APP_REDIRECT_URI,
+            message_body=message_body
         )
 
         if not invite_result.get("success"):

@@ -66,10 +66,10 @@ class DimAICAccountant(models.Model):
 
     class Meta:
         # Define the table name in the database
-        db_table = 'dim_aic_accountant'
+        db_table = 'accountant'
         # Set the verbose name for the model, used in the Django admin interface
-        verbose_name = "AIC Accountant"
-        verbose_name_plural = "AIC Accountants"
+        verbose_name = "Accountant"
+        verbose_name_plural = "Accountants"
 
     def __str__(self):
         # String representation of the object, useful for the Django admin

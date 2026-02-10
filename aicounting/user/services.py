@@ -7,7 +7,7 @@ import os
 from django.contrib.auth import get_user_model
 
 # Local imports
-from user.models import DimAICAccountant, DimAICAssistant, DimAICClient, DimAICCustomer
+from user.models import DimAICAccountant, DimAICAssistant, DimAICClient, DimAICCustomer, DimAICReviewer
 from user.utils import OpenAIAssistant
 
 
@@ -96,6 +96,37 @@ def create_user_for_accountant(request_user, customer, user_email, user_name, fi
     )
 
     return accountant, None
+
+def create_user_for_reviewer(request_user, user_email):
+    User = get_user_model()
+
+    # Check if reviewer already exists
+    existing_reviewer = DimAICReviewer.objects.filter(
+        system_user__email=user_email
+    ).first()
+
+    if existing_reviewer:
+        return None, f"Reviewer with email {user_email} already exists."
+
+    # Check if user already exists
+    existing_user = User.objects.filter(email=user_email).first()
+    if existing_user:
+        return None, f"User with email {user_email} already exists."
+
+    # Create user with non-verified state
+    user = User.objects.create(
+        email=user_email,
+        username=user_email,
+        is_active=False,
+    )
+
+    # Create accountant record with non-verified state
+    reviewer = DimAICReviewer.objects.create(
+        system_user=user,
+        email=user_email
+    )
+
+    return reviewer, None
 
 
 class AssistantService:

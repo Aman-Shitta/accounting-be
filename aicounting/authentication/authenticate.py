@@ -44,6 +44,39 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             token = auth_header.split()[1]
         return token
 
+    def _try_refresh_token(self, azure_id, email):
+        """
+        Attempt to refresh the token using stored refresh token.
+        Returns new id_token or None if refresh failed.
+        """
+        try:
+            from aicounting.msal_conf import MsalConf
+            from user.models import DimAICCustomer, DimAICAccountant
+            
+            msal_conf = MsalConf()
+            
+            # Find user's refresh token
+            customer = DimAICCustomer.objects.filter(azure_id=azure_id).first()
+            accountant = DimAICAccountant.objects.filter(azure_id=azure_id).first()
+            
+            user_profile = customer or accountant
+            if not user_profile or not user_profile.refresher_token:
+                return None
+            
+            # Attempt refresh
+            new_tokens = msal_conf.refresh_access_token(user_profile.refresher_token)
+            
+            if new_tokens and new_tokens.get('id_token'):
+                # Update stored refresh token (rotation)
+                user_profile.refresher_token = new_tokens.get('refresh_token')
+                user_profile.save()
+                return new_tokens.get('id_token')
+            
+            return None
+        except Exception as e:
+            logger.error(f"Auto-refresh failed: {e}")
+            return None
+
     
     
     def authenticate(self, request):
@@ -136,7 +169,7 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             
             if not email:
                 logger.error("No email found in token claims")
-                logger.error(f"Available claims: {list(decoded_token.keys())}")
+                logger.info(f"Available claims: {list(decoded_token.keys())}")
                 raise CustomAuthenticationFailed('error', _('No email in token claims.'))
 
             logger.debug(f"Processing authentication for email: {email}")
@@ -166,7 +199,25 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             logger.error(f"JWT signature verification failed: {e}")
             raise CustomAuthenticationFailed('error', _('Invalid token signature. Please re-authenticate.'))
         except jwt.ExpiredSignatureError as e:
-            logger.error(f"JWT token expired: {e}")
+            logger.warning(f"JWT token expired, attempting refresh")
+            # Try to get azure_id from expired token
+            try:
+                expired_payload = jwt.decode(jwt_token, options={"verify_signature": False})
+                azure_id = expired_payload.get('oid')
+                email = expired_payload.get('preferred_username')
+                
+                # Attempt automatic refresh
+                new_token = self._try_refresh_token(azure_id, email)
+                if new_token:
+                    # Return a special response indicating token was refreshed
+                    # The frontend should update its stored token
+                    raise CustomAuthenticationFailed(
+                        'token_refreshed', 
+                        _('Token was refreshed. Please retry with new token.')
+                    )
+            except Exception:
+                pass
+            
             raise CustomAuthenticationFailed('error', _('Token has expired. Please re-authenticate.'))
         except jwt.InvalidAudienceError as e:
             logger.error(f"JWT audience validation failed: {e}")
