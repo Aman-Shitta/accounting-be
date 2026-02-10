@@ -13,7 +13,7 @@ from user.constants import AzureInviteViewMessages
 
 from authentication.permissions import IsSuperUser
 from authentication.authenticate import AdminJWTAuthentication
-
+from authentication.constants import CUSTOMER, REVIEWER
 
 import logging
 logger = logging.getLogger(__name__)
@@ -51,13 +51,13 @@ class AzureInviteView(GenericAPIView):
                 errors=serializer.errors
             )
         
-        if user_type not in ['customer', 'reviewer']:
+        if user_type not in [CUSTOMER, REVIEWER]:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message="Invalid user type for invitation."
             )
         
-        if user_type == 'customer':
+        if user_type == CUSTOMER:
             # Check if customer already exists
             added_user, error_message = create_user_for_customer(
                 request_user=request_user,
@@ -68,13 +68,16 @@ class AzureInviteView(GenericAPIView):
                 state_abrevation=state_abrevation,
                 zip_code=zip_code
             )
+            message_body = """Hi there,
+                Welcome to Syftr! You now have full access to our document processing suite, designed to streamline your financial workflows."""
 
-        elif user_type == 'reviewer':
+        elif user_type == REVIEWER:
             # For reviewer, we don't need to create a customer record, just check if reviewer already exists
             added_user, error_message = create_user_for_reviewer(
                 request_user=request_user,
                 user_email=email
             )
+            message_body = """Hi There, You have been invited to join our platform as a reviewer. Please click the link below to accept the invitation and set up your account. We look forward to having you on board!"""
 
         if error_message:
             # Determine if it's an "already exists" error
@@ -100,7 +103,9 @@ class AzureInviteView(GenericAPIView):
             email=email, 
             first_name=first_name, 
             last_name=last_name, 
-            user_type=user_type
+            user_type=user_type,
+            redirect_url=self.msal_graph.APP_REDIRECT_URI,
+            message_body=message_body
         )
 
         if not invite_result.get("success"):

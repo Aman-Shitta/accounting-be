@@ -2,11 +2,15 @@
 from django.contrib import admin
 
 # Local imports
-from .models.dim_aic_accountant_model import DimAICAccountant
-from .models.dim_aic_assistant_model import DimAICAssistant
-from .models.dim_aic_client_model import DimAICClient, DimAICClientDocument
-from .models.dim_aic_contact_model import DimAICContact
-from .models.dim_aic_customer_model import DimAICCustomer
+from user.models import (
+    DimAICAccountant,
+    DimAICAssistant,
+    DimAICClient,
+    DimAICClientDocument,
+    DimAICContact,
+    DimAICCustomer,
+    DimAICReviewer,
+)
 
 @admin.register(DimAICAccountant)
 class DimAICAccountantAdmin(admin.ModelAdmin):
@@ -212,3 +216,32 @@ class DimAICAssistantAdmin(admin.ModelAdmin):
         if obj:  # Editing an existing object
             return self.readonly_fields + ('client',)
         return self.readonly_fields
+    
+
+@admin.register(DimAICReviewer)
+class DimAICReviewerAdmin(admin.ModelAdmin):
+    list_display = ('id', 'system_user', 'email', 'verified', 'azure_id', 'review_assigned_at', 'created_at')
+    search_fields = ('email', 'system_user__username', 'system_user__first_name', 'system_user__last_name')
+    list_filter = ('verified', 'created_at')
+    readonly_fields = ('created_at', 'updated_at', 'azure_id')
+    ordering = ('id',)
+
+    fieldsets = (
+        ('User Link', {
+            'fields': ('system_user', 'email')
+        }),
+        ('Azure / Verification', {
+            'fields': ('verified', 'azure_id', 'refresher_token')
+        }),
+        ('Review Assignment', {
+            'fields': ('review_assigned_at',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs
