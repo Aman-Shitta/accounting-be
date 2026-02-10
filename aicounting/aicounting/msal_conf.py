@@ -11,7 +11,7 @@ from asgiref.sync import async_to_sync
 from msgraph.generated.models.invitation import Invitation
 from msgraph.generated.models.invited_user_message_info import InvitedUserMessageInfo
 
-
+from authentication.constants import CUSTOMER, ACCOUNTANT, REVIEWER
 import logging
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class MsalConf:
     TENANT_ID = os.environ.get('AZURE_TENANT_ID')
     CLIENT_ID = os.environ.get('AZURE_CLIENT_ID')
     CLIENT_SECRET = os.environ.get('AZURE_CLIENT_SECRET')
-    REDIRECT_URI = os.environ.get('AUTH_REDIRECT_URI')
+    AUTH_REDIRECT_URI = os.environ.get('AUTH_REDIRECT_URI')
 
     APP_REDIRECT_URI = os.environ.get('APP_REDIRECT_URI')
 
@@ -38,8 +38,9 @@ class MsalConf:
     )
 
     GROUPS = {
-            'customer': os.environ.get('CUSTOMER_GROUP_ID'),
-            'accountant':os.environ.get('ACCOUNTANT_GROUP_ID'),
+            CUSTOMER: os.environ.get('CUSTOMER_GROUP_ID'),
+            ACCOUNTANT: os.environ.get('ACCOUNTANT_GROUP_ID'),
+            REVIEWER: os.environ.get('REVIEWER_GROUP_ID')
         }
         
     def get_public_key(self, jwt_token):
@@ -185,7 +186,7 @@ class MsalGraphConf(MsalConf):
         try:
             # Use https://myapps.microsoft.com as default redirect URL to avoid localhost issues
             if not redirect_url:
-                redirect_url = "https://myapps.microsoft.com"
+                redirect_url = self.APP_REDIRECT_URI or "https://myapps.microsoft.com"
             
             invitation = self.create_invitation(email, first_name, last_name, redirect_url)
             response = self.send_invitation(invitation)
