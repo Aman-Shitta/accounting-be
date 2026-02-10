@@ -182,13 +182,13 @@ class MsalGraphConf(MsalConf):
         
         async_to_sync(graph_client.groups.by_group_id(group_id).members.ref.post)(reference)
 
-    def send_azure_invite_with_group(self, email, first_name, last_name, user_type, redirect_url=None, group_id=None):
+    def send_azure_invite_with_group(self, email, first_name, last_name, user_type, redirect_url=None, group_id=None, message_body=None):
         try:
             # Use https://myapps.microsoft.com as default redirect URL to avoid localhost issues
             if not redirect_url:
                 redirect_url = self.APP_REDIRECT_URI or "https://myapps.microsoft.com"
             
-            invitation = self.create_invitation(email, first_name, last_name, redirect_url)
+            invitation = self.create_invitation(email, first_name, last_name, redirect_url, message_body)
             response = self.send_invitation(invitation)
             user_id = response.invited_user.id
             
@@ -229,57 +229,3 @@ class MsalGraphConf(MsalConf):
                 "error": str(e)
             }
     
-    def send_simple_azure_invite(self, email, first_name, last_name, user_type="Guest", redirect_url=None):
-        """
-        Send a simple Azure AD invitation without group assignment.
-        Use this to test if basic invitation permissions work.
-        """
-        try:
-            invitation = self.create_invitation(email, first_name, last_name, user_type, redirect_url)
-            response = self.send_invitation(invitation)
-            
-            return {
-                "success": True,
-                "invitation_id": response.id,
-                "invited_user_id": response.invited_user.id,
-                "invite_redeem_url": response.invite_redeem_url
-            }
-        except Exception as e:
-            import os, sys
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-            logger.error(f"Error sending Azure invitation: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-    
-    def send_azure_invite_only(self, email, first_name, last_name, user_type, redirect_url=None):
-        """
-        Send invitation without group assignment to test basic invitation functionality.
-        """
-        try:
-            
-            invitation = self.create_invitation(email, first_name, last_name, redirect_url)
-            response = self.send_invitation(invitation)
-            
-            return {
-                "success": True,
-                "invitation_id": response.id,
-                "invited_user_id": response.invited_user.id,
-                "invite_redeem_url": response.invite_redeem_url,
-                "user_type": user_type,
-                "message": "Invitation sent successfully (without group assignment)"
-            }
-        except Exception as e:
-            logger.error(f"Error sending Azure invitation: {str(e)}")
-            import os, sys
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-            
-            return {
-                "success": False,
-                "error": str(e)
-            }
