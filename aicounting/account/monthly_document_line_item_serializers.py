@@ -3,11 +3,11 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction, models
 from rest_framework import serializers
 
-from .models.monthly_document_line_models import (
+from account.models import (
     MonthlyDocumentBankLineItem, 
     MonthlyDocumentAttributeItem
 )
-from .models import DimAICGLAcct
+from account.models import DimAICGLAcct
 
 import logging
 logger = logging.getLogger(__name__)
@@ -440,7 +440,7 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         
         # Get the attribute snapshot from the input file
         try:
-            from .models.dim_aic_snapshot_models import FactAICInputFileAttributeSnapshot
+            from account.models import FactAICInputFileAttributeSnapshot
             attribute = FactAICInputFileAttributeSnapshot.objects.get(
                 id=attribute_id,
                 input_file=document.input_file_snapshot
@@ -639,15 +639,22 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         transaction_type = 'debit' if debit_amount is not None else 'credit'
         amount = debit_amount if transaction_type == 'debit' else credit_amount
 
+        user = self.context.get('request').user if self.context.get('request') else None
+
         # Get default offset GL account from input file snapshot
         default_offset_gl = None
-        try:
-            bank_attributes = document.input_file_snapshot.attribute_snapshots.all()
-            if bank_attributes.exists():
-                default_offset_gl = bank_attributes.first().offset_gl_account
-        except Exception:
-            # If no offset GL found, continue without it
-            pass
+        
+        if not hasattr(user, 'reviewer_profile'):
+            try:
+                bank_attributes = document.input_file_snapshot.attribute_snapshots.all()
+                if bank_attributes.exists():
+                    default_offset_gl = bank_attributes.first().offset_gl_account
+            except Exception:
+                # If no offset GL found, continue without it
+                pass
+        else:
+            gl_account = None  # Clear GL account for reviewers to prevent unauthorized assignment
+
         # Create the line item
         item = MonthlyDocumentBankLineItem.objects.create(
             document=document,
@@ -678,7 +685,7 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             instance.date = validated_data['date']
         if 'description' in validated_data:
             instance.description = validated_data['description']
-        if 'gl_account_id' in validated_data:
+        if 'gl_account_id' in validated_data and not hasattr(request.user, 'reviewer_profile'):
             instance.gl_account = validated_data['gl_account_id']
             instance.modified_gl = True  # Mark GL as modified
 

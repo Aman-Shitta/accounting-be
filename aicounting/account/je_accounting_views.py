@@ -6,13 +6,16 @@ from rest_framework.permissions import IsAuthenticated
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
 from aicounting.response import create_api_response
-from .je_accounting_serializers import (
+from account.je_accounting_serializers import (
     JETemplateDataSerializer,
     ManualValueUpdateSerializer,
     JETemplateStatusUpdateSerializer
 )
+import io
+import csv
+from django.core.files.base import ContentFile
 
-from .models import FactAICJETemplateHeaderSnapshot, FactAICJETemplateAttributeSnapshot, MonthlyAccountingDocument
+from account.models import FactAICJETemplateHeaderSnapshot, FactAICJETemplateAttributeSnapshot, MonthlyAccountingDocument
 
 import logging
 logger = logging.getLogger(__name__)
@@ -34,9 +37,6 @@ class JEAccountingDetailView(generics.GenericAPIView):
         For bank statements and credit cards: generates the export file based on extracted data
         For non-bank documents: only generates if template is verified or has is_object=True
         """
-        import io
-        import csv
-        from django.core.files.base import ContentFile
 
         # Check if this is a bank statement or credit card document
         is_bank_or_cc = False
@@ -438,9 +438,6 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         """
         Generate CSV export file for JE template
         """
-        import io
-        import csv
-        from django.core.files.base import ContentFile
         
         # Get template attributes
         template_attributes = JETemplateDataSerializer(template_snapshot).data['attributes']
@@ -506,7 +503,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
             )
         # Get the JE template snapshot with proper authorization checks
         try:
-            from .models import FactAICMonthlyAccounting
+            from account.models import FactAICMonthlyAccounting
             
             # First verify the monthly accounting session exists and user has access
             if hasattr(user, 'customer_profile'):
@@ -675,7 +672,7 @@ class JEAttributeEditView(generics.GenericAPIView):
 
         # Get the JE template snapshot with proper authorization checks
         try:
-            from .models import FactAICMonthlyAccounting
+            from account.models import FactAICMonthlyAccounting
 
             # First verify the monthly accounting session exists and user has access
             if hasattr(user, 'customer_profile'):

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
-from .models import (
+from account.models import (
     DimAICJETemplateHeader, 
     DimAICJETemplateAttribute, 
     DimAicInputFileAttributes,

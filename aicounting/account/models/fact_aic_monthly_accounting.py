@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Import snapshot models - using lazy imports to avoid circular dependencies
 def get_snapshot_models():
-    from .dim_aic_snapshot_models import (
+    from account.models import (
         FactAICInputFileSnapshot,
         FactAICInputFileAttributeSnapshot,
         FactAICJETemplateHeaderSnapshot,
@@ -201,14 +201,10 @@ class FactAICMonthlyAccounting(models.Model):
                     snapshot_file = ContentFile(file_content, name=snapshot_file_name)
                 else:
                     # If original file doesn't exist, log a warning
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.error(f"Original file {input_file.file.name} not found for snapshot")
                     
             except Exception as e:
                 # Log the error but continue with snapshot creation
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Failed to copy file for snapshot: {str(e)}")
         
         # Create input file snapshot

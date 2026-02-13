@@ -1,7 +1,7 @@
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from .models import FactAICJETemplateHeaderSnapshot
+from account.models import FactAICJETemplateHeaderSnapshot
 
 from account.serializers import DimAICGLAcctSerializer
 
@@ -75,7 +75,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             bool: True if template is fully verified, False otherwise
         """
-        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+        from account.models import MonthlyAccountingDocument
         
         # Check if template status is verified
         if instance.status != 'verified':
@@ -149,7 +149,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Raises:
             ValidationError: If document is not verified
         """
-        from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+        from account.models import MonthlyDocumentBankLineItem
         
         attributes_data = []
         
@@ -288,7 +288,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             list: List of attribute data dictionaries with balanced entries
         """
-        from .models.monthly_document_line_models import MonthlyDocumentAttributeItem
+        from account.models import MonthlyDocumentAttributeItem
         
         attributes_data = []
         
@@ -375,7 +375,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             tuple: (attribute_value, attribute_offset_gl)
         """
-        from .models.monthly_document_line_models import (
+        from account.models import (
             MonthlyDocumentAttributeItem,
             MonthlyTemplateManualAttributeItem
         )
@@ -408,7 +408,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             tuple: (attribute_value, attribute_offset_gl)
         """
-        from .models.monthly_document_line_models import MonthlyDocumentAttributeItem
+        from account.models import MonthlyDocumentAttributeItem
         
         # Search across all documents for this attribute
         for document in all_documents:
@@ -434,7 +434,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             str: Attribute value
         """
-        from .models.monthly_document_line_models import MonthlyTemplateManualAttributeItem
+        from account.models import MonthlyTemplateManualAttributeItem
         
         try:
             # Try to get existing manual attribute

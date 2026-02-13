@@ -1,9 +1,13 @@
 from rest_framework import serializers
 
-from account.models import DimAicInputFiles, DimAicInputFileAttributes, FactAICInputFileAttributeSnapshot
+from account.models import (
+    DimAICGLAcct,
+    DimAicInputFiles,
+    DimAicInputFileAttributes,
+    FactAICInputFileAttributeSnapshot
+)
 from user.models import DimAICClient
 import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -164,7 +168,6 @@ class InputFileBasicCreateSerializer(serializers.ModelSerializer):
         # If file type is bank_statement or credit_card, create default attribute
         if input_file.file_type in ['bank_statement', 'credit_card']:
             # Validate that the offset GL account exists
-            from account.models.dim_aic_gl_acct_model import DimAICGLAcct
             
             # Build filter based on user type (customer or accountant)
             gl_account_filter = {

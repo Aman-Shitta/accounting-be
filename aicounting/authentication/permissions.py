@@ -3,7 +3,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.permissions import IsAuthenticated
 
 # Local imports
-from user.models import DimAICCustomer, DimAICAccountant
+from user.models import DimAICCustomer, DimAICAccountant, DimAICReviewer
 
 class IsSuperUser(BasePermission):
     """
@@ -65,9 +65,35 @@ class IsAccountant(BasePermission):
         
         return False
 
+
+
+
+class IsReviewer(BasePermission):
+    """
+    Custom permission to only allow authenticated users who are verified reviewers.
+    """
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        try:
+            reviewer = DimAICReviewer.objects.get(system_user=request.user)
+            return reviewer.verified
+        except DimAICReviewer.DoesNotExist:
+            return False
+
 class IsCustomerOrAccountant(BasePermission):
     def has_permission(self, request, view):
         return (
             IsAccountant().has_permission(request, view) or
             IsCustomer().has_permission(request, view)
+        )
+
+class IsCustomerOrAccountantOrReviewer(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            IsAccountant().has_permission(request, view) or
+            IsCustomer().has_permission(request, view) or
+            IsReviewer().has_permission(request, view)
         )

@@ -12,6 +12,9 @@ from account.models import (
     FactAICJETemplateAttributeSnapshot
 )
 
+from auditlog.registry import auditlog
+
+
 User = get_user_model()
 
 
@@ -551,3 +554,10 @@ class MonthlyTemplateManualAttributeItem(models.Model):
             except:
                 return self.value
         return "N/A"
+
+
+
+auditlog.register(
+    MonthlyDocumentBankLineItem,
+    include_fields=['id', 'date', 'description', 'amount', 'transaction_type', 'debit_amount', 'credit_amount']
+)

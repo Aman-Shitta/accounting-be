@@ -1,6 +1,6 @@
 from google.cloud import documentai_v1
 import json
-import mimetypes
+import sys
 import os
 import re
 import time
@@ -681,7 +681,6 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                     })
                     global_id += 1
         except Exception as e:
-            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
@@ -745,7 +744,6 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                     })
                     global_id += 1
         except Exception as e:
-            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
@@ -927,7 +925,6 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
 
         
         except Exception as e:
-            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")

@@ -6,10 +6,10 @@ from rest_framework import generics, status, permissions
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from .models import FactAICMonthlyAccounting
+from account.models import FactAICMonthlyAccounting
 from user.models import DimAICClient
 from authentication import authenticate
-from authentication.permissions import IsCustomerOrAccountant
+from authentication.permissions import IsCustomerOrAccountant, IsCustomerOrAccountantOrReviewer
 from aicounting.response import create_api_response
 from account.models import MonthlyAccountingDocument
           
@@ -316,7 +316,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 )
 
             # Get documents for upload (replacing input file snapshots)
-            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+            from account.models import MonthlyAccountingDocument
             
             documents = MonthlyAccountingDocument.objects.filter(
                 monthly_accounting=monthly_accounting
@@ -345,7 +345,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 )
             
             # Get monthly accounting documents for status checking
-            from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+            from account.models import MonthlyAccountingDocument
             documents_map = {}
             
             # Create map of input file snapshot ID to document for quick lookup
@@ -748,10 +748,10 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     """List & Create line items for a processed monthly accounting document (bank_statement/credit_card)."""
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
-    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountantOrReviewer]
 
     def _get_document(self, client_id, accounting_id, document_id, request):
-        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
+        from account.models import MonthlyAccountingDocument
         user = request.user
         if hasattr(user, 'customer_profile'):
             monthly_accounting = get_object_or_404(
@@ -787,7 +787,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
-            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
             from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
             
             document, error_response = self._get_document(client_id, accounting_id, document_id, request)
@@ -892,7 +892,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         }
         """
         try:
-            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
             from .monthly_document_line_item_serializers import (
                 MonthlyDocumentBankLineItemSerializer, 
                 MonthlyDocumentAttributeItemSerializer
@@ -984,12 +984,12 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
 class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
     """Retrieve, Update, or Delete a specific line item."""
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
-    permission_classes = [IsAuthenticated, IsCustomerOrAccountant]
+    permission_classes = [IsAuthenticated, IsCustomerOrAccountantOrReviewer]
 
     def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
         """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""
-        from .models.monthly_accounting_document_model import MonthlyAccountingDocument
-        from .models.monthly_document_line_models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
+        from account.models import MonthlyAccountingDocument
+        from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
         
         user = request.user
         if hasattr(user, 'customer_profile'):
@@ -1123,7 +1123,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
-            from .models.monthly_document_line_models import MonthlyDocumentBankLineItem
+            from account.models import MonthlyDocumentBankLineItem
             
             line_item, item_type, error_response = self._get_line_item(
                 client_id, accounting_id, document_id, line_item_id, request

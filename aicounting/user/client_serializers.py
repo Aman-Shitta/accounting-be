@@ -1,13 +1,15 @@
-import os
+import os, sys
+import re
 import tempfile
 import pandas as pd
 
 from rest_framework import serializers
 from django.db import transaction
-from .models import DimAICAccountant, DimAICClient, DimAICContact, DimAICClientDocument
+from user.models import DimAICAccountant, DimAICClient, DimAICContact, DimAICClientDocument
 import logging
 
 from .document_processors import ClientDocumentProcessor
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +85,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
             
     def validate_contact_phone(self, value):
         """Validate phone number format"""
-        import re
+       
         # First strip any whitespace
         value = value.strip()
         
@@ -173,7 +175,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_gl_history(self, value):
         """Validate GL History file type"""
-        import os
 
         if self.instance and self.instance.documents.filter(document_type='gl_history').exists():
             raise serializers.ValidationError("A Ledger History document already exists for this client.")
@@ -230,7 +231,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_vendor_list(self, value):
         """Validate Vendor List file type"""
-        import os
 
         if self.instance and self.instance.documents.filter(document_type='vendor_list').exists():
             raise serializers.ValidationError("A Vendor List document already exists for this client.")
@@ -294,7 +294,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
 
         def validate_file_type(file_obj, doc_type):
             """Validate file extensions"""
-            import os
             ext = os.path.splitext(file_obj.name)[1].lower()
             if ext not in ['.csv', '.xls', '.xlsx']:
                 raise serializers.ValidationError(
@@ -389,8 +388,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             )
                             from django.core.files.storage import default_storage
                             with default_storage.open(document.file.name, 'rb') as azure_file:
-                                import tempfile
-                                import os
+
                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as temp_file:
                                     temp_file.write(azure_file.read())
                                     temp_file_path = temp_file.name
@@ -451,7 +449,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
             except serializers.ValidationError:
                 raise
             except Exception as e:
-                import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
@@ -563,9 +560,7 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             from django.core.files.storage import default_storage
                             with default_storage.open(document.file.name, 'rb') as azure_file:
                                 # Create a temporary file for processing
-                                import tempfile
-                                import os
-                                
+
                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
                                     temp_file.write(azure_file.read())
                                     temp_file_path = temp_file.name
@@ -581,7 +576,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                                 # Processing failed - cleanup files and raise error
                                 for doc in created_documents:
                                     if doc.file and doc.file.path:
-                                        import os
                                         if os.path.exists(doc.file.path):
                                             os.remove(doc.file.path)
                                 
@@ -601,7 +595,6 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                             raise
 
             except Exception as e:
-                import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)
@@ -745,7 +738,6 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
     
     def validate_file_type(self, file_obj, doc_type):
         """Validate file extensions"""
-        import os
         ext = os.path.splitext(file_obj.name)[1].lower()
         if ext not in ['.csv', '.xls', '.xlsx']:
             raise serializers.ValidationError(
@@ -787,8 +779,7 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                             from django.core.files.storage import default_storage
                             with default_storage.open(document.file.name, 'rb') as azure_file:
                                 # Create a temporary file for processing
-                                import tempfile
-                                import os
+
                                 
                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
                                     temp_file.write(azure_file.read())
@@ -806,7 +797,6 @@ class ClientDocumentUploadSerializer(serializers.Serializer):
                                 # Processing failed - cleanup files and raise error to rollback transaction
                                 for doc in created_documents:
                                     if doc.file and doc.file.path:
-                                        import os
                                         if os.path.exists(doc.file.path):
                                             os.remove(doc.file.path)
                                 

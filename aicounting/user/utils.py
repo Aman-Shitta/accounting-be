@@ -1,6 +1,7 @@
 # System imports
 import json
 import os
+import io
 import time
 from pathlib import Path
 
@@ -78,7 +79,6 @@ class OpenAIAssistant(OpeAIClient):
                             processed_content = self._convert_csv_to_json(file_content, doc.document_type, file_name)
                             if processed_content:
                                 # Create JSON file stream
-                                import io
                                 json_content = json.dumps(processed_content, indent=2)
                                 file_stream = io.BytesIO(json_content.encode('utf-8'))
                                 # Change extension to .json for vector store
@@ -94,7 +94,6 @@ class OpenAIAssistant(OpeAIClient):
                             processed_content = self._convert_excel_to_json(file_content, doc.document_type, file_name)
                             if processed_content:
                                 # Create JSON file stream
-                                import io
                                 json_content = json.dumps(processed_content, indent=2)
                                 file_stream = io.BytesIO(json_content.encode('utf-8'))
                                 # Change extension to .json for vector store
@@ -107,7 +106,6 @@ class OpenAIAssistant(OpeAIClient):
                         
                         else:
                             # For other file types (PDF, TXT, etc.), upload as-is
-                            import io
                             file_stream = io.BytesIO(file_content)
                             file_stream.name = file_name
                             file_streams.append(file_stream)
@@ -136,7 +134,6 @@ class OpenAIAssistant(OpeAIClient):
     def _convert_csv_to_json(self, file_content, document_type, filename):
         """Convert CSV content to structured JSON format"""
         try:
-            import io
             
             # Read CSV content
             csv_content = file_content.decode('utf-8')
@@ -216,9 +213,7 @@ class OpenAIAssistant(OpeAIClient):
     
     def _convert_excel_to_json(self, file_content, document_type, filename):
         """Convert Excel content to structured JSON format"""
-        try:
-            import io
-            
+        try:            
             # Read Excel content
             excel_file = io.BytesIO(file_content)
             
@@ -487,7 +482,6 @@ class OpenAIAssistant(OpeAIClient):
                             processed_content = self._convert_csv_to_json(file_content, doc.document_type, file_name)
                             if processed_content:
                                 # Create JSON file stream
-                                import io
                                 json_content = json.dumps(processed_content, indent=2)
                                 file_stream = io.BytesIO(json_content.encode('utf-8'))
                                 # Change extension to .json for vector store
@@ -503,7 +497,6 @@ class OpenAIAssistant(OpeAIClient):
                             processed_content = self._convert_excel_to_json(file_content, doc.document_type, file_name)
                             if processed_content:
                                 # Create JSON file stream
-                                import io
                                 json_content = json.dumps(processed_content, indent=2)
                                 file_stream = io.BytesIO(json_content.encode('utf-8'))
                                 # Change extension to .json for vector store
@@ -516,7 +509,6 @@ class OpenAIAssistant(OpeAIClient):
                         
                         else:
                             # For other file types (PDF, TXT, etc.), upload as-is
-                            import io
                             file_stream = io.BytesIO(file_content)
                             file_stream.name = file_name
                             file_streams.append(file_stream)
