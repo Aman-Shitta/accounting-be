@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 from django.contrib.auth import get_user_model
 from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
-from .dim_aic_snapshot_models import FactAICInputFileSnapshot
+from account.models import FactAICInputFileSnapshot
 
 from aicounting.file_upload_helper import upload_to_montly_accounting_folder
 User = get_user_model()
@@ -21,6 +21,9 @@ class MonthlyAccountingDocument(models.Model):
         ('uploaded', 'Uploaded'),
         ('extracting', 'Extracting'),
         ('extracted', 'Extracted'),
+        ('pending_review', 'Pending Review'),
+        ('in_review', 'In Review'),
+        ('reviewed', 'Reviewed'),
         ('classifying', 'Classifying'),
         ('classified', 'Classified'),
         ('verified', 'Verified'),
@@ -94,6 +97,31 @@ class MonthlyAccountingDocument(models.Model):
         verbose_name="Updated At"
     )
     
+    # Reviewer assignment (set when control-total validation fails)
+    assigned_reviewer = models.ForeignKey(
+        'user.DimAICReviewer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_documents',
+        verbose_name="Assigned Reviewer",
+        help_text="Reviewer assigned via round-robin when control totals do not balance"
+    )
+
+    review_notes = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Review Notes",
+        help_text="Notes left by the reviewer after reviewing the document"
+    )
+
+    balance_mismatch_details = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Balance Mismatch Details",
+        help_text="Details of the control-total balance mismatch that triggered review"
+    )
+
     # Processing results
     control_item = models.JSONField(
         null=True,

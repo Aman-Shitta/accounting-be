@@ -1,5 +1,5 @@
 
-from datetime import timezone
+from django.utils import timezone
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -56,28 +56,29 @@ class DimAICReviewer(models.Model):
         verbose_name = "Reviewer"
         verbose_name_plural = "Reviewers"
 
-    @property
-    def next_reviewer(self):
+    @classmethod
+    def get_next_reviewer(cls):
         """
         Assign review tasks in a round-robin manner among verified reviewers.
-        This method can be called when a new document is ready for review to assign it to the next reviewer in line.
+        Returns the next reviewer in line (the one with the oldest or null review_assigned_at).
+        Updates the timestamp so the next call returns a different reviewer.
         """
-        if not self.verified:
-            return None  # Only assign tasks to verified reviewers
-
-        # Get all verified reviewers ordered by the last assigned review time
-        verified_reviewers = DimAICReviewer.objects.filter(
+        # Get all verified reviewers; those never assigned (NULL) come first,
+        # then ordered by oldest assignment time.
+        verified_reviewers = cls.objects.filter(
             verified=True
-        ).order_by('review_assigned_at')
+        ).order_by(
+            models.F('review_assigned_at').asc(nulls_first=True)
+        )
 
         if not verified_reviewers.exists():
             return None  # No verified reviewers available
 
-        # Get the next reviewer in line (the one with the oldest review assignment)
+        # Pick the reviewer with the oldest (or null) review_assigned_at
         next_reviewer = verified_reviewers.first()
 
-        # Update the review assignment timestamp for the selected reviewer
+        # Update the review assignment timestamp so this reviewer goes to the back of the queue
         next_reviewer.review_assigned_at = timezone.now()
-        next_reviewer.save()
+        next_reviewer.save(update_fields=['review_assigned_at'])
 
         return next_reviewer

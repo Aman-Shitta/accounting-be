@@ -128,23 +128,22 @@ class DocumentProcessingService:
         
         from account.tasks import (
             process_uploaded_document,
-            classify_document_gl_accounts_task
+            validate_control_totals_task,
         )
         
         doc_id = str(self.document.id)
         config_dict = self.config.to_dict()
         
         if self.document.doc_type in DocumentType.transactional_types():
-            # Chain extraction → classification for bank/credit card
-            # process_uploaded_document.run(doc_id, config_dict)
+            # Chain extraction → validation (→ classification if validation passes)
             task_chain = chain(
                 process_uploaded_document.s(doc_id, config_dict),
-                classify_document_gl_accounts_task.s(doc_id)
+                validate_control_totals_task.s(document_id=doc_id)
             )
             result = task_chain.apply_async()
             logger.info(
                 f"Started processing chain for document {doc_id}: "
-                f"extraction → classification"
+                f"extraction → validation → classification"
             )
         else:
             # Just extraction for other types

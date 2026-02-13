@@ -1,9 +1,8 @@
 # System imports
 import logging
 import os
-import sys, traceback
+import sys
 import time
-import json
 from datetime import datetime
 
 # Third-party imports
@@ -13,15 +12,19 @@ from django.core.files.storage import default_storage
 from django.conf import settings
 
 # Local imports
-from extractor.banking.classify import GLClassifier
 from extractor.processor import MonthlyAccountingDocumentProcessor
-from extractor.config_factory import DocumentConfig, DocumentType
+from extractor.config_factory import DocumentConfig
 
-from .models.monthly_accounting_document_model import MonthlyAccountingDocument
-from .models.monthly_document_line_models import (
-    MonthlyDocumentBankLineItem,
+
+
+from decimal import Decimal, ROUND_HALF_UP
+from django.db.models import Sum, Q
+from account.models import (
+    MonthlyAccountingDocument,
+    MonthlyDocumentBankLineItem
 )
-from .models import DimAICGLAcct
+
+from user.models import DimAICReviewer
 
 from agentic_doc.parse import parse
 from agentic_doc.config import ParseConfig
@@ -218,18 +221,6 @@ def process_uploaded_document(
         processing_time = time.time() - start_time
         logger.info(f"Document processing time: {processing_time} seconds")
         processor.__release_resources__()
-
-        # # Handle post-processing based on document type
-        # if doc.doc_type in DocumentType.transactional_types():
-        #     # For bank/credit card: chain to classification
-        #     doc.status = "classifying"
-        #     doc.save()
-        #     # Dispatch classification as separate task
-        #     classify_document_gl_accounts_task.delay(str(doc.id))
-        # else:
-        #     # For sales/payroll/misc: mark as classified (no GL classification needed)
-        #     doc.status = "classified"
-        #     doc.save()
        
         # Save processing output
         debug_storage = DocumentDebugStorage(doc)
@@ -256,58 +247,201 @@ def process_uploaded_document(
 
 
 @shared_task
-def classify_document_gl_accounts_task(_previous_result=None, document_id: str = None):
+def validate_control_totals_task(_previous_result=None, document_id: str = None):
     """
-    Enqueue a document for GL account classification.
-    
-    Instead of processing immediately, this adds the document to a queue.
-    The queue is processed by Celery Beat to ensure only one classification
-    runs per client at a time.
-    
+    Validate extracted control totals against line-item sums.
+
+    Formula: beginning_balance − total_debits + total_credits == ending_balance
+
+    Outcomes:
+      • Balances match (or no control totals / already reviewed)
+          → automatically chains to enqueue_classification_task
+      • Mismatch detected
+          → assigns a reviewer via round-robin, sets status to 'pending_review'
+
     Can be used standalone or chained after process_uploaded_document.
     The _previous_result parameter allows this to be used in a Celery chain.
-    
+
     Args:
         _previous_result: Result from previous task in chain (ignored)
-        document_id: UUID string of the MonthlyAccountingDocument
-        
+        document_id: MonthlyAccountingDocument ID (string)
+
+    Returns:
+        dict: Validation result with status
+    """
+    try:
+
+        doc = MonthlyAccountingDocument.objects.get(id=document_id)
+        client_id = str(doc.monthly_accounting.client_id)
+
+        # If a reviewer already approved this document, skip validation
+        if doc.status == 'reviewed':
+            logger.info(
+                f"Document {document_id} was approved by reviewer — "
+                f"skipping control-total validation."
+            )
+            enqueue_classification_task.delay(document_id=document_id)
+            return {
+                "status": "skipped_validation",
+                "reason": "reviewer_approved",
+                "doc_id": document_id,
+                "client_id": client_id,
+            }
+
+        control_total = doc.control_item or {}
+
+        if not control_total:
+            logger.info(
+                f"No control totals for document {document_id} — "
+                f"proceeding to classification."
+            )
+            enqueue_classification_task.delay(document_id=document_id)
+            return {
+                "status": "skipped_validation",
+                "reason": "no_control_totals",
+                "doc_id": document_id,
+                "client_id": client_id,
+            }
+
+
+        line_items = MonthlyDocumentBankLineItem.objects.filter(document=doc)
+        sums = line_items.aggregate(
+            total_debits=Sum('amount', filter=Q(transaction_type='debit')),
+            total_credits=Sum('amount', filter=Q(transaction_type='credit')),
+        )
+        sum_debits = Decimal(str(sums['total_debits'] or 0))
+        sum_credits = Decimal(str(sums['total_credits'] or 0))
+
+        beginning_balance = Decimal(str(control_total.get('beginning_balance') or 0))
+        expected_ending = Decimal(str(control_total.get('ending_balance') or 0))
+
+        calculated_ending = beginning_balance - sum_debits + sum_credits
+
+        if calculated_ending == expected_ending:
+            logger.info(
+                f"Control total validation passed for document {document_id}: "
+                f"calculated={calculated_ending}, expected={expected_ending}"
+            )
+            enqueue_classification_task.delay(document_id=document_id)
+            return {
+                "status": "validation_passed",
+                "doc_id": document_id,
+                "client_id": client_id,
+            }
+
+        mismatch_details = {
+            "beginning_balance": str(beginning_balance),
+            "sum_debits": str(sum_debits),
+            "sum_credits": str(sum_credits),
+            "calculated_ending": str(calculated_ending),
+            "expected_ending": str(expected_ending),
+            "difference": str(
+                (calculated_ending - expected_ending)
+                .quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            ),
+        }
+
+        _assign_reviewer_for_mismatch(doc, document_id, mismatch_details)
+
+        return {
+            "status": "pending_review",
+            "doc_id": document_id,
+            "client_id": client_id,
+            "assigned_reviewer": (
+                doc.assigned_reviewer.system_user.username
+                if doc.assigned_reviewer else None
+            ),
+            "mismatch": mismatch_details,
+        }
+
+    except MonthlyAccountingDocument.DoesNotExist:
+        logger.error(f"Document not found: {document_id}")
+        return {"status": "error", "error": f"Document not found: {document_id}"}
+    except Exception as e:
+        logger.error(
+            f"Control-total validation failed for document {document_id}: {e}",
+            exc_info=True,
+        )
+        return {"status": "error", "error": str(e)}
+
+
+def _assign_reviewer_for_mismatch(doc, document_id, mismatch_details):
+    """
+    Helper: set the document to 'pending_review', store mismatch details,
+    and assign a reviewer via round-robin.
+    """
+    reviewer = DimAICReviewer.get_next_reviewer()
+
+    doc.status = "pending_review"
+    doc.balance_mismatch_details = mismatch_details
+
+    if reviewer:
+        doc.assigned_reviewer = reviewer
+        logger.info(
+            f"Document {document_id} assigned to reviewer "
+            f"{reviewer.system_user.username} (id={reviewer.id})"
+        )
+    else:
+        logger.warning(
+            f"No verified reviewers available to assign document {document_id}"
+        )
+
+    doc.save()
+
+    logger.warning(
+        f"Control total mismatch for document {document_id}: {mismatch_details}"
+    )
+
+
+@shared_task
+def enqueue_classification_task(_previous_result=None, document_id: str = None):
+    """
+    Enqueue a document for GL account classification.
+
+    Adds the document to the ClassificationQueue so it can be picked up
+    by the Celery Beat process_classification_queue_task (one-at-a-time
+    per client).
+
+    Can be called directly or chained after validate_control_totals_task.
+
+    Args:
+        _previous_result: Result from previous task in chain (ignored)
+        document_id: MonthlyAccountingDocument ID (string)
+
     Returns:
         dict: Queue result with status
     """
     try:
         from account.models import MonthlyAccountingDocument, ClassificationQueue
-        
+
         doc = MonthlyAccountingDocument.objects.get(id=document_id)
-        
-        # Get client_id for queue grouping
         client_id = str(doc.monthly_accounting.client_id)
-        
-        # Enqueue for processing
+
         queue_item = ClassificationQueue.enqueue(
             document=doc,
-            client_id=client_id
+            client_id=client_id,
         )
-        
+
         logger.info(
             f"Document {document_id} queued for classification "
             f"(queue_id: {queue_item.id}, client: {client_id})"
         )
-        
+
         return {
             "status": "queued",
             "doc_id": document_id,
             "queue_id": str(queue_item.id),
-            "client_id": client_id
+            "client_id": client_id,
         }
-        
+
     except MonthlyAccountingDocument.DoesNotExist:
         logger.error(f"Document not found: {document_id}")
         return {"status": "error", "error": f"Document not found: {document_id}"}
     except Exception as e:
-        logger.error(f"Failed to queue classification for document {document_id}: {str(e)}")
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
+        logger.error(
+            f"Failed to queue classification for document {document_id}: {e}",
+            exc_info=True,
+        )
         return {"status": "error", "error": str(e)}
 
 
@@ -405,9 +539,9 @@ def process_classification_queue_task():
 
 def process_and_classify_document(doc_id: str, config_params: dict):
     """
-    Convenience function to process a document with classification.
+    Convenience function to process a document through the full pipeline.
     
-    Creates a Celery chain: extraction → classification
+    Creates a Celery chain: extraction → control-total validation → classification
     
     Args:
         doc_id: MonthlyAccountingDocument ID
@@ -418,7 +552,7 @@ def process_and_classify_document(doc_id: str, config_params: dict):
     """
     task_chain = chain(
         process_uploaded_document.s(doc_id, config_params),
-        classify_document_gl_accounts_task.s(doc_id)
+        validate_control_totals_task.s(document_id=doc_id)
     )
     return task_chain.apply_async()
 

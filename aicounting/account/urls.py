@@ -12,6 +12,7 @@ from .je_urls import (
 
 
 from .monthly_accounting_urls import monthly_accounting_url_patterns
+from .reviewer_urls import reviewer_url_patterns
 
 urlpatterns = [
     # Account URLS
@@ -31,6 +32,10 @@ urlpatterns += [
 urlpatterns += [
     # Include Accounting URLs
     path('clients/<int:client_id>/accounting/monthly/', include(monthly_accounting_url_patterns)),
-    
+]
+
+urlpatterns += [
+    # Reviewer URLs
+    path('reviewer/', include(reviewer_url_patterns)),
 ]
     
