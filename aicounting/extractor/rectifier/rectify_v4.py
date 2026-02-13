@@ -1080,7 +1080,6 @@ class TransactionRectifierV3:
             logger.info(f"Rectification complete: {len(rectified_transactions)} transactions")
             
         except Exception as e:
-            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.info(f"Exception in rectify_document: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")

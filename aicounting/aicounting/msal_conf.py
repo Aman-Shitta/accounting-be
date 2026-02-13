@@ -1,5 +1,5 @@
 # System imports
-import os
+import os, sys
 
 # Third-party imports
 import jwt
@@ -219,7 +219,7 @@ class MsalGraphConf(MsalConf):
             }
         except Exception as e:
             logger.error(f"Error sending Azure invitation: {str(e)}")
-            import os, sys
+
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)

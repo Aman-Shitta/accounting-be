@@ -1,8 +1,9 @@
+import os, sys
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, permissions
-from rest_framework.views import APIView
 
-from .models import (
+
+from account.models import (
     DimAICJETemplateHeader, 
     DimAICJETemplateAttribute, 
     DimAicInputFileAttributes,
@@ -545,7 +546,6 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             )
         
         except Exception as e:
-            import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import os, sys
 import logging
 import time
 import tempfile
@@ -176,7 +176,6 @@ class DocumentProcessor(BaseDocumentProcessor):
                     
             except Exception as e:
                 logger.error(f"Error processing page {page_num}: {e}")
-                import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 logger.error(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
@@ -227,7 +226,6 @@ class DocumentProcessor(BaseDocumentProcessor):
         # Save any document-level metadata if needed
         # Convert any Decimals in pages_data before saving
         try:
-            import json
             self.document.markdown_metadata = convert_decimals_to_float(self.pages_data)
             self.document.save()
         except Exception as e:

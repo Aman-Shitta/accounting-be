@@ -5,6 +5,7 @@ This module provides AI-powered rectification of extracted banking data using
 Google Gemini to verify and provide probable corrections for transaction data 
 and check data extracted from bank statements.
 """
+import os, sys
 import re
 import logging
 from datetime import datetime
@@ -15,7 +16,6 @@ from decimal import Decimal, InvalidOperation
 from google.genai import types
 
 from extractor.gemini_service import GeminiMixin, JSONHelper
-from extractor.gemini_service import get_gemini_service
             
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ class DocumentRectifier(GeminiMixin):
             return extracted_data
             
         except Exception as e:
-            import os, sys
+
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)

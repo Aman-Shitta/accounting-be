@@ -8,6 +8,7 @@ Simplified rectifier that:
 4. Adds missing transactions if Gemini has more items
 """
 
+import os, sys
 import re
 import logging
 from typing import Dict, List, Any, Tuple, Optional
@@ -66,7 +67,7 @@ class DocumentRectifierV1(GeminiMixin):
             return rectified_items, gemini_items
             
         except Exception as e:
-            import os, sys
+
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(f"Error during rectification: {exc_type}, {fname}, {exc_tb.tb_lineno}")

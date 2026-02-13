@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 
 # Local imports
-from .models import (
+from account.models import (
     DimAICAcctType,
     DimAICGLAcct,
     DimAicInputFiles,
@@ -18,16 +18,16 @@ from .models import (
     FactAICJETransBank,
     FactAICJEMonthlyStat,
 )
-from .models.fact_aic_monthly_accounting import FactAICMonthlyAccounting
-from .models.monthly_accounting_document_model import MonthlyAccountingDocument
-from .models.monthly_document_line_models import (
+from account.models import FactAICMonthlyAccounting
+from account.models import MonthlyAccountingDocument
+from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
     MonthlyDocumentBankCheckItem,
     MonthlyDocumentAttributeItem,
     MonthlyTemplateManualAttributeItem,
 )
-from .models.dim_aic_snapshot_models import (
+from account.models import (
     FactAICInputFileSnapshot,
     FactAICInputFileAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,

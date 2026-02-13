@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FactAICMonthlyAccounting
+from account.models import FactAICMonthlyAccounting
 
 
 class MonthlyAccountingCreateSerializer(serializers.Serializer):

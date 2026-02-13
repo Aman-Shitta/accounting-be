@@ -11,7 +11,7 @@ from django.utils.translation import gettext as _
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 
-from user.models import DimAICCustomer, DimAICAccountant
+from user.models import DimAICCustomer, DimAICAccountant, DimAICReviewer
 User = get_user_model()
 
 
@@ -179,10 +179,14 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             cust_id = DimAICCustomer.objects.filter(azure_id=azure_id).first()
 
             if not cust_id:
+                logger.warning(f"Unauthorized customer")
                 accountant_id = DimAICAccountant.objects.filter(azure_id=azure_id)
                 if not accountant_id:
-                    logger.warning(f"Unauthorized customer")
-                    raise CustomAuthenticationFailed('error', _('Unauthorized User. Please contact admin.'))
+                    logger.warning(f"Unauthorized accountant")
+                    reviewer_id = DimAICReviewer.objects.filter(azure_id=azure_id)
+                    if not reviewer_id:
+                        logger.warning(f"Unauthorized reviewer")
+                        raise CustomAuthenticationFailed('error', _('Unauthorized User. Please contact admin.'))
 
             UserModel = get_user_model()    
             django_user, created = UserModel.objects.get_or_create(
