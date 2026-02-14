@@ -1,38 +1,26 @@
-"""
-Views for the Reviewer role.
-
-Reviewers are assigned documents whose control-total balance check fails.
-They can:
-  - List their assigned documents          (GET  /documents/)
-  - View full detail of a single document  (GET  /documents/<id>/)
-  - Submit a review (approve / reject)     (POST /documents/<id>/review/)
-"""
-
 import logging
-
-from django.shortcuts import get_object_or_404
-from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
-
-from authentication import authenticate
-from authentication.permissions import IsReviewer
-from aicounting.response import create_api_response
-
-from account.models import (
-    MonthlyAccountingDocument,
-    MonthlyDocumentBankLineItem
-)
-from account.reviewer_serializers import (
-    ReviewerDocumentListSerializer,
-    ReviewerDocumentDetailSerializer,
-    ReviewSubmitSerializer,
-    ReviewActionResponseSerializer,
-)
 
 from django.db import transaction
 from django.db.models import F
+from django.shortcuts import get_object_or_404
 
-from account.monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
+from rest_framework import generics, status
+from rest_framework.permissions import IsAuthenticated
+
+from account.accounting.monthly_document_line_item_serializers import (
+    MonthlyDocumentBankLineItemSerializer,
+)
+from account.models import MonthlyAccountingDocument, MonthlyDocumentBankLineItem
+from account.reviewer.reviewer_serializers import (
+    ReviewActionResponseSerializer,
+    ReviewSubmitSerializer,
+    ReviewerDocumentDetailSerializer,
+    ReviewerDocumentListSerializer,
+)
+from aicounting.constants import BANKING_DOCS
+from aicounting.response import create_api_response
+from authentication import authenticate
+from authentication.permissions import IsReviewer
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +35,6 @@ class ReviewerMixin(generics.GenericAPIView):
     def _get_reviewer(self, request):
         """Return the DimAICReviewer profile for the authenticated user."""
         return request.user.reviewer_profile
-
 
     def _reviewer_document_queryset(self, reviewer, filter_status=None):
         """
@@ -92,7 +79,8 @@ class ReviewerDocumentListView(ReviewerMixin):
         try:
             reviewer = self._get_reviewer(request)
             filter_status = request.query_params.get('status')
-            queryset = self._reviewer_document_queryset(reviewer, filter_status)
+            queryset = self._reviewer_document_queryset(
+                reviewer, filter_status)
 
             serializer = self.get_serializer(queryset, many=True)
 
@@ -103,7 +91,8 @@ class ReviewerDocumentListView(ReviewerMixin):
             )
 
         except Exception as e:
-            logger.error(f"Error listing reviewer documents: {e}", exc_info=True)
+            logger.error(
+                f"Error listing reviewer documents: {e}", exc_info=True)
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while listing reviewer documents.",
@@ -139,7 +128,7 @@ class ReviewerDocumentDetailView(ReviewerMixin):
             if document.status == 'pending_review':
                 document.status = 'in_review'
                 document.save(update_fields=['status'])
-            
+
             serializer = self.get_serializer(document)
 
             return create_api_response(
@@ -149,12 +138,14 @@ class ReviewerDocumentDetailView(ReviewerMixin):
             )
 
         except Exception as e:
-            logger.error(f"Error retrieving reviewer document detail: {e}", exc_info=True)
+            logger.error(
+                f"Error retrieving reviewer document detail: {e}", exc_info=True)
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving document details.",
                 data={"error": str(e)},
             )
+
 
 class ReviewerSubmitReviewView(ReviewerMixin):
     """
@@ -196,7 +187,8 @@ class ReviewerSubmitReviewView(ReviewerMixin):
                 return self._handle_reject(doc, reviewer)
 
         except Exception as e:
-            logger.error(f"Error submitting review for document {document_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error submitting review for document {document_id}: {e}", exc_info=True)
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while submitting the review.",
@@ -245,18 +237,17 @@ class ReviewerSubmitReviewView(ReviewerMixin):
         )
 
 
-
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     """List & Create line items for a processed monthly accounting document (bank_statement/credit_card)."""
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [IsAuthenticated, IsReviewer]
 
-    def _get_document(self,document_id, request):
+    def _get_document(self, document_id, request):
         from account.models import MonthlyAccountingDocument
         user = request.user
-        
+
         document = get_object_or_404(
-            MonthlyAccountingDocument, 
+            MonthlyAccountingDocument,
             id=document_id,
             status__in=REVIEWABLE_STATUSES,
             assigned_reviewer__system_user=user
@@ -269,29 +260,29 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         """
         Retrieve line items for a processed monthly accounting document.
         Supports both bank statement/credit card line items and attribute items for other document types.
-        
+
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
             from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
             from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
-            
+
             document, error_response = self._get_document(document_id, request)
             if error_response:
                 return error_response
-            
+
             # Determine which type of line items to retrieve based on document type
-            if document.doc_type in ['bank_statement', 'credit_card']:
+            if document.doc_type in BANKING_DOCS:
                 # Use BankLineItem for bank statements and credit cards
                 items = MonthlyDocumentBankLineItem.objects.filter(
                     document=document
                 ).select_related(
-                    'gl_account', 
+                    'gl_account',
                     'offset_gl_account',
                 ).order_by('page_number', 'line_number')
-                
+
                 total_count = items.count()
-                
+
                 # Get default offset GL account from input file snapshot
                 default_offset_gl = None
                 try:
@@ -301,27 +292,30 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                             default_offset_gl_obj = bank_attributes.first().offset_gl_account
                             if default_offset_gl_obj:
                                 from .monthly_document_line_item_serializers import GLAccountNestedSerializer
-                                default_offset_gl = GLAccountNestedSerializer(default_offset_gl_obj).data
+                                default_offset_gl = GLAccountNestedSerializer(
+                                    default_offset_gl_obj).data
                 except Exception as e:
-                    logger.warning(f"Could not retrieve default offset GL account: {e}")
-                
+                    logger.warning(
+                        f"Could not retrieve default offset GL account: {e}")
+
             else:
                 # Use AttributeItem for other document types (like sales)
                 attribute_items = MonthlyDocumentAttributeItem.objects.filter(
                     document=document
                 ).select_related('attribute', 'gl_account', 'offset_gl_account').order_by('page_number', 'id')
-                
+
                 # Add line numbers to attribute items (1-indexed)
                 items = []
                 for i, item in enumerate(attribute_items, 1):
                     item._line_number = i  # Set line number for serializer
                     items.append(item)
-                
+
                 total_count = len(items)
                 default_offset_gl = None
-            
-            serializer = MonthlyDocumentLineItemSerializer(items, many=True, context={'request': request})
-            
+
+            serializer = MonthlyDocumentLineItemSerializer(
+                items, many=True, context={'request': request})
+
             response_data = {
                 'document_id': document.id,
                 "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
@@ -333,18 +327,19 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 'status': document.status,
                 'control_items': document.control_item
             }
-            
+
             # Add default offset GL account for bank statements and credit cards
             if default_offset_gl:
                 response_data['default_offset_gl_account'] = default_offset_gl
-            
+
             return create_api_response(
-                status.HTTP_200_OK, 
-                "Line items retrieved successfully.", 
+                status.HTTP_200_OK,
+                "Line items retrieved successfully.",
                 data=response_data
             )
         except Exception as e:
-            logger.error(f"Error retrieving line items for document {document_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving line items for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving line items.",
@@ -359,18 +354,14 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         """
         try:
 
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer, 
-            )
-
             document, error_response = self._get_document(document_id, request)
             if error_response:
                 return error_response
 
-            if document.doc_type in ['bank_statement', 'credit_card']:
+            if document.doc_type in BANKING_DOCS:
                 # Create bank line item
                 serializer = MonthlyDocumentBankLineItemSerializer(
-                    data=request.data, 
+                    data=request.data,
                     context={'request': request, 'document': document}
                 )
 
@@ -378,22 +369,24 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 item = serializer.save()
 
                 # Use the appropriate serializer for output
-                output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                output_serializer = MonthlyDocumentBankLineItemSerializer(
+                    item, context={'request': request})
 
                 return create_api_response(
-                    status.HTTP_201_CREATED, 
-                    "Line item created successfully.", 
+                    status.HTTP_201_CREATED,
+                    "Line item created successfully.",
                     data=output_serializer.data
                 )
-            
+
             return create_api_response(
-                status.HTTP_400_BAD_REQUEST, 
-                "Validation failed.", 
+                status.HTTP_400_BAD_REQUEST,
+                "Validation failed.",
                 data=serializer.errors
             )
-        
+
         except Exception as e:
-            logger.error(f"Error creating line item for document {document_id}: {str(e)}")
+            logger.error(
+                f"Error creating line item for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while creating line item.",
@@ -407,27 +400,24 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsReviewer]
 
     def _get_line_item(self, document_id, line_item_id, request):
-        """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""        
+        """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""
         user = request.user
 
-        
         document = get_object_or_404(
-            MonthlyAccountingDocument, 
+            MonthlyAccountingDocument,
             id=document_id,
             status__in=REVIEWABLE_STATUSES,
             assigned_reviewer__system_user=user
         )
-        
+
         # Try to fetch the appropriate line item based on document type
         line_item = get_object_or_404(
-            MonthlyDocumentBankLineItem, 
-            id=line_item_id, 
+            MonthlyDocumentBankLineItem,
+            id=line_item_id,
             document=document
         )
         item_type = 'banking_type'
 
-
-        
         return line_item, item_type, None
 
     def patch(self, request, document_id, line_item_id, *args, **kwargs):
@@ -438,40 +428,39 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             from .monthly_document_line_item_serializers import (
                 MonthlyDocumentBankLineItemSerializer,
             )
-            
+
             line_item, item_type, error_response = self._get_line_item(
                 document_id, line_item_id, request
             )
             if error_response:
                 return error_response
-            
+
             # Use appropriate serializer based on item type
             serializer = MonthlyDocumentBankLineItemSerializer(
-                line_item, 
-                data=request.data, 
-                partial=True, 
+                line_item,
+                data=request.data,
+                partial=True,
                 context={'request': request}
             )
-            
-            
+
             if serializer.is_valid():
                 updated_item = serializer.save()
-                
+
                 output_serializer = MonthlyDocumentBankLineItemSerializer(
                     updated_item, context={'request': request}
                 )
                 return create_api_response(
-                    status.HTTP_200_OK, 
-                    "Line item updated successfully.", 
+                    status.HTTP_200_OK,
+                    "Line item updated successfully.",
                     data=output_serializer.data
                 )
-            
+
             return create_api_response(
-                status.HTTP_400_BAD_REQUEST, 
-                "Validation failed.", 
+                status.HTTP_400_BAD_REQUEST,
+                "Validation failed.",
                 errors=serializer.errors
             )
-        
+
         except Exception as e:
             logger.error(f"Error updating line item {line_item_id}: {str(e)}")
             return create_api_response(
@@ -485,50 +474,51 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         Delete a specific line item.
         For bank items: renumber subsequent lines.
         For attribute items: just delete (no renumbering needed).
-        
+
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
             from account.models import MonthlyDocumentBankLineItem
-            
+
             line_item, item_type, error_response = self._get_line_item(
                 document_id, line_item_id, request
             )
             if error_response:
                 return error_response
-            
+
             if item_type == 'bank':
                 page_number = line_item.page_number
                 document = line_item.document
                 deleted_line_number = line_item.line_number
-                
+
                 with transaction.atomic():
                     # Delete the line item
                     line_item.delete()
-                    
+
                     # Renumber subsequent lines on the same page
                     updated_count = MonthlyDocumentBankLineItem.objects.filter(
-                        document=document, 
-                        page_number=page_number, 
+                        document=document,
+                        page_number=page_number,
                         line_number__gt=deleted_line_number
                     ).update(line_number=F('line_number') - 1)
-                    
-                    logger.error(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
-                
+
+                    logger.error(
+                        f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
+
                 return create_api_response(
-                    status.HTTP_200_OK, 
+                    status.HTTP_200_OK,
                     f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
                 )
             else:
                 # For attribute items, just delete
                 line_item.delete()
                 logger.error(f"Deleted attribute item {line_item_id}")
-                
+
                 return create_api_response(
                     status.HTTP_200_OK,
                     "Line item deleted successfully."
                 )
-        
+
         except Exception as e:
             logger.error(f"Error deleting line item {line_item_id}: {str(e)}")
             return create_api_response(

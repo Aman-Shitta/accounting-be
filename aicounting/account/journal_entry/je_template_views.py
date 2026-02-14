@@ -1,35 +1,38 @@
-import os, sys
+import logging
+import os
+import sys
+
 from django.shortcuts import get_object_or_404
-from rest_framework import generics, status, permissions
 
+from rest_framework import generics, permissions, status
 
-from account.models import (
-    DimAICJETemplateHeader, 
-    DimAICJETemplateAttribute, 
-    DimAicInputFileAttributes,
-    DimAICJEFreq
-)
-from .je_template_serializers import (
-    JETemplateListSerializer,
-    JETemplateDetailSerializer,
-    JETemplateCreateSerializer,
-    JETemplateUpdateSerializer,
+from account.journal_entry.je_template_serializers import (
     AvailableAttributeSerializer,
-    JETemplateAttributeSerializer,
-    JETemplateAttributeCreateSerializer,
     JEFreqListSerializer,
+    JETemplateAttributeCreateSerializer,
+    JETemplateAttributeSerializer,
+    JETemplateCreateSerializer,
+    JETemplateDetailSerializer,
+    JETemplateListSerializer,
+    JETemplateUpdateSerializer,
 )
-from user.models import DimAICClient
+from account.models import (
+    DimAICJEFreq,
+    DimAICJETemplateAttribute,
+    DimAICJETemplateHeader,
+    DimAicInputFileAttributes,
+)
+from aicounting.response import create_api_response
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
-from aicounting.response import create_api_response
+from user.models import DimAICClient
 
-import logging
 logger = logging.getLogger(__name__)
+
 
 class JEFreqListView(generics.GenericAPIView):
     """List all available JE Frequencies"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = JEFreqListSerializer
@@ -39,16 +42,16 @@ class JEFreqListView(generics.GenericAPIView):
         try:
             # Get all JE frequencies
             frequencies = DimAICJEFreq.objects.all().order_by('je_freq')
-            
+
             # Serialize the data
             serializer = self.serializer_class(frequencies, many=True)
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 "JE frequencies retrieved successfully",
                 data=serializer.data
             )
-            
+
         except Exception as e:
             logger.error(f"Error retrieving JE frequencies: {str(e)}")
             return create_api_response(
@@ -60,7 +63,7 @@ class JEFreqListView(generics.GenericAPIView):
 
 class JETemplateListView(generics.GenericAPIView):
     """List all JE Templates for a specific client"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = JETemplateListSerializer
@@ -68,14 +71,14 @@ class JETemplateListView(generics.GenericAPIView):
     def get_queryset(self, client_id):
         """Get JE Templates for a client with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return DimAICJETemplateHeader.objects.filter(
                 client=client_id,
                 customer=customer
             ).order_by('-created_at')
-        
+
         elif hasattr(user, 'accountant_profile'):
             accountant = user.accountant_profile
             return DimAICJETemplateHeader.objects.filter(
@@ -83,7 +86,7 @@ class JETemplateListView(generics.GenericAPIView):
                 customer=accountant.customer,
                 client__assigned_accountants=accountant
             ).order_by('-id')
-        
+
         return DimAICJETemplateHeader.objects.none()
 
     def get(self, request, client_id, *args, **kwargs):
@@ -93,12 +96,13 @@ class JETemplateListView(generics.GenericAPIView):
             user = request.user
             if hasattr(user, 'customer_profile'):
                 customer = user.customer_profile
-                client = get_object_or_404(DimAICClient, id=client_id, customer=customer)
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
             elif hasattr(user, 'accountant_profile'):
                 accountant = user.accountant_profile
                 client = get_object_or_404(
-                    DimAICClient, 
-                    id=client_id, 
+                    DimAICClient,
+                    id=client_id,
                     customer=accountant.customer,
                     assigned_accountants=accountant
                 )
@@ -107,10 +111,10 @@ class JETemplateListView(generics.GenericAPIView):
                     status.HTTP_403_FORBIDDEN,
                     "Access denied."
                 )
-            
+
             queryset = self.get_queryset(client_id)
             serializer = self.get_serializer(queryset, many=True)
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"JE Templates retrieved successfully for client {client.client_name}.",
@@ -121,9 +125,10 @@ class JETemplateListView(generics.GenericAPIView):
                     'je_templates': serializer.data
                 }
             )
-        
+
         except Exception as e:
-            logger.error(f"Error retrieving JE Templates for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving JE Templates for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving JE Templates.",
@@ -133,7 +138,7 @@ class JETemplateListView(generics.GenericAPIView):
 
 class JETemplateCreateView(generics.GenericAPIView):
     """Create a new JE Template for a specific client"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = JETemplateCreateSerializer
@@ -145,12 +150,13 @@ class JETemplateCreateView(generics.GenericAPIView):
             user = request.user
             if hasattr(user, 'customer_profile'):
                 customer = user.customer_profile
-                client = get_object_or_404(DimAICClient, id=client_id, customer=customer)
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
             elif hasattr(user, 'accountant_profile'):
                 accountant = user.accountant_profile
                 client = get_object_or_404(
-                    DimAICClient, 
-                    id=client_id, 
+                    DimAICClient,
+                    id=client_id,
                     customer=accountant.customer,
                     assigned_accountants=accountant
                 )
@@ -161,33 +167,34 @@ class JETemplateCreateView(generics.GenericAPIView):
                 )
             request.data['input_files'] = request.data.get('input_files') or []
             serializer = self.get_serializer(
-                data=request.data, 
+                data=request.data,
                 context={'request': request, 'client_id': client_id}
             )
-            
+
             if serializer.is_valid():
                 je_template = serializer.save()
-                
+
                 # Return detailed view of created template
                 detail_serializer = JETemplateDetailSerializer(
-                    je_template, 
+                    je_template,
                     context={'request': request}
                 )
-                
+
                 return create_api_response(
                     status.HTTP_201_CREATED,
                     "JE Template created successfully.",
                     data=detail_serializer.data
                 )
-            
+
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "JE Template creation failed due to validation errors.",
                 data=serializer.errors
             )
-        
+
         except Exception as e:
-            logger.error(f"Error creating JE Template for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error creating JE Template for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while creating the JE Template.",
@@ -197,14 +204,14 @@ class JETemplateCreateView(generics.GenericAPIView):
 
 class JETemplateDetailView(generics.GenericAPIView):
     """Retrieve, update, or delete a specific JE Template"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def get_object(self, client_id, template_id):
         """Get JE Template with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return get_object_or_404(
@@ -234,20 +241,21 @@ class JETemplateDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
-            
+
             serializer = JETemplateDetailSerializer(
-                je_template, 
+                je_template,
                 context={'request': request}
             )
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 "JE Template retrieved successfully.",
                 data=serializer.data
             )
-        
+
         except Exception as e:
-            logger.error(f"Error retrieving JE Template {template_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving JE Template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving the JE Template.",
@@ -263,35 +271,35 @@ class JETemplateDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
-            
+
             serializer = JETemplateUpdateSerializer(
                 je_template,
                 data=request.data,
                 context={'request': request},
                 partial=True
             )
-            
+
             if serializer.is_valid():
                 updated_template = serializer.save()
-                
+
                 # Return detailed view of updated template
                 detail_serializer = JETemplateDetailSerializer(
                     updated_template,
                     context={'request': request}
                 )
-                
+
                 return create_api_response(
                     status.HTTP_200_OK,
                     "JE Template updated successfully.",
                     data=detail_serializer.data
                 )
-            
+
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "JE Template update failed due to validation errors.",
                 data=serializer.errors
             )
-        
+
         except Exception as e:
             logger.error(f"Error updating JE Template {template_id}: {str(e)}")
             return create_api_response(
@@ -309,15 +317,15 @@ class JETemplateDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
-            
+
             template_name = je_template.je_name
             je_template.delete()
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"JE Template '{template_name}' deleted successfully."
             )
-        
+
         except Exception as e:
             logger.error(f"Error deleting JE Template {template_id}: {str(e)}")
             return create_api_response(
@@ -329,7 +337,7 @@ class JETemplateDetailView(generics.GenericAPIView):
 
 class AvailableAttributesView(generics.GenericAPIView):
     """List available input file attributes for JE Template configuration"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = AvailableAttributeSerializer
@@ -341,12 +349,13 @@ class AvailableAttributesView(generics.GenericAPIView):
             user = request.user
             if hasattr(user, 'customer_profile'):
                 customer = user.customer_profile
-                client = get_object_or_404(DimAICClient, id=client_id, customer=customer)
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
             elif hasattr(user, 'accountant_profile'):
                 accountant = user.accountant_profile
                 client = get_object_or_404(
-                    DimAICClient, 
-                    id=client_id, 
+                    DimAICClient,
+                    id=client_id,
                     customer=accountant.customer,
                     assigned_accountants=accountant
                 )
@@ -355,7 +364,7 @@ class AvailableAttributesView(generics.GenericAPIView):
                     status.HTTP_403_FORBIDDEN,
                     "Access denied."
                 )
-            
+
             # Get available attributes excluding bank_statement and credit_card
             available_attributes = DimAicInputFileAttributes.objects.filter(
                 input_file__client=client
@@ -364,9 +373,9 @@ class AvailableAttributesView(generics.GenericAPIView):
             ).select_related(
                 'input_file', 'gl_account', 'offset_gl_account'
             ).order_by('input_file__name', 'name')
-            
+
             serializer = self.get_serializer(available_attributes, many=True)
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Available attributes retrieved successfully for client {client.client_name}.",
@@ -377,9 +386,10 @@ class AvailableAttributesView(generics.GenericAPIView):
                     'available_attributes': serializer.data
                 }
             )
-        
+
         except Exception as e:
-            logger.error(f"Error retrieving available attributes for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving available attributes for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving available attributes.",
@@ -389,14 +399,14 @@ class AvailableAttributesView(generics.GenericAPIView):
 
 class JETemplateAttributeConfigView(generics.GenericAPIView):
     """Configure attributes for a JE Template"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def get_template(self, client_id, template_id):
         """Get JE Template with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return get_object_or_404(
@@ -426,7 +436,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
-            
+
             configured_attributes = je_template.template_attributes.all().select_related(
                 'input_file_attribute',
                 'input_file_attribute__input_file',
@@ -434,9 +444,10 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 'input_file_attribute__offset_gl_account',
                 'gl_account'
             )
-            
-            serializer = JETemplateAttributeSerializer(configured_attributes, many=True)
-            
+
+            serializer = JETemplateAttributeSerializer(
+                configured_attributes, many=True)
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Configured attributes retrieved successfully for template {je_template.je_name}.",
@@ -448,9 +459,10 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                     'configured_attributes': serializer.data
                 }
             )
-        
+
         except Exception as e:
-            logger.error(f"Error retrieving configured attributes for template {template_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving configured attributes for template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving configured attributes.",
@@ -460,9 +472,9 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
     def post(self, request, client_id, template_id, *args, **kwargs):
         """
         Replace attributes for a JE Template (replace all existing attributes with new ones)
-        
+
         The expected payload format depends on the template's is_object field:
-        
+
         For Object Templates (is_object=True):
         {
             "attributes": [
@@ -470,7 +482,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 {"id": 2}
             ]
         }
-        
+
         For Non-Object Templates (is_object=False):
         {
             "attributes": [
@@ -491,7 +503,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 }
             ]
         }
-        
+
         Special Restrictions:
         - Templates with bank_statement or credit_card input files can only be gl templates
         - Bank_statement and credit_card templates automatically get default attributes and cannot have additional attributes
@@ -507,49 +519,51 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "JE Template not found or access denied."
                 )
-            
+
             # Additional validation for bank_statement and credit_card templates
-            if (je_template.input_files and 
-                any([f.file_type in ['bank_statement', 'credit_card'] for f in je_template.input_files.all()])):
-                
+            if (je_template.input_files and
+                    any([f.file_type in ['bank_statement', 'credit_card'] for f in je_template.input_files.all()])):
+
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     f"Templates with {je_template.input_files.first().file_type} template cannot be modified."
                 )
-            
+
             serializer = JETemplateAttributeCreateSerializer(
                 data=request.data,
                 context={
-                    'request': request, 
+                    'request': request,
                     'template_id': template_id,
                     'client_id': client_id
                 }
             )
-            
+
             if serializer.is_valid():
-                
+
                 # Create new attributes
                 created_attributes = serializer.save()
-                
-                response_serializer = JETemplateAttributeSerializer(created_attributes, many=True)
-                
+
+                response_serializer = JETemplateAttributeSerializer(
+                    created_attributes, many=True)
+
                 return create_api_response(
                     status.HTTP_201_CREATED,
                     f"Successfully updated attributes for template {je_template.je_name}.",
                     data=response_serializer.data
                 )
-            
+
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Attribute configuration failed due to validation errors.",
                 data=serializer.errors
             )
-        
+
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
-            logger.error(f"Error configuring attributes for template {template_id}: {str(e)}")
+            logger.error(
+                f"Error configuring attributes for template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while configuring attributes.",
@@ -559,14 +573,14 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
 
 class JETemplateAttributeDetailView(generics.GenericAPIView):
     """Remove specific attribute from JE Template"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def get_object(self, client_id, template_id, attr_id):
         """Get template attribute with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return get_object_or_404(
@@ -592,23 +606,24 @@ class JETemplateAttributeDetailView(generics.GenericAPIView):
     def delete(self, request, client_id, template_id, attr_id, *args, **kwargs):
         """Remove an attribute from JE Template"""
         try:
-            template_attribute = self.get_object(client_id, template_id, attr_id)
+            template_attribute = self.get_object(
+                client_id, template_id, attr_id)
             if not template_attribute:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
                     "Template attribute not found or access denied."
                 )
-            
+
             # Additional validation for bank_statement and credit_card templates
             template = template_attribute.je_template_id
-            if (template.input_file and 
-                template.input_file.file_type in ['bank_statement', 'credit_card']):
-                
+            if (template.input_file and
+                    template.input_file.file_type in ['bank_statement', 'credit_card']):
+
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     f"Cannot remove attributes from {template.input_file.file_type} templates as they have default configurations."
                 )
-            
+
             # Get attribute name based on template type
             if template_attribute.input_file_attribute:
                 attribute_name = template_attribute.input_file_attribute.name
@@ -616,17 +631,18 @@ class JETemplateAttributeDetailView(generics.GenericAPIView):
                 attribute_name = f"GL Account: {template_attribute.gl_account.account_name}"
             else:
                 attribute_name = "Unknown Attribute"
-            
+
             template_name = template_attribute.je_template_id.je_name
             template_attribute.delete()
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Attribute '{attribute_name}' removed from template '{template_name}' successfully."
             )
-        
+
         except Exception as e:
-            logger.error(f"Error removing attribute {attr_id} from template {template_id}: {str(e)}")
+            logger.error(
+                f"Error removing attribute {attr_id} from template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while removing the attribute.",

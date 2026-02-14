@@ -8,11 +8,11 @@ Provides serializers for:
   - Review submission response
 """
 
+from django.db.models import Q, Sum
+
 from rest_framework import serializers
 
-from account.models import MonthlyAccountingDocument
-from account.models import MonthlyDocumentBankLineItem
-from django.db.models import Sum, Q
+from account.models import MonthlyAccountingDocument, MonthlyDocumentBankLineItem
 
 
 # ---------------------------------------------------------------------------
@@ -54,11 +54,14 @@ class BalanceMismatchSerializer(serializers.Serializer):
 class ReviewerDocumentListSerializer(serializers.ModelSerializer):
     """Compact representation used when listing reviewer-assigned documents."""
 
-    doc_type_display = serializers.CharField(source='get_doc_type_display', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    doc_type_display = serializers.CharField(
+        source='get_doc_type_display', read_only=True)
+    status_display = serializers.CharField(
+        source='get_status_display', read_only=True)
     input_file_name = serializers.SerializerMethodField()
     client_name = serializers.SerializerMethodField()
-    monthly_accounting_id = serializers.IntegerField(source='monthly_accounting.id', read_only=True)
+    monthly_accounting_id = serializers.IntegerField(
+        source='monthly_accounting.id', read_only=True)
     balance_mismatch_details = BalanceMismatchSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
 
@@ -105,11 +108,14 @@ class LineItemSummarySerializer(serializers.Serializer):
 class ReviewerDocumentDetailSerializer(serializers.ModelSerializer):
     """Full representation of a document assigned for review."""
 
-    doc_type_display = serializers.CharField(source='get_doc_type_display', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    doc_type_display = serializers.CharField(
+        source='get_doc_type_display', read_only=True)
+    status_display = serializers.CharField(
+        source='get_status_display', read_only=True)
     input_file_name = serializers.SerializerMethodField()
     client_name = serializers.SerializerMethodField()
-    monthly_accounting_id = serializers.IntegerField(source='monthly_accounting.id', read_only=True)
+    monthly_accounting_id = serializers.IntegerField(
+        source='monthly_accounting.id', read_only=True)
     balance_mismatch_details = BalanceMismatchSerializer(read_only=True)
     line_item_summary = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()

@@ -1,10 +1,9 @@
 # Third-party imports
 from django.contrib import admin
-from django.utils.html import format_html
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.utils.html import format_html
 
-# Local imports
 from account.models import (
     DimAICAcctType,
     DimAICGLAcct,
@@ -17,17 +16,13 @@ from account.models import (
     DimAICJETemplateAttribute,
     FactAICJETransBank,
     FactAICJEMonthlyStat,
-)
-from account.models import FactAICMonthlyAccounting
-from account.models import MonthlyAccountingDocument
-from account.models import (
+    FactAICMonthlyAccounting,
+    MonthlyAccountingDocument,
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankLineItem,
     MonthlyDocumentBankCheckItem,
     MonthlyDocumentAttributeItem,
     MonthlyTemplateManualAttributeItem,
-)
-from account.models import (
     FactAICInputFileSnapshot,
     FactAICInputFileAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,
