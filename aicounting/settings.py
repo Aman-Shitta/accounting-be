@@ -157,7 +157,17 @@ REST_FRAMEWORK = {
 today = date.today().strftime("%Y-%m-%d")
 
 # Use Azure for file storage
-DEFAULT_FILE_STORAGE = 'aicounting.azure_storage_backends.AzureMediaStorage'
+_DEFAULT_FILE_STORAGE = 'aicounting.azure_storage_backends.AzureMediaStorage'
+
+# Django 5+ uses STORAGES over DEFAULT_FILE_STORAGE; ensure Azure is used for media
+STORAGES = {
+    "default": {
+        "BACKEND": _DEFAULT_FILE_STORAGE,
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 
 CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']
