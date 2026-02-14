@@ -28,6 +28,8 @@ from extractor.gemini_service import GeminiMixin, JSONHelper
 from user.models import DimAICClient, DimAICAssistant, DimAICClientDocument
 from account.models import MonthlyDocumentBankLineItem, MonthlyAccountingDocument
 
+from aicounting.constants import BANKING_DOCS
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +46,7 @@ class GeminiGLCondenser(GeminiMixin):
     Service to condense GL classification mappings using Gemini.
     Takes a list of description/gl_code/gl_description and returns condensed patterns.
     """
-    
+
     CONDENSATION_PROMPT = """You are a financial data analyst. Your task is to condense a list of transaction descriptions with their GL classifications into reusable patterns.
 
     Given a list of transactions with their GL codes and descriptions, identify similar transactions that share the same GL classification and create condensed pattern rules.
@@ -94,10 +96,10 @@ class GeminiGLCondenser(GeminiMixin):
     def condense(self, gl_mappings: list) -> list:
         """
         Condense a list of GL mappings into patterns.
-        
+
         Args:
             gl_mappings: List of dicts with {description, gl_code, gl_description}
-            
+
         Returns:
             Condensed list of pattern mappings
         """
@@ -139,15 +141,16 @@ class VectorStoreManager:
     """
     Manages OpenAI vector store file operations with normalized naming.
     """
-    
+
     def __init__(self, api_key: str):
         from openai import OpenAI
         self.client = OpenAI(api_key=api_key)
-    
+
     def list_files(self, vector_store_id: str) -> list:
         """List all files in a vector store with their names."""
         try:
-            files = self.client.vector_stores.files.list(vector_store_id=vector_store_id)
+            files = self.client.vector_stores.files.list(
+                vector_store_id=vector_store_id)
             file_details = []
             for vs_file in files.data:
                 try:
@@ -159,7 +162,8 @@ class VectorStoreManager:
                         'status': vs_file.status
                     })
                 except Exception as e:
-                    logger.warning(f"Could not get details for file {vs_file.id}: {e}")
+                    logger.warning(
+                        f"Could not get details for file {vs_file.id}: {e}")
                     file_details.append({
                         'id': vs_file.id,
                         'name': None,
@@ -169,7 +173,7 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error listing vector store files: {e}")
             return []
-    
+
     def find_file_by_name(self, vector_store_id: str, filename: str):
         """Find a file in the vector store by its name."""
         files = self.list_files(vector_store_id)
@@ -177,35 +181,36 @@ class VectorStoreManager:
             if f['name'] and filename in f['name']:
                 return f['id']
         return None
-    
+
     def upload_file(self, vector_store_id: str, content: str, filename: str):
         """Upload a file to the vector store."""
         try:
             # Create file stream
             file_stream = io.BytesIO(content.encode('utf-8'))
             file_stream.name = filename
-            
+
             # Upload to vector store
             file_batch = self.client.vector_stores.file_batches.upload_and_poll(
                 vector_store_id=vector_store_id,
                 files=[file_stream]
             )
-            
+
             file_stream.close()
-            
+
             # Get the uploaded file ID
             if file_batch.file_counts.completed > 0:
                 # Find the newly uploaded file
                 new_file_id = self.find_file_by_name(vector_store_id, filename)
-                logger.info(f"Uploaded {filename} to vector store {vector_store_id}")
+                logger.info(
+                    f"Uploaded {filename} to vector store {vector_store_id}")
                 return new_file_id
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error uploading file to vector store: {e}")
             return None
-    
+
     def delete_file(self, vector_store_id: str, file_id: str) -> bool:
         """Delete a file from the vector store."""
         try:
@@ -213,12 +218,13 @@ class VectorStoreManager:
                 vector_store_id=vector_store_id,
                 file_id=file_id
             )
-            logger.info(f"Deleted file {file_id} from vector store {vector_store_id}")
+            logger.info(
+                f"Deleted file {file_id} from vector store {vector_store_id}")
             return True
         except Exception as e:
             logger.error(f"Error deleting file from vector store: {e}")
             return False
-    
+
     def replace_file(self, vector_store_id: str, content: str, filename: str) -> bool:
         """
         Replace a file in the vector store by name.
@@ -226,18 +232,18 @@ class VectorStoreManager:
         """
         # Find existing file
         old_file_id = self.find_file_by_name(vector_store_id, filename)
-        
+
         # Upload new file
         new_file_id = self.upload_file(vector_store_id, content, filename)
-        
+
         if not new_file_id:
             logger.error(f"Failed to upload new {filename}")
             return False
-        
+
         # Delete old file only after successful upload
         if old_file_id and old_file_id != new_file_id:
             self.delete_file(vector_store_id, old_file_id)
-        
+
         return True
 
 
@@ -261,13 +267,15 @@ class Command(BaseCommand):
         dry_run = options.get('dry_run', False)
 
         if dry_run:
-            self.stdout.write(self.style.WARNING('DRY RUN MODE - No changes will be made'))
+            self.stdout.write(self.style.WARNING(
+                'DRY RUN MODE - No changes will be made'))
 
         # Get clients to process
         if client_id:
             clients = DimAICClient.objects.filter(id=client_id)
             if not clients.exists():
-                self.stdout.write(self.style.ERROR(f'Client with ID {client_id} not found'))
+                self.stdout.write(self.style.ERROR(
+                    f'Client with ID {client_id} not found'))
                 return
         else:
             clients = DimAICClient.objects.all()
@@ -276,17 +284,21 @@ class Command(BaseCommand):
 
         # Initialize services
         gemini_condenser = GeminiGLCondenser()
-        vector_store_manager = VectorStoreManager(api_key=settings.OPENAI_API_KEY)
+        vector_store_manager = VectorStoreManager(
+            api_key=settings.OPENAI_API_KEY)
 
         for client in clients:
-            self.process_client(client, gemini_condenser, vector_store_manager, dry_run)
+            self.process_client(client, gemini_condenser,
+                                vector_store_manager, dry_run)
 
-        self.stdout.write(self.style.SUCCESS('GL Classification update completed'))
+        self.stdout.write(self.style.SUCCESS(
+            'GL Classification update completed'))
 
-    def process_client(self, client: DimAICClient, condenser: GeminiGLCondenser, 
+    def process_client(self, client: DimAICClient, condenser: GeminiGLCondenser,
                        vs_manager: VectorStoreManager, dry_run: bool):
         """Process a single client's modified GL line items."""
-        self.stdout.write(f'\nProcessing client: {client.client_name} (ID: {client.id})')
+        self.stdout.write(
+            f'\nProcessing client: {client.client_name} (ID: {client.id})')
 
         # Get modified GL line items for bank/cc documents
         # for last two months.
@@ -294,18 +306,20 @@ class Command(BaseCommand):
         from datetime import timedelta
         modified_items = MonthlyDocumentBankLineItem.objects.filter(
             document__monthly_accounting__client=client,
-            document__doc_type__in=['bank_statement', 'credit_card'],
+            document__doc_type__in=BANKING_DOCS,
             modified_gl=True,
             gl_account__isnull=False
             # updated_at__gte=timezone.now().replace(day=1) - timedelta(days=60)
-    
+
         ).select_related('gl_account')
 
         if not modified_items.exists():
-            self.stdout.write(f'  No modified GL items found for {client.client_name}')
+            self.stdout.write(
+                f'  No modified GL items found for {client.client_name}')
             return
 
-        self.stdout.write(f'  Found {modified_items.count()} modified GL items')
+        self.stdout.write(
+            f'  Found {modified_items.count()} modified GL items')
 
         # Build GL mappings list
         gl_mappings = []
@@ -325,9 +339,11 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write('  [DRY RUN] Would save condensed mappings:')
             for mapping in condensed_mappings[:5]:  # Show first 5
-                self.stdout.write(f'    - {mapping["description"]} -> {mapping["gl_code"]}')
+                self.stdout.write(
+                    f'    - {mapping["description"]} -> {mapping["gl_code"]}')
             if len(condensed_mappings) > 5:
-                self.stdout.write(f'    ... and {len(condensed_mappings) - 5} more')
+                self.stdout.write(
+                    f'    ... and {len(condensed_mappings) - 5} more')
             return
 
         # Build JSON content for vector store
@@ -339,22 +355,28 @@ class Command(BaseCommand):
 
         # Get client's assistant configuration
         try:
-            assistant_config = DimAICAssistant.objects.get(client=client, is_active=True)
+            assistant_config = DimAICAssistant.objects.get(
+                client=client, is_active=True)
         except DimAICAssistant.DoesNotExist:
-            self.stdout.write(self.style.WARNING(f'  No active assistant for {client.client_name}'))
+            self.stdout.write(self.style.WARNING(
+                f'  No active assistant for {client.client_name}'))
             return
 
         if not assistant_config.vector_store_id:
-            self.stdout.write(self.style.WARNING(f'  No vector store for {client.client_name}'))
+            self.stdout.write(self.style.WARNING(
+                f'  No vector store for {client.client_name}'))
             return
 
         # Save to Azure storage
         try:
-            azure_path = self._get_azure_path(client, VECTOR_STORE_FILE_NAMES['gl_history'])
-            default_storage.save(azure_path, ContentFile(json_content.encode('utf-8')))
+            azure_path = self._get_azure_path(
+                client, VECTOR_STORE_FILE_NAMES['gl_history'])
+            default_storage.save(azure_path, ContentFile(
+                json_content.encode('utf-8')))
             self.stdout.write(f'  Saved to Azure: {azure_path}')
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f'  Failed to save to Azure: {e}'))
+            self.stdout.write(self.style.ERROR(
+                f'  Failed to save to Azure: {e}'))
             return
 
         # Update vector store (upload new, delete old)
@@ -365,8 +387,9 @@ class Command(BaseCommand):
         )
 
         if success:
-            self.stdout.write(self.style.SUCCESS(f'  Updated vector store for {client.client_name}'))
-            
+            self.stdout.write(self.style.SUCCESS(
+                f'  Updated vector store for {client.client_name}'))
+
             # Delete old gl_history document record (not the Azure file, just the DB record)
             old_docs = DimAICClientDocument.objects.filter(
                 client=client,
@@ -378,12 +401,13 @@ class Command(BaseCommand):
                     doc.delete()
                 self.stdout.write(f'  Removed old gl_history document records')
         else:
-            self.stdout.write(self.style.ERROR(f'  Failed to update vector store for {client.client_name}'))
+            self.stdout.write(self.style.ERROR(
+                f'  Failed to update vector store for {client.client_name}'))
 
     def _get_azure_path(self, client: DimAICClient, filename: str) -> str:
         """Build Azure storage path for client's processed documents."""
         customer = client.customer
         customer_name = customer.customer_name.lower().replace(' ', '_')
         client_name = client.client_name.lower().replace(' ', '_')
-        
+
         return f"customer_{customer_name}_{customer.id}/client_{client_name}_{client.id}/processed_documents/{filename}"
