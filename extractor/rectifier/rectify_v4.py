@@ -9,6 +9,7 @@ from google.cloud import documentai_v1 as documentai
 import json
 import mimetypes
 import os
+import sys
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Set, Union

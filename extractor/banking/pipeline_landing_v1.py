@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import logging
 import tempfile
 import re
@@ -344,7 +345,6 @@ class DocumentProcessorV1(BaseDocumentProcessor):
 
         except Exception as e:
             logger.error(f"Error processing document: {e}")
-            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(
