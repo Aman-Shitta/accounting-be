@@ -13,26 +13,31 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='dimaicclient',
             name='city',
-            field=models.CharField(blank=True, max_length=100, null=True, verbose_name='City'),
+            field=models.CharField(
+                blank=True, max_length=100, null=True, verbose_name='City'),
         ),
         migrations.AlterField(
             model_name='dimaicclient',
             name='state',
-            field=models.CharField(blank=True, max_length=2, null=True, verbose_name='State Abbreviation'),
+            field=models.CharField(
+                blank=True, max_length=2, null=True, verbose_name='State Abbreviation'),
         ),
         migrations.AlterField(
             model_name='dimaicclient',
             name='street',
-            field=models.CharField(blank=True, max_length=255, null=True, verbose_name='Street'),
+            field=models.CharField(
+                blank=True, max_length=255, null=True, verbose_name='Street'),
         ),
         migrations.AlterField(
             model_name='dimaicclient',
             name='zip_code',
-            field=models.IntegerField(blank=True, null=True, verbose_name='Zip Code'),
+            field=models.IntegerField(
+                blank=True, null=True, verbose_name='Zip Code'),
         ),
         migrations.AlterField(
             model_name='dimaicclientdocument',
             name='document_type',
-            field=models.CharField(choices=[('chart_of_account', 'Chart of Accounts'), ('vendor_list', 'Vendor List'), ('gl_history', 'GL History')], max_length=20, verbose_name='Document Type'),
+            field=models.CharField(choices=[('chart_of_account', 'Chart of Accounts'), ('vendor_list', 'Vendor List'), (
+                'gl_history', 'GL History')], max_length=20, verbose_name='Document Type'),
         ),
     ]

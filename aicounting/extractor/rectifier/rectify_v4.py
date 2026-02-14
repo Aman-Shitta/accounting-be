@@ -1,4 +1,5 @@
 from __future__ import annotations
+from google import genai
 from asyncio.log import logger
 from decimal import Decimal
 from difflib import SequenceMatcher
@@ -13,15 +14,14 @@ import time
 from typing import Any, Dict, List, Optional, Tuple, Set, Union
 from collections import Counter
 
-from django.conf import settings    
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
-    
+
 # OLD:
 # import google.generativeai as genai
 
 # NEW:
-from google import genai
 
 
 # =========================
@@ -197,7 +197,7 @@ def process_document_ai(
     project_id: str = None,
     location: str = None,
     processor_id: str = None,
-    service_account_json: str= None,
+    service_account_json: str = None,
 ) -> Dict[str, Any]:
     if service_account_json:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account_json
@@ -229,7 +229,8 @@ def process_document_ai(
         words_on_page: List[Dict[str, Any]] = []
 
         for token in page.tokens:
-            token_text = extract_text_from_anchor(token.layout.text_anchor, full_text).strip()
+            token_text = extract_text_from_anchor(
+                token.layout.text_anchor, full_text).strip()
             if not token_text:
                 continue
 
@@ -238,7 +239,8 @@ def process_document_ai(
                 for v in token.layout.bounding_poly.vertices
             ]
 
-            words_on_page.append({"text": token_text, "bounding_box": bounding_box})
+            words_on_page.append(
+                {"text": token_text, "bounding_box": bounding_box})
 
         rows = build_rows_with_cells(words_on_page)
 
@@ -457,11 +459,14 @@ _DATE_RE = re.compile(
 
 _AMOUNT_TOKEN_RE = re.compile(r"\(?-?\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\)?")
 
+
 def _row_text(row: Dict[str, Any]) -> str:
     return (row.get("text") or " | ".join(row.get("cells", []) or [])).strip()
 
+
 def _has_date(s: str) -> bool:
     return bool(_DATE_RE.search(s))
+
 
 def _has_amount(s: str) -> bool:
     # Avoid treating tiny integers like "01" as amount: require decimal/comma/$/()/-`
@@ -469,9 +474,11 @@ def _has_amount(s: str) -> bool:
     if not matches:
         return False
     return any(
-        ('.' in m) or (',' in m) or ('$' in m) or ('(' in m) or (')' in m) or ('-' in m)
+        ('.' in m) or (',' in m) or ('$' in m) or (
+            '(' in m) or (')' in m) or ('-' in m)
         for m in matches
     )
+
 
 def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -499,7 +506,8 @@ def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r2 = rows[i + 1]
             t2 = _row_text(r2)
             if t2 and _has_date(t2) and not _has_amount(t2):
-                merged_cells = (r2.get("cells", []) or []) + (r.get("cells", []) or [])
+                merged_cells = (r2.get("cells", []) or []) + \
+                    (r.get("cells", []) or [])
                 merged_text = (t2 + " " + t).strip()
                 stitched.append({
                     "row_index": r2.get("row_index", i + 2),
@@ -514,7 +522,8 @@ def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r2 = rows[i + 1]
             t2 = _row_text(r2)
             if t2 and _has_amount(t2) and not _has_date(t2):
-                merged_cells = (r.get("cells", []) or []) + (r2.get("cells", []) or [])
+                merged_cells = (r.get("cells", []) or []) + \
+                    (r2.get("cells", []) or [])
                 merged_text = (t + " " + t2).strip()
                 stitched.append({
                     "row_index": r.get("row_index", i + 1),
@@ -551,7 +560,8 @@ def _gemini_response_to_text(resp) -> str:
             out = "".join(chunks)
             return out
         except Exception as e:
-            logger.warning(f"Failed to reconstruct Gemini response from candidates/parts: {e}")
+            logger.warning(
+                f"Failed to reconstruct Gemini response from candidates/parts: {e}")
             pass
 
     return ""
@@ -578,7 +588,8 @@ def call_gemini(prompt: str, retries: int = 3, delay: float = 2.0) -> str:
             last_err = e
             if attempt < retries:
                 time.sleep(delay * attempt)
-    raise RuntimeError(f"Gemini call failed after {retries} attempts: {last_err}")
+    raise RuntimeError(
+        f"Gemini call failed after {retries} attempts: {last_err}")
 
 
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -639,7 +650,7 @@ def parse_gemini_json(text: str) -> Dict[str, Any]:
             # raise ValueError("No JSON object found in Gemini response")
             logger.info("No JSON object found in Gemini response")
             return {}
-        else: 
+        else:
             return json.loads(m.group(0))
 
 
@@ -750,14 +761,15 @@ def send_to_gemini_paginated(
     validated = validate_transactions_payload(parsed)
 
     seen: set[tuple] = set()
-    
+
     # Track local_id per page (resets to 1 for each new page_number)
     page_local_id_counter: Dict[int, int] = {}
 
     for t in validated:
         key = (
             t["date"].strip(),
-            " ".join(t["description"].split()).lower(),  # normalize whitespace + case
+            # normalize whitespace + case
+            " ".join(t["description"].split()).lower(),
             round(float(t["amount"]), 2),                # normalize cents
             t["type"].strip().lower(),
         )
@@ -766,7 +778,7 @@ def send_to_gemini_paginated(
             continue
 
         seen.add(key)
-        
+
         page_num = t["page_number"]
         # Initialize or increment local_id for this page
         if page_num not in page_local_id_counter:
@@ -775,9 +787,10 @@ def send_to_gemini_paginated(
         page_local_id_counter[page_num] += 1
 
         all_transactions.append({
-            "id": local_id,                    # local id per page (resets for each page)
+            # local id per page (resets for each page)
+            "id": local_id,
             "global_id": global_id,            # overall sequential id
-            "local_id": local_id,              # explicit local_id field  
+            "local_id": local_id,              # explicit local_id field
             "page_number": page_num,           # keep it, but NOT part of dedupe
             "date": t["date"],
             "description": t["description"],
@@ -934,7 +947,8 @@ def remove_pages_with_high_check_counts(
         if isinstance(page, int):
             page_counter[page] += 1
 
-    excluded_pages: Set[int] = {p for p, c in page_counter.items() if c >= threshold}
+    excluded_pages: Set[int] = {
+        p for p, c in page_counter.items() if c >= threshold}
 
     # Filter page-based txns
     filtered = [
@@ -953,7 +967,6 @@ def remove_pages_with_high_check_counts(
 
     # Fallback
     return {"transactions": filtered}
-
 
 
 def process(document_path: str):
@@ -1002,7 +1015,8 @@ def process_bytes(file_bytes: str, debug_storage=None):
 
     if debug_storage:
         try:
-            debug_storage.save_rectified_data(result_json, "document_ai_raw_output.json")
+            debug_storage.save_rectified_data(
+                result_json, "document_ai_raw_output.json")
         except Exception as e:
             logger.warning(f"Failed to save document_ai_raw_output: {e}")
 
@@ -1010,17 +1024,21 @@ def process_bytes(file_bytes: str, debug_storage=None):
 
     if debug_storage:
         try:
-            debug_storage.save_rectified_data(transactions, "gemini_extracted_transactions.json")
+            debug_storage.save_rectified_data(
+                transactions, "gemini_extracted_transactions.json")
         except Exception as e:
-            logger.warning(f"Failed to save gemini_extracted_transactions: {e}")
+            logger.warning(
+                f"Failed to save gemini_extracted_transactions: {e}")
 
     chk_img_transactions = chk_img_send_to_gemini_paginated(result_json)
 
     if debug_storage:
         try:
-            debug_storage.save_rectified_data(chk_img_transactions, "gemini_check_image_transactions.json")
+            debug_storage.save_rectified_data(
+                chk_img_transactions, "gemini_check_image_transactions.json")
         except Exception as e:
-            logger.warning(f"Failed to save gemini_check_image_transactions: {e}")
+            logger.warning(
+                f"Failed to save gemini_check_image_transactions: {e}")
 
     filtered_page_txns = remove_pages_with_high_check_counts(
         checks_json=chk_img_transactions,
@@ -1047,12 +1065,12 @@ class TransactionRectifierV3:
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Process and rectify the document using Gemini extraction.
-        
+
         Args:
             file_bytes: Raw PDF bytes to process
             master_data: List of transactions from Landing AI extraction
             debug_storage: Optional debug storage helper
-        
+
         Returns:
             Tuple of (rectified_transactions, rectifier_items)
             - rectified_transactions: Master data updated with rectified amounts
@@ -1060,33 +1078,39 @@ class TransactionRectifierV3:
         """
         rectified_transactions = []
         rectifier_items = []
-        
+
         try:
             # Step 1: Extract transactions using Gemini via process_bytes
             logger.info(f"Processing document with Gemini rectifier...")
-            rectifier_items = process_bytes(file_bytes, debug_storage=debug_storage)
-            logger.info(f"Gemini extracted {len(rectifier_items)} transactions")
-            
+            rectifier_items = process_bytes(
+                file_bytes, debug_storage=debug_storage)
+            logger.info(
+                f"Gemini extracted {len(rectifier_items)} transactions")
+
             # Step 2: Normalize master_data (from Landing AI)
             line_items = self._normalize_master_data(master_data)
             logger.info(f"Landing AI has {len(line_items)} transactions")
-            
+
             if not rectifier_items:
-                logger.info("No transactions extracted by Gemini, returning original data")
+                logger.info(
+                    "No transactions extracted by Gemini, returning original data")
                 return line_items, rectifier_items
-            
+
             # Step 3: Compare and rectify
-            rectified_transactions = self._compare_and_rectify(line_items, rectifier_items)
-            logger.info(f"Rectification complete: {len(rectified_transactions)} transactions")
-            
+            rectified_transactions = self._compare_and_rectify(
+                line_items, rectifier_items)
+            logger.info(
+                f"Rectification complete: {len(rectified_transactions)} transactions")
+
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.info(f"Exception in rectify_document: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            logger.info(
+                f"Exception in rectify_document: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
             logger.info(f"Error: {e}")
             # Return original master_data on error
             rectified_transactions = self._normalize_master_data(master_data)
-        
+
         return rectified_transactions, rectifier_items
 
     def _normalize_master_data(
@@ -1099,8 +1123,9 @@ class TransactionRectifierV3:
         """
         if not master_data:
             return []
-        
-        master_data = sorted(master_data, key=lambda x: (x.get('page_number', 1), x.get('global_id', 0)))
+
+        master_data = sorted(master_data, key=lambda x: (
+            x.get('page_number', 1), x.get('global_id', 0)))
         normalized = []
         for idx, item in enumerate(master_data):
             normalized_item = {
@@ -1120,9 +1145,9 @@ class TransactionRectifierV3:
             for key in ['grounding', 'global_id', 'local_id', 'y_coord']:
                 if key in item:
                     normalized_item[key] = item[key]
-            
+
             normalized.append(normalized_item)
-        
+
         return normalized
 
     def _group_by_page(self, items: List[Dict[str, Any]]) -> Dict[int, List[Dict[str, Any]]]:
@@ -1142,7 +1167,7 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Compare line_items with gemini_items and rectify PAGE BY PAGE.
-        
+
         Logic:
         1. Group both line_items and gemini_items by page_number
         2. For each page, perform rectification independently
@@ -1151,39 +1176,42 @@ class TransactionRectifierV3:
 
         if not gemini_items:
             return line_items
-        
+
         # If no line_items (no Landing AI data), use gemini items directly
         if not line_items:
-            logger.info("No master data from Landing AI, using Gemini items directly")
+            logger.info(
+                "No master data from Landing AI, using Gemini items directly")
             return self._convert_gemini_to_line_items(gemini_items)
-        
+
         # Group items by page
         line_pages = self._group_by_page(line_items)
         gemini_pages = self._group_by_page(gemini_items)
-        
+
         # Get all unique page numbers from both sources
         all_pages = sorted(set(line_pages.keys()) | set(gemini_pages.keys()))
-        
+
         logger.info(f"Processing {len(all_pages)} pages: {all_pages}")
-        
+
         # Rectify each page independently
         all_rectified: List[Dict[str, Any]] = []
-        
+
         for page_num in all_pages:
             page_line_items = line_pages.get(page_num, [])
             page_gemini_items = gemini_pages.get(page_num, [])
-            
-            logger.info(f"Page {page_num}: {len(page_line_items)} line items, {len(page_gemini_items)} gemini items")
-            
+
+            logger.info(
+                f"Page {page_num}: {len(page_line_items)} line items, {len(page_gemini_items)} gemini items")
+
             # Rectify this page
-            page_rectified = self._rectify_page(page_line_items, page_gemini_items, page_num)
+            page_rectified = self._rectify_page(
+                page_line_items, page_gemini_items, page_num)
 
             all_rectified.extend(page_rectified)
-        
+
         # Reassign global IDs
         for idx, item in enumerate(all_rectified):
             item['global_id'] = idx + 1
-        
+
         return all_rectified
 
     def _rectify_page(
@@ -1194,7 +1222,7 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Rectify a single page.
-        
+
         Logic:
         1. If page_line_items is empty: use page_gemini_items directly
         2. If lengths are same: index-by-index match
@@ -1204,17 +1232,19 @@ class TransactionRectifierV3:
         if not page_gemini_items:
             # No gemini data for this page, return line items as-is
             return page_line_items
-        
+
         if not page_line_items:
             # No line items for this page, convert gemini items
-            logger.info(f"Page {page_num}: No Landing AI data, using Gemini items")
+            logger.info(
+                f"Page {page_num}: No Landing AI data, using Gemini items")
             return self._convert_gemini_to_line_items(page_gemini_items)
-        
+
         len_line = len(page_line_items)
         len_gemini = len(page_gemini_items)
 
-        logger.info(f"Page {page_num}: Line items = {len_line}, Gemini items = {len_gemini}")
-        
+        logger.info(
+            f"Page {page_num}: Line items = {len_line}, Gemini items = {len_gemini}")
+
         if len_line == len_gemini:
             # Same length - simple index-by-index comparison
             return self._rectify_same_length(page_line_items, page_gemini_items)
@@ -1232,10 +1262,10 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Rectify when both lists have same length using alignment (order-preserving).
-        
+
         Old approach: index-by-index comparison (line[0] vs gemini[0], etc.)
         Problem: Order drift causes cascading mismatches when items swap positions
-        
+
         New approach: Use alignment to find best pairings even with reordering
         """
         return self._rectify_with_alignment(line_items, gemini_items)
@@ -1247,10 +1277,10 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Rectify when gemini has more items using alignment (order-preserving).
-        
+
         Old approach: Greedy matching with lookahead, inserted "missing" items
         Problem: Lookahead didn't advance to matched position, causing drift
-        
+
         New approach: Alignment handles insertions naturally via gap scoring
         """
         return self._rectify_with_alignment(line_items, gemini_items)
@@ -1262,10 +1292,10 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Rectify when line_items has more using alignment (order-preserving).
-        
+
         Old approach: Sequential matching, only advancing gemini_idx on match
         Problem: Single mismatch causes all subsequent comparisons to be wrong
-        
+
         New approach: Alignment treats extra line items as gaps naturally
         """
         return self._rectify_with_alignment(line_items, gemini_items)
@@ -1275,26 +1305,27 @@ class TransactionRectifierV3:
         # Compare dates
         line_date = str(line_item.get('date', '')).strip()
         gemini_date = str(gemini_item.get('date', '')).strip()
-        
+
         if line_date and gemini_date:
             if not self._dates_match(line_date, gemini_date):
                 return False
-        
+
         # Compare descriptions using fuzzy matching
-        line_desc = str(line_item.get('description', '')).strip().lower() if not line_item.get('is_check_transaction', False) else f'Check {line_item.get("check_number", "")}'
+        line_desc = str(line_item.get('description', '')).strip().lower() if not line_item.get(
+            'is_check_transaction', False) else f'Check {line_item.get("check_number", "")}'
         gemini_desc = str(gemini_item.get('description', '')).strip().lower()
-        
+
         if line_desc and gemini_desc:
             similarity = SequenceMatcher(None, line_desc, gemini_desc).ratio()
             if similarity < 0.6:
                 return False
-        
+
         return True
 
     def _normalize_desc(self, item: Dict[str, Any]) -> str:
         """
         Normalize description for comparison.
-        
+
         Check transactions get special handling to match 'Check XXXX' format.
         Regular transactions use lowercase description text.
         """
@@ -1305,13 +1336,13 @@ class TransactionRectifierV3:
     def _pair_score(self, line_item: Dict[str, Any], gemini_item: Dict[str, Any]) -> float:
         """
         Calculate similarity score between a line item and gemini item.
-        
+
         Scoring weights:
         - Date match: +3.0 (mismatch: -5.0) - Strong indicator
         - Amount match (within 1 cent): +3.0 (mismatch: -2.0)
         - Check number match: +4.0 (mismatch: -3.0) - Strongest indicator
         - Description similarity: -1.0 to +1.0 (scaled from 0-1 ratio)
-        
+
         Positive scores indicate good match, negative scores indicate mismatch.
         Used by alignment algorithm to find best pairings.
         """
@@ -1360,18 +1391,18 @@ class TransactionRectifierV3:
     ) -> List[Tuple[Optional[int], Optional[int]]]:
         """
         Order-preserving alignment using dynamic programming (Needleman-Wunsch style).
-        
+
         This algorithm finds the optimal alignment between two sequences while:
         1. Preserving relative order (no reordering)
         2. Allowing items to be unmatched (gaps)
         3. Maximizing total match score
-        
+
         Args:
             line_items: List of Landing AI extracted items
             gemini_items: List of Gemini extracted items
             gap_penalty: Score penalty for leaving an item unmatched
             min_match_score: Minimum score to consider items matched
-            
+
         Returns:
             List of (line_idx, gemini_idx) pairs where None indicates gap/unmatched.
             Example: [(0, 0), (1, None), (2, 1)] means:
@@ -1399,12 +1430,13 @@ class TransactionRectifierV3:
         for i in range(1, n + 1):
             for j in range(1, m + 1):
                 # Option 1: Match line[i-1] with gemini[j-1]
-                match_score = self._pair_score(line_items[i - 1], gemini_items[j - 1])
+                match_score = self._pair_score(
+                    line_items[i - 1], gemini_items[j - 1])
                 diag = dp[i - 1][j - 1] + match_score
-                
+
                 # Option 2: Skip line[i-1] (unmatched in line_items)
                 up = dp[i - 1][j] + gap_penalty
-                
+
                 # Option 3: Skip gemini[j-1] (unmatched in gemini_items)
                 left = dp[i][j - 1] + gap_penalty
 
@@ -1458,12 +1490,12 @@ class TransactionRectifierV3:
     ) -> None:
         """
         Update amount in rectified item using Gemini's extracted value.
-        
+
         Logic:
         1. If Gemini has no amount, keep original (no update)
         2. If Landing AI has no amount, use Gemini's (fill missing)
         3. If amounts differ by > 1 cent, use Gemini's (correction)
-        
+
         Modifies rectified_item in place, sets is_rectified flag on update.
         """
         line_amount = self._get_amount(line_item)
@@ -1480,7 +1512,7 @@ class TransactionRectifierV3:
             return
 
         # Correct differing amount (beyond rounding tolerance)
-        if line_amount !=  gemini_amount:
+        if line_amount != gemini_amount:
             rectified_item['amount'] = gemini_amount
             rectified_item['is_rectified'] = True
 
@@ -1491,13 +1523,13 @@ class TransactionRectifierV3:
     ) -> List[Dict[str, Any]]:
         """
         Unified rectification using alignment-based matching.
-        
+
         Replaces the old index-by-index comparison with intelligent alignment that:
         - Handles order drift (items swapped or slightly out of sequence)
         - Tolerates missing items in either source
         - Updates amounts from Gemini when matched
         - Inserts missing non-check transactions from Gemini
-        
+
         Process:
         1. Align items using dynamic programming to find best pairings
         2. For matched pairs: update amount from Gemini if needed
@@ -1523,7 +1555,8 @@ class TransactionRectifierV3:
                 rectified_item['is_rectified'] = False
                 rectified_item['was_missing'] = False
                 rectified_item['was_compared'] = True
-                self._update_amount_from_gemini(rectified_item, line_item, gemini_item)
+                self._update_amount_from_gemini(
+                    rectified_item, line_item, gemini_item)
                 rectified.append(rectified_item)
             elif li is not None:
                 # Line item has no match: keep original from Landing AI
@@ -1539,10 +1572,12 @@ class TransactionRectifierV3:
                 gemini_item = gemini_items[gi]
                 if gemini_item.get('is_check_transaction', False) or gemini_item.get('check_nbr'):
                     continue
-                new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
+                new_item = self._create_item_from_gemini(
+                    gemini_item, line_items[0] if line_items else {})
                 new_item['is_rectified'] = False
                 new_item['was_missing'] = True  # Gemini item not in Landing AI
-                new_item['was_compared'] = False  # Was compared but didn't match any Landing AI item
+                # Was compared but didn't match any Landing AI item
+                new_item['was_compared'] = False
                 # logger.info("Inserting missing item from Gemini:", new_item)
                 rectified.append(new_item)
 
@@ -1558,18 +1593,18 @@ class TransactionRectifierV3:
         Handles formats like: Jun1, 2025 | 1 June 2025 | 06/01/2025 | 6-1-2025
         """
         from dateutil import parser
-        
+
         if not date_str or not str(date_str).strip():
             return date_str
-        
+
         date_str = str(date_str).strip()
-        
+
         month_names = {
             1: "January", 2: "February", 3: "March", 4: "April",
             5: "May", 6: "June", 7: "July", 8: "August",
             9: "September", 10: "October", 11: "November", 12: "December"
         }
-        
+
         try:
             parsed_date = parser.parse(date_str, dayfirst=False, fuzzy=True)
             day = parsed_date.day
@@ -1585,25 +1620,26 @@ class TransactionRectifierV3:
                 if 1 <= month_num <= 12:
                     month_name = month_names[month_num]
                     return f"01-{month_name}-{year}"
-            
+
             logger.warning(f"Could not parse date format: {date_str}")
             return date_str
 
     def _dates_match(self, date1: str, date2: str) -> bool:
         """
         Check if two date strings represent the same date.
-        
+
         Stricter matching compared to previous version to reduce false positives:
         - If either date is missing, consider it a match (permissive for missing data)
         - Extract numeric parts and compare in order (not sorted) to avoid 01/02 == 02/01
         - Fallback: compare normalized strings (removing separators)
-        
+
         This prevents matching dates like "12/01" with "01/12" which was possible
         in the old sorted comparison.
         """
         if not date1 or not date2:
-            return True  # If either is missing, consider it a match (permissive)
-        
+            # If either is missing, consider it a match (permissive)
+            return True
+
         _format_date1 = self._format_date(date1)
         _format_date2 = self._format_date(date2)
 
@@ -1627,7 +1663,8 @@ class TransactionRectifierV3:
             # Truncate to 2 decimal places without rounding
             return int(value * 100) / 100
         except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to convert amount '{amount}' to float: {e}")
+            logger.warning(
+                f"Failed to convert amount '{amount}' to float: {e}")
             return None
 
     def _create_item_from_gemini(self, gemini_item: Dict, template: Dict) -> Dict:
@@ -1688,12 +1725,13 @@ def main():
     sample_master_data = []  # Empty for testing; in production comes from Landing AI
 
     rect = get_rectifier()
-    rectified, rectifier_items = rect.rectify_document(file_bytes, sample_master_data)
-    
+    rectified, rectifier_items = rect.rectify_document(
+        file_bytes, sample_master_data)
+
     logger.info(f"\n=== Rectification Results ===")
     logger.info(f"Rectified transactions: {len(rectified)}")
     logger.info(f"Rectifier items (from Gemini): {len(rectifier_items)}")
-    
+
     # Show sample rectified items
     if rectified:
         logger.info(f"\nSample rectified item:")

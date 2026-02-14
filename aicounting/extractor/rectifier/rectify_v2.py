@@ -24,6 +24,7 @@ from extractor.rectifier.utils import (
 
 from extractor.gemini_service import GeminiMixin, JSONHelper
 
+
 class DocumentAIMixin:
 
     def __init__(self, **kwargs):
@@ -37,12 +38,12 @@ class DocumentAIMixin:
         )
 
         # Initialize Document AI client.
-        self.doc_ai_client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+        self.doc_ai_client = documentai_v1.DocumentProcessorServiceClient(
+            client_options=opts)
 
         self.doc_ai_processor = self.init_processor(**kwargs)
 
     def init_processor(self, **kwargs):
-
         """
         returns
 
@@ -70,7 +71,7 @@ class DocumentAIMixin:
         return self.doc_ai_client.get_processor(
             request=processor_request
         )
-    
+
     def prepare_request_document(self, page_bytes, mime_type='application/pdf'):
         raw_document = documentai_v1.RawDocument(
             content=page_bytes,
@@ -84,8 +85,8 @@ class DocumentAIMixin:
             raw_document=raw_document
         )
         return request
-    
-    def process_request(self, request)-> documentai_v1.ProcessResponse:
+
+    def process_request(self, request) -> documentai_v1.ProcessResponse:
         result = self.doc_ai_client.process_document(
             request=request
         )
@@ -128,12 +129,12 @@ class DocumentAIProcessor(DocumentAIMixin):
         """
         if not words:
             return [0.0, 0.0, 0.0, 0.0]
-        
+
         x0 = min(self._x0(w) for w in words)
         y0 = min(self._y0(w) for w in words)
         x1 = max(self._x1(w) for w in words)
         y1 = max(self._y1(w) for w in words)
-        
+
         return [x0, y0, x1, y1]
 
     def _estimate_y_eps(self, words: List[Dict[str, Any]]) -> float:
@@ -149,7 +150,7 @@ class DocumentAIProcessor(DocumentAIMixin):
         # clamp to sane bounds; statements vary a lot
         return max(0.006, min(0.03, med * 0.9))
 
-    def doc_ai_process_document(self, page_bytes, mime_type)-> documentai_v1.Document:
+    def doc_ai_process_document(self, page_bytes, mime_type) -> documentai_v1.Document:
 
         raw_document = self.prepare_request_document(
             page_bytes=page_bytes,
@@ -165,9 +166,9 @@ class DocumentAIProcessor(DocumentAIMixin):
         doc = result.document
 
         return doc
-    
+
     def process_doc_to_json(self, doc: documentai_v1.Document):
-        
+
         full_text = doc.text or ""
         output: Dict[str, Any] = {"pages": []}
 
@@ -175,16 +176,19 @@ class DocumentAIProcessor(DocumentAIMixin):
             words_on_page: List[Dict[str, Any]] = []
 
             for token in page.tokens:
-                token_text = self.extract_text_from_anchor(token.layout.text_anchor, full_text).strip()
+                token_text = self.extract_text_from_anchor(
+                    token.layout.text_anchor, full_text).strip()
                 if not token_text:
                     continue
 
                 bounding_box = [
-                    {"x": v.x / page.dimension.width, "y": v.y / page.dimension.height}
+                    {"x": v.x / page.dimension.width,
+                        "y": v.y / page.dimension.height}
                     for v in token.layout.bounding_poly.vertices
                 ]
 
-                words_on_page.append({"text": token_text, "bounding_box": bounding_box})
+                words_on_page.append(
+                    {"text": token_text, "bounding_box": bounding_box})
 
             # rows = self.build_rows_with_cells_bounding_box(words_on_page)
             rows = self.build_rows_with_cells(words_on_page)
@@ -231,13 +235,14 @@ class DocumentAIProcessor(DocumentAIMixin):
             cells_data = self.split_row_into_cells_with_bounding_box(row_words)
             if not cells_data:
                 continue
-            
+
             # Extract just the text for backward compatibility
             cells = [cell["text"] for cell in cells_data]
-            
+
             # Calculate row bounding box from all words in the row
-            row_bounding_box = self._calculate_bounding_box(row_words) if row_words else [0, 0, 0, 0]
-            
+            row_bounding_box = self._calculate_bounding_box(
+                row_words) if row_words else [0, 0, 0, 0]
+
             out.append({
                 "row_index": idx,
                 "cells": cells,
@@ -247,7 +252,7 @@ class DocumentAIProcessor(DocumentAIMixin):
             })
 
         return out
-    
+
     def build_rows_with_cells(self, words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Returns:
@@ -270,7 +275,6 @@ class DocumentAIProcessor(DocumentAIMixin):
             })
 
         return out
-
 
     def cluster_words_into_rows(self, words: List[Dict[str, Any]], y_eps: Optional[float] = None) -> List[List[Dict[str, Any]]]:
         """
@@ -412,16 +416,17 @@ class DocumentAIProcessor(DocumentAIMixin):
 
         return cell_texts
 
-    def process(self, page_bytes, mime_type)-> Dict[str, List[Dict[str, Any]]]:
+    def process(self, page_bytes, mime_type) -> Dict[str, List[Dict[str, Any]]]:
 
-        document = self.doc_ai_process_document(page_bytes=page_bytes, mime_type=mime_type)
+        document = self.doc_ai_process_document(
+            page_bytes=page_bytes, mime_type=mime_type)
         doc_result = self.process_doc_to_json(doc=document)
         return doc_result
 
 
 class TransactionRectifierV2(GeminiMixin, JSONHelper):
     """Transaction Rectifier using Gemini API - Version 2"""
-    
+
     def __init__(self):
         self.init_gemini()
 
@@ -440,15 +445,18 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
         if not matches:
             return False
         return any(
-            ('.' in m) or (',' in m) or ('$' in m) or ('(' in m) or (')' in m) or ('-' in m)
+            ('.' in m) or (',' in m) or ('$' in m) or (
+                '(' in m) or (')' in m) or ('-' in m)
             for m in matches
         )
 
     @staticmethod
     def _merge_bboxes(b1: List[float], b2: List[float]) -> List[float]:
         """Merge two [x0, y0, x1, y1] bounding boxes."""
-        if not b1: return b2
-        if not b2: return b1
+        if not b1:
+            return b2
+        if not b2:
+            return b1
         return [
             min(b1[0], b2[0]),
             min(b1[1], b2[1]),
@@ -479,13 +487,14 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 r2 = rows[i + 1]
                 t2 = self._row_text(r2)
                 if t2 and self._has_date(t2) and not self._has_amount(t2):
-                    merged_cells = (r2.get("cells", []) or []) + (r.get("cells", []) or [])
+                    merged_cells = (r2.get("cells", []) or []) + \
+                        (r.get("cells", []) or [])
                     merged_text = (t2 + " " + t).strip()
                     # Merge BBoxes: Date row (r2) + Amount row (r)
                     merged_bbox = self._merge_bboxes(
                         r2.get("bounding_box", []), r.get("bounding_box", [])
                     )
-                    
+
                     stitched.append({
                         "row_index": r2.get("row_index", i + 2),
                         "cells": merged_cells,
@@ -500,7 +509,8 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 r2 = rows[i + 1]
                 t2 = self._row_text(r2)
                 if t2 and self._has_amount(t2) and not self._has_date(t2):
-                    merged_cells = (r.get("cells", []) or []) + (r2.get("cells", []) or [])
+                    merged_cells = (r.get("cells", []) or []) + \
+                        (r2.get("cells", []) or [])
                     merged_text = (t + " " + t2).strip()
                     # Merge BBoxes: Date row (r) + Amount row (r2)
                     merged_bbox = self._merge_bboxes(
@@ -604,8 +614,8 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
             # This matches the working pattern from extract_data_v43.py
 
             config = types.GenerateContentConfigDict(
-                response_schema = schema,
-                system_instruction = instructions,
+                response_schema=schema,
+                system_instruction=instructions,
                 max_output_tokens=128000
             )
 
@@ -624,9 +634,9 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 stitch = self._stitch_split_rows(page.get("rows", []) or [])
                 page["rows"] = stitch
 
-
                 payload = {"pages": page}
-                payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+                payload_json = json.dumps(
+                    payload, ensure_ascii=False, indent=2)
 
                 content_parts = [
                     self._gemini_service.create_part_from_text(payload_json)
@@ -643,7 +653,7 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 )
 
                 parsed = self.parse_json(raw)
-                
+
                 # Extract transactions list from the response dict
                 if isinstance(parsed, dict):
                     raw_transactions = parsed.get("transactions", [])
@@ -659,8 +669,10 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 for t in validated:
                     key = (
                         t["date"].strip(),
-                        " ".join(t["description"].split()).lower(),  # normalize whitespace + case
-                        round(float(t["amount"]), 2),                # normalize cents
+                        # normalize whitespace + case
+                        " ".join(t["description"].split()).lower(),
+                        # normalize cents
+                        round(float(t["amount"]), 2),
                         t["type"].strip().lower(),
                     )
 
@@ -683,18 +695,19 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            print(
+                f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
 
         return result
-    
+
     def extract_check_data(self, doc_data, schema, instructions):
         print("Starting check data extraction using Gemini V2...")
         result = list()
         global_id: int = 1
         try:
             config = types.GenerateContentConfigDict(
-                response_schema = schema,
-                system_instruction = instructions,
+                response_schema=schema,
+                system_instruction=instructions,
             )
 
             result = list()
@@ -704,20 +717,21 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 rows = page_data.get("rows", [])
 
                 stitched_page_rows = self._stitch_split_rows(rows)
-                
+
                 page_data["rows"] = stitched_page_rows
 
                 payload = {
                     "page":  page_data
                 }
-                payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+                payload_json = json.dumps(
+                    payload, ensure_ascii=False, indent=2)
 
                 content_parts = [
                     self._gemini_service.create_part_from_text(
                         payload_json
                     )
                 ]
-                
+
                 content_with_json = self._gemini_service.create_user_content_type(
                     content_parts
                 )
@@ -733,26 +747,26 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
                 #  # Removed
                 for t in validated:
                     result.append({
-                    "id": global_id,
-                    "page_number": page_number,
-                    "date": t["date"],
-                    "check_number": t["check_number"],
-                    "payee": t["payee"],
-                    "check_written_date": t["check_written_date"],
-                    "amount": t["amount"],
-                    "for_memo": t["for_memo"],
+                        "id": global_id,
+                        "page_number": page_number,
+                        "date": t["date"],
+                        "check_number": t["check_number"],
+                        "payee": t["payee"],
+                        "check_written_date": t["check_written_date"],
+                        "amount": t["amount"],
+                        "for_memo": t["for_memo"],
                     })
                     global_id += 1
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            print(
+                f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
 
         return result
 
     def chk_img_validate_transactions_payload(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
-        
         if not isinstance(payload, dict):
             return []
 
@@ -805,7 +819,7 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
 
         return cleaned
 
-    @staticmethod    
+    @staticmethod
     def _coerce_amount(v: Any) -> float:
         if isinstance(v, (int, float)):
             return float(v)
@@ -858,7 +872,8 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
             if isinstance(page, int):
                 page_counter[page] += 1
 
-        excluded_pages: Set[int] = {p for p, c in page_counter.items() if c >= threshold}
+        excluded_pages: Set[int] = {
+            p for p, c in page_counter.items() if c >= threshold}
         print(f"Excluding pages with high check counts: {excluded_pages}")
 
         # Filter page-based txns
@@ -884,21 +899,21 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
         Process and rectify the document using Gemini API.
         return: {'id': 1, 'date': '08/01/2025', 'type': 'credit', 'amount': 16.2, 'description': '8882442160 CSIPAY SV96 POS Rangeline', 'page_number': 1, 'was_missing': False, 'check_number': '', 'is_rectified': False, 'is_check_transaction': False, "bounding_box": [0.21, 0.34, 0.22, 0.65]}
 
-        """       
+        """
         rectified_items = []
         rectifier_items = {}
-        
+
         try:
-            transactions_data =  self.extract_transaction_data(
+            transactions_data = self.extract_transaction_data(
                 raw_doc_data,
                 TRANSACTIONS_SCHEMA,
                 TRANSACTIONS_ROWS_JSON_PROMPT
-            )  
+            )
             rectifier_items.update({
                 "transactions": transactions_data
             })
 
-            checks_data =  self.extract_check_data(
+            checks_data = self.extract_check_data(
                 raw_doc_data,
                 CHECKS_SCHEMA,
                 CHECKS_ROWS_JSON_PROMPT
@@ -909,29 +924,26 @@ class TransactionRectifierV2(GeminiMixin, JSONHelper):
             })
 
             processed_data = self.remove_pages_with_high_check_counts(
-                    checks_data=checks_data,
-                    page_txn_data=transactions_data,
-                    threshold=1,
-                )
+                checks_data=checks_data,
+                page_txn_data=transactions_data,
+                threshold=1,
+            )
             rectifier_items.update({
                 "processed_data": processed_data
             })
-            breakpoint()
 
             # rectified_items = self.rectify_transactions(
             #     master_data=master_data,
             #     rectifier_items=rectifier_items
             # )
 
-        
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
+            print(
+                f"Exception type: {exc_type}, File: {fname}, Line: {exc_tb.tb_lineno}")
 
         return rectified_items, rectifier_items
-
-
 
 
 def get_rectifier() -> TransactionRectifierV2:
@@ -950,12 +962,12 @@ def main():
         page_bytes=file_bytes,
         mime_type="application/pdf"
     )
-    
+
     # breakpoint()
     # from extractor.rectifier.utils import DATA
 
     # raw_doc_data = DATA
-    
+
     rectifier = get_rectifier()
 
     # raw_doc_data = RAW.copy()

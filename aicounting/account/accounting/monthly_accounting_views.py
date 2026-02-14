@@ -1,41 +1,55 @@
-from django.shortcuts import get_object_or_404
-from django.db import transaction, models
+import logging
+
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import models, transaction
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import generics, status, permissions
+
+from rest_framework import generics, permissions, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from account.models import FactAICMonthlyAccounting
-from user.models import DimAICClient
+from account.models import (
+    FactAICMonthlyAccounting,
+    MonthlyAccountingDocument,
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentAttributeItem,
+)
+
+from aicounting.response import create_api_response
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant, IsCustomerOrAccountantOrReviewer
-from aicounting.response import create_api_response
-from account.models import MonthlyAccountingDocument
-          
 from extractor.services import DocumentProcessingService, UnsupportedDocTypeError
+from user.models import DimAICClient
 
-import logging
+from account.accounting.monthly_document_line_item_serializers import (
+    MonthlyDocumentBankLineItemSerializer,
+    MonthlyDocumentAttributeItemSerializer,
+    GLAccountNestedSerializer,
+    MonthlyDocumentLineItemSerializer,
+)
+
+from aicounting.constants import BANKING_DOCS
 logger = logging.getLogger(__name__)
 
 
 class MonthlyAccountingListView(generics.GenericAPIView):
     """List existing monthly accounting sessions for a specific client"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def get_queryset(self, client_id):
         """Get monthly accounting sessions with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return FactAICMonthlyAccounting.objects.filter(
                 client=client_id,
                 client__customer=customer
             ).order_by('-created_at')
-        
+
         elif hasattr(user, 'accountant_profile'):
             accountant = user.accountant_profile
             return FactAICMonthlyAccounting.objects.filter(
@@ -43,16 +57,16 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                 client__customer=accountant.customer,
                 client__assigned_accountants=accountant
             ).order_by('-created_at')
-        
+
         return FactAICMonthlyAccounting.objects.none()
 
     def get(self, request, client_id, *args, **kwargs):
         """
         List all monthly accounting sessions for a specific client.
         Returns only basic monthly accounting information without snapshots.
-        
+
         GET /api/clients/{client_id}/accounting/monthly/
-        
+
         Query parameters:
         - year: Filter by year
         - status: Filter by status
@@ -62,12 +76,13 @@ class MonthlyAccountingListView(generics.GenericAPIView):
             user = request.user
             if hasattr(user, 'customer_profile'):
                 customer = user.customer_profile
-                client = get_object_or_404(DimAICClient, id=client_id, customer=customer)
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
             elif hasattr(user, 'accountant_profile'):
                 accountant = user.accountant_profile
                 client = get_object_or_404(
-                    DimAICClient, 
-                    id=client_id, 
+                    DimAICClient,
+                    id=client_id,
                     customer=accountant.customer,
                     assigned_accountants=accountant
                 )
@@ -78,7 +93,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                 )
 
             queryset = self.get_queryset(client_id)
-            
+
             # Filter by year
             year = request.query_params.get('year')
             if year:
@@ -90,11 +105,12 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                         status.HTTP_400_BAD_REQUEST,
                         "Invalid year parameter."
                     )
-            
+
             # Filter by status
             status_filter = request.query_params.get('status')
             if status_filter:
-                valid_statuses = [choice[0] for choice in FactAICMonthlyAccounting.STATUS_CHOICES]
+                valid_statuses = [choice[0]
+                                  for choice in FactAICMonthlyAccounting.STATUS_CHOICES]
                 if status_filter in valid_statuses:
                     queryset = queryset.filter(status=status_filter)
                 else:
@@ -102,7 +118,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                         status.HTTP_400_BAD_REQUEST,
                         f"Invalid status. Valid options: {', '.join(valid_statuses)}"
                     )
-            
+
             # Serialize the queryset manually
             monthly_accounting_data = []
             for accounting in queryset:
@@ -115,7 +131,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                     'created_at': accounting.created_at.isoformat() if accounting.created_at else None,
                     'completed_at': accounting.completed_at.isoformat() if accounting.completed_at else None
                 })
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Monthly accounting sessions retrieved successfully for client {client.client_name}.",
@@ -126,9 +142,10 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                     'monthly_accounting': monthly_accounting_data
                 }
             )
-        
+
         except Exception as e:
-            logger.error(f"Error listing monthly accounting sessions for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error listing monthly accounting sessions for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving monthly accounting sessions.",
@@ -138,40 +155,40 @@ class MonthlyAccountingListView(generics.GenericAPIView):
 
 class MonthlyAccountingCreateView(generics.GenericAPIView):
     """Create a new monthly accounting session for a specific client"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def validate_create_data(self, data):
         """Validate the create data manually"""
         errors = {}
-        
+
         # Validate month
         month = data.get('month')
         if not month:
             errors['month'] = ['This field is required.']
         elif not isinstance(month, int) or month < 1 or month > 12:
             errors['month'] = ['Month must be an integer between 1 and 12.']
-        
-        # Validate year  
+
+        # Validate year
         year = data.get('year')
         if not year:
             errors['year'] = ['This field is required.']
         elif not isinstance(year, int) or year < 2000 or year > 2100:
             errors['year'] = ['Year must be an integer between 2000 and 2100.']
-        
+
         if errors:
             return {'errors': errors}
-        
+
         return {'month': month, 'year': year}
 
     def post(self, request, client_id, *args, **kwargs):
         """
         Create a new monthly accounting session.
         Snapshots are created automatically in the background for reference.
-        
+
         POST /api/clients/{client_id}/accounting/monthly/create/
-        
+
         Body:
         {
             "month": 8,
@@ -183,12 +200,13 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
             user = request.user
             if hasattr(user, 'customer_profile'):
                 customer = user.customer_profile
-                client = get_object_or_404(DimAICClient, id=client_id, customer=customer)
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
             elif hasattr(user, 'accountant_profile'):
                 accountant = user.accountant_profile
                 client = get_object_or_404(
-                    DimAICClient, 
-                    id=client_id, 
+                    DimAICClient,
+                    id=client_id,
                     customer=accountant.customer,
                     assigned_accountants=accountant
                 )
@@ -199,17 +217,17 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                 )
 
             serializer = self.validate_create_data(request.data)
-            
+
             if 'errors' in serializer:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Monthly accounting creation failed due to validation errors.",
                     data=serializer['errors']
                 )
-            
+
             month = serializer['month']
             year = serializer['year']
-            
+
             # Check if accounting for this month/year already exists
             if FactAICMonthlyAccounting.objects.filter(
                 client=client,
@@ -220,7 +238,7 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                     status.HTTP_400_BAD_REQUEST,
                     f"Monthly accounting for {month}/{year} already exists for this client."
                 )
-            
+
             with transaction.atomic():
                 # Create monthly accounting with snapshots (snapshots created automatically)
                 monthly_accounting = FactAICMonthlyAccounting.create_monthly_accounting_with_snapshots(
@@ -229,7 +247,7 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                     year=year,
                     created_by=request.user
                 )
-                
+
                 # Serialize the response (basic details only)
                 response_data = {
                     'id': monthly_accounting.id,
@@ -240,23 +258,25 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                     'created_at': monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
                     'completed_at': monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None
                 }
-                
+
                 return create_api_response(
                     status.HTTP_201_CREATED,
                     f"Monthly accounting for {client.client_name} - {monthly_accounting.get_month_name()} {year} has been initiated successfully.",
                     data=response_data
                 )
-        
+
         except DjangoValidationError as e:
-            logger.error(f"Validation error creating monthly accounting for client {client_id}: {str(e)}")
+            logger.error(
+                f"Validation error creating monthly accounting for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Validation error occurred while creating monthly accounting.",
                 data={"error": str(e)}
             )
-        
+
         except Exception as e:
-            logger.error(f"Error creating monthly accounting for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error creating monthly accounting for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while creating monthly accounting.",
@@ -266,18 +286,19 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
 
 class MonthlyAccountingDetailView(generics.GenericAPIView):
     """Retrieve detailed information about a monthly accounting session"""
-    
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
 
     def get_object(self, client_id, accounting_id):
         """Get monthly accounting session with proper authorization checks"""
         user = self.request.user
-        
+
         if hasattr(user, 'customer_profile'):
             customer = user.customer_profile
             return get_object_or_404(
-                FactAICMonthlyAccounting.objects.select_related('client', 'created_by'),
+                FactAICMonthlyAccounting.objects.select_related(
+                    'client', 'created_by'),
                 id=accounting_id,
                 client=client_id,
                 client__customer=customer
@@ -285,7 +306,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
         elif hasattr(user, 'accountant_profile'):
             accountant = user.accountant_profile
             return get_object_or_404(
-                FactAICMonthlyAccounting.objects.select_related('client', 'created_by'),
+                FactAICMonthlyAccounting.objects.select_related(
+                    'client', 'created_by'),
                 id=accounting_id,
                 client=client_id,
                 client__customer=accountant.customer,
@@ -316,12 +338,10 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 )
 
             # Get documents for upload (replacing input file snapshots)
-            from account.models import MonthlyAccountingDocument
-            
             documents = MonthlyAccountingDocument.objects.filter(
                 monthly_accounting=monthly_accounting
             ).select_related('input_file_snapshot')
-            
+
             input_documents = []
             for document in documents:
                 input_documents.append({
@@ -340,23 +360,22 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             # Get JE template snapshots (basic info only)
             je_template_snapshots = monthly_accounting.je_template_snapshots.select_related(
                 'original_template'
-                ).prefetch_related(
-                    'input_files'
-                )
-            
+            ).prefetch_related(
+                'input_files'
+            )
+
             # Get monthly accounting documents for status checking
-            from account.models import MonthlyAccountingDocument
             documents_map = {}
-            
+
             # Create map of input file snapshot ID to document for quick lookup
             monthly_docs = MonthlyAccountingDocument.objects.filter(
                 monthly_accounting=monthly_accounting
             ).select_related('input_file_snapshot')
-            
+
             for doc in monthly_docs:
                 if doc.input_file_snapshot:
                     documents_map[doc.input_file_snapshot.id] = doc
-            
+
             je_templates = []
             for template_snapshot in je_template_snapshots:
                 # Get all input files associated with this template
@@ -367,17 +386,17 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     is_verified = False
                     doc_status = None
                     doc_id = None
-                    
+
                     if input_file.id in documents_map:
                         doc = documents_map[input_file.id]
                         doc_status = doc.status
                         doc_id = doc.id
                         is_verified = doc.status == 'verified'
-                    
+
                     # If any input file is not verified, the template is not fully verified
                     if not is_verified:
                         all_verified = False
-                    
+
                     input_files.append({
                         "file_name": input_file.name,
                         "type": input_file.file_type if hasattr(input_file, 'file_type') else None,
@@ -386,7 +405,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                         "document_id": doc_id,
                         "document_status": doc_status
                     })
-                
+
                 # Check if the template has an export file generated (which happens after verification)
                 has_export = template_snapshot.je_export_file is not None
                 je_templates.append({
@@ -397,7 +416,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     "updated_at": template_snapshot.original_updated_at.isoformat() if template_snapshot.original_updated_at else None,
                     "is_ready": all_verified,
                     "verified_count": sum(1 for f in input_files if f['verified']),
-                    "is_verified": (template_snapshot.status =='verified' and all_verified and has_export),  # Verified if all files are verified and export exists
+                    # Verified if all files are verified and export exists
+                    "is_verified": (template_snapshot.status == 'verified' and all_verified and has_export),
                     "export_file": template_snapshot.je_export_file.url if template_snapshot.je_export_file else None
                 })
 
@@ -422,7 +442,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             )
 
         except Exception as e:
-            logger.error(f"Error retrieving monthly accounting {accounting_id} for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving monthly accounting details.",
@@ -432,9 +453,9 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
     def patch(self, request, client_id, accounting_id, *args, **kwargs):
         """
         Update the status of a monthly accounting session.
-        
+
         PATCH /api/clients/{client_id}/accounting/monthly/{accounting_id}/
-        
+
         Body:
         {
             "status": "in_progress" | "completed" | "failed"
@@ -447,7 +468,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 status.HTTP_400_BAD_REQUEST,
                 "Invalid accounting ID."
             )
-        
+
         try:
             monthly_accounting = self.get_object(client_id, accounting_id)
             if not monthly_accounting:
@@ -455,30 +476,31 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "Monthly accounting session not found or access denied."
                 )
-            
+
             new_status = request.data.get('status')
             if not new_status:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Status is required."
                 )
-            
-            valid_statuses = [choice[0] for choice in FactAICMonthlyAccounting.STATUS_CHOICES]
+
+            valid_statuses = [choice[0]
+                              for choice in FactAICMonthlyAccounting.STATUS_CHOICES]
             if new_status not in valid_statuses:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     f"Invalid status. Valid options: {', '.join(valid_statuses)}"
                 )
-            
+
             with transaction.atomic():
                 monthly_accounting.status = new_status
-                
+
                 # Set completed_at timestamp if status is completed
                 if new_status == 'completed':
                     monthly_accounting.completed_at = timezone.now()
-                
+
                 monthly_accounting.save()
-                
+
                 # Create response data manually
                 response_data = {
                     'id': monthly_accounting.id,
@@ -489,15 +511,16 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     'created_at': monthly_accounting.created_at.isoformat() if monthly_accounting.created_at else None,
                     'completed_at': monthly_accounting.completed_at.isoformat() if monthly_accounting.completed_at else None
                 }
-                
+
                 return create_api_response(
                     status.HTTP_200_OK,
                     f"Status updated to '{new_status}' successfully.",
                     data=response_data
                 )
-        
+
         except Exception as e:
-            logger.error(f"Error updating status for accounting {accounting_id}, client {client_id}: {str(e)}")
+            logger.error(
+                f"Error updating status for accounting {accounting_id}, client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while updating status.",
@@ -508,7 +531,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
         """
         Delete a monthly accounting session.
         Only accounting sessions with 'initiated' or 'failed' status can be deleted.
-        
+
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/
         """
         try:
@@ -518,7 +541,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 status.HTTP_400_BAD_REQUEST,
                 "Invalid accounting ID."
             )
-        
+
         try:
             monthly_accounting = self.get_object(client_id, accounting_id)
             if not monthly_accounting:
@@ -526,27 +549,28 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     status.HTTP_404_NOT_FOUND,
                     "Monthly accounting session not found or access denied."
                 )
-            
+
             # Only allow deletion of certain statuses
             if monthly_accounting.status not in ['initiated', 'failed']:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Only accounting sessions with 'initiated' or 'failed' status can be deleted."
                 )
-            
+
             client_name = monthly_accounting.client.client_name
             month_name = monthly_accounting.get_month_name()
             year = monthly_accounting.year
-            
+
             monthly_accounting.delete()
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Monthly accounting for {client_name} - {month_name} {year} has been deleted successfully."
             )
-        
+
         except Exception as e:
-            logger.error(f"Error deleting monthly accounting {accounting_id} for client {client_id}: {str(e)}")
+            logger.error(
+                f"Error deleting monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while deleting monthly accounting.",
@@ -617,23 +641,26 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             document.file = uploaded_file
             document.uploaded_by = request.user
             document.save()
-            
-            logger.info(f"Starting processing for document {document.id} of type {document.doc_type}.")
+
+            logger.info(
+                f"Starting processing for document {document.id} of type {document.doc_type}.")
 
             try:
                 service = DocumentProcessingService(document)
                 task_id = service.start_processing()
-                logger.info(f"Started processing task {task_id} for document {document.id}")
-                
+                logger.info(
+                    f"Started processing task {task_id} for document {document.id}")
+
                 document.status = "extracting"
                 document.save()
 
             except UnsupportedDocTypeError as e:
-                logger.warning(f"Document type {document.doc_type} does not require processing: {e}")
+                logger.warning(
+                    f"Document type {document.doc_type} does not require processing: {e}")
 
             data = {
                 "doc_id": str(document.id),
-                "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None, 
+                "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
                 "id": document.id,
                 "doc_type": document.doc_type,
                 "status": document.status,
@@ -644,7 +671,8 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             return create_api_response(status.HTTP_200_OK, "File uploaded successfully.", data=data)
 
         except Exception as e:
-            logger.error(f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
+            logger.error(
+                f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
 
             return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
 
@@ -652,7 +680,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
 class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
     """
     Update document status from 'classified' to 'verified'.
-    
+
     Note: Export file generation has been moved to JEAccountingVerifyView.
     Users should now verify the JE template directly instead of the document.
     """
@@ -716,31 +744,34 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
         document.save(update_fields=['status'])
 
         # For bank statements and credit cards, also mark the JE template as verified and generate export file
-        if document.doc_type in ['bank_statement', 'credit_card']:
+        if document.doc_type in BANKING_DOCS:
             # Get the input file snapshot
             input_file_snapshot = document.input_file_snapshot
-            
+
             if input_file_snapshot:
                 # Get associated JE template snapshots
                 je_template_snapshots = input_file_snapshot.factaicjetemplateheadersnapshot_set.all()
-                
+
                 # Mark templates as verified and generate export files
                 for template_snapshot in je_template_snapshots:
                     template_snapshot.status = 'verified'
                     template_snapshot.save(update_fields=['status'])
-                    
+
                     # Generate export file for the template
                     try:
-                        from .je_accounting_views import JEAccountingVerifyView
-                        JEAccountingVerifyView.generate_export_file(template_snapshot)
-                        logger.error(f"Generated export file for JE template {template_snapshot.id}")
+                        from account.accounting.monthly_accounting_views import JEAccountingVerifyView
+                        JEAccountingVerifyView.generate_export_file(
+                            template_snapshot)
+                        logger.error(
+                            f"Generated export file for JE template {template_snapshot.id}")
                     except Exception as e:
-                        logger.error(f"Error generating export file for JE template {template_snapshot.id}: {str(e)}")
+                        logger.error(
+                            f"Error generating export file for JE template {template_snapshot.id}: {str(e)}")
                         # Don't fail the whole operation if export generation fails
                         pass
 
         return create_api_response(
-            message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in ['bank_statement', 'credit_card'] else 'Document verified successfully. Please proceed to verify the JE Template.',
+            message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in BANKING_DOCS else 'Document verified successfully. Please proceed to verify the JE Template.',
             status_code=status.HTTP_200_OK
         )
 
@@ -751,7 +782,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsCustomerOrAccountantOrReviewer]
 
     def _get_document(self, client_id, accounting_id, document_id, request):
-        from account.models import MonthlyAccountingDocument
         user = request.user
         if hasattr(user, 'customer_profile'):
             monthly_accounting = get_object_or_404(
@@ -771,7 +801,8 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         else:
             return None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
         document = get_object_or_404(
-            MonthlyAccountingDocument.objects.select_related('monthly_accounting'),
+            MonthlyAccountingDocument.objects.select_related(
+                'monthly_accounting'),
             id=document_id,
             monthly_accounting=monthly_accounting
         )
@@ -783,29 +814,27 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         """
         Retrieve line items for a processed monthly accounting document.
         Supports both bank statement/credit card line items and attribute items for other document types.
-        
+
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-            from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
-            
-            document, error_response = self._get_document(client_id, accounting_id, document_id, request)
+            document, error_response = self._get_document(
+                client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
-            
+
             # Determine which type of line items to retrieve based on document type
-            if document.doc_type in ['bank_statement', 'credit_card']:
+            if document.doc_type in BANKING_DOCS:
                 # Use BankLineItem for bank statements and credit cards
                 items = MonthlyDocumentBankLineItem.objects.filter(
                     document=document
                 ).select_related(
-                    'gl_account', 
+                    'gl_account',
                     'offset_gl_account',
                 ).order_by('page_number', 'line_number')
-                
+
                 total_count = items.count()
-                
+
                 # Get default offset GL account from input file snapshot
                 default_offset_gl = None
                 try:
@@ -814,28 +843,30 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                         if bank_attributes.exists():
                             default_offset_gl_obj = bank_attributes.first().offset_gl_account
                             if default_offset_gl_obj:
-                                from .monthly_document_line_item_serializers import GLAccountNestedSerializer
-                                default_offset_gl = GLAccountNestedSerializer(default_offset_gl_obj).data
+                                default_offset_gl = GLAccountNestedSerializer(
+                                    default_offset_gl_obj).data
                 except Exception as e:
-                    logger.warning(f"Could not retrieve default offset GL account: {e}")
-                
+                    logger.warning(
+                        f"Could not retrieve default offset GL account: {e}")
+
             else:
                 # Use AttributeItem for other document types (like sales)
                 attribute_items = MonthlyDocumentAttributeItem.objects.filter(
                     document=document
                 ).select_related('attribute', 'gl_account', 'offset_gl_account').order_by('page_number', 'id')
-                
+
                 # Add line numbers to attribute items (1-indexed)
                 items = []
                 for i, item in enumerate(attribute_items, 1):
                     item._line_number = i  # Set line number for serializer
                     items.append(item)
-                
+
                 total_count = len(items)
                 default_offset_gl = None
-            
-            serializer = MonthlyDocumentLineItemSerializer(items, many=True, context={'request': request})
-            
+
+            serializer = MonthlyDocumentLineItemSerializer(
+                items, many=True, context={'request': request})
+
             response_data = {
                 'document_id': document.id,
                 "input_file_name": document.input_file_snapshot.name if document.input_file_snapshot else None,
@@ -847,18 +878,19 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 'status': document.status,
                 'control_items': document.control_item
             }
-            
+
             # Add default offset GL account for bank statements and credit cards
             if default_offset_gl:
                 response_data['default_offset_gl_account'] = default_offset_gl
-            
+
             return create_api_response(
-                status.HTTP_200_OK, 
-                "Line items retrieved successfully.", 
+                status.HTTP_200_OK,
+                "Line items retrieved successfully.",
                 data=response_data
             )
         except Exception as e:
-            logger.error(f"Error retrieving line items for document {document_id}: {str(e)}")
+            logger.error(
+                f"Error retrieving line items for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving line items.",
@@ -870,9 +902,9 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         Create a new line item for a monthly accounting document.
         For bank/credit card: create bank line items
         For other types: create attribute items (only for missing attributes)
-        
+
         POST /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
-        
+
         For bank/credit card:
         {
             "page_number": 1,
@@ -882,7 +914,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             "debit": "125.50",  // either debit OR credit, not both
             "gl_account_id": 123
         }
-        
+
         For other document types:
         {
             "page_number": 1,
@@ -892,20 +924,15 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         }
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer, 
-                MonthlyDocumentAttributeItemSerializer
-            )
-            
-            document, error_response = self._get_document(client_id, accounting_id, document_id, request)
+            document, error_response = self._get_document(
+                client_id, accounting_id, document_id, request)
             if error_response:
                 return error_response
-            
-            if document.doc_type in ['bank_statement', 'credit_card']:
+
+            if document.doc_type in BANKING_DOCS:
                 # Create bank line item
                 serializer = MonthlyDocumentBankLineItemSerializer(
-                    data=request.data, 
+                    data=request.data,
                     context={'request': request, 'document': document}
                 )
             else:
@@ -916,64 +943,67 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                         status.HTTP_400_BAD_REQUEST,
                         "attribute_id is required for non-bank documents."
                     )
-                
+
                 # Check if this attribute already has an extracted item
                 existing_item = MonthlyDocumentAttributeItem.objects.filter(
                     document=document,
                     attribute_id=attribute_id
                 ).first()
-                
+
                 if existing_item:
                     return create_api_response(
                         status.HTTP_400_BAD_REQUEST,
                         f"Attribute item for this attribute already exists. Use PATCH to update it."
                     )
-                
+
                 # Verify attribute belongs to the input file snapshot
                 if not document.input_file_snapshot:
                     return create_api_response(
                         status.HTTP_400_BAD_REQUEST,
                         "Document has no input file snapshot."
                     )
-                
+
                 attribute_exists = document.input_file_snapshot.attribute_snapshots.filter(
                     id=attribute_id
                 ).exists()
-                
+
                 if not attribute_exists:
                     return create_api_response(
                         status.HTTP_400_BAD_REQUEST,
                         "Invalid attribute_id. Attribute does not belong to this document's template."
                     )
-                
+
                 serializer = MonthlyDocumentAttributeItemSerializer(
                     data=request.data,
                     context={'request': request, 'document': document}
                 )
-            
+
             if serializer.is_valid():
                 item = serializer.save()
-                
+
                 # Use the appropriate serializer for output
-                if document.doc_type in ['bank_statement', 'credit_card']:
-                    output_serializer = MonthlyDocumentBankLineItemSerializer(item, context={'request': request})
+                if document.doc_type in BANKING_DOCS:
+                    output_serializer = MonthlyDocumentBankLineItemSerializer(
+                        item, context={'request': request})
                 else:
-                    output_serializer = MonthlyDocumentAttributeItemSerializer(item, context={'request': request})
-                
+                    output_serializer = MonthlyDocumentAttributeItemSerializer(
+                        item, context={'request': request})
+
                 return create_api_response(
-                    status.HTTP_201_CREATED, 
-                    "Line item created successfully.", 
+                    status.HTTP_201_CREATED,
+                    "Line item created successfully.",
                     data=output_serializer.data
                 )
-            
+
             return create_api_response(
-                status.HTTP_400_BAD_REQUEST, 
-                "Validation failed.", 
+                status.HTTP_400_BAD_REQUEST,
+                "Validation failed.",
                 data=serializer.errors
             )
-        
+
         except Exception as e:
-            logger.error(f"Error creating line item for document {document_id}: {str(e)}")
+            logger.error(
+                f"Error creating line item for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while creating line item.",
@@ -988,9 +1018,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
     def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
         """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""
-        from account.models import MonthlyAccountingDocument
-        from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-        
+
         user = request.user
         if hasattr(user, 'customer_profile'):
             monthly_accounting = get_object_or_404(
@@ -1009,18 +1037,18 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             )
         else:
             return None, None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
-        
+
         document = get_object_or_404(
-            MonthlyAccountingDocument, 
-            id=document_id, 
+            MonthlyAccountingDocument,
+            id=document_id,
             monthly_accounting=monthly_accounting
         )
-        
+
         # Try to fetch the appropriate line item based on document type
-        if document.doc_type in ['bank_statement', 'credit_card']:
+        if document.doc_type in BANKING_DOCS:
             line_item = get_object_or_404(
-                MonthlyDocumentBankLineItem, 
-                id=line_item_id, 
+                MonthlyDocumentBankLineItem,
+                id=line_item_id,
                 document=document
             )
             item_type = 'banking_type'
@@ -1031,22 +1059,22 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 document=document
             )
             item_type = 'kv_type'
-        
+
         return line_item, item_type, None
 
     def patch(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
         """
         Update a specific line item. Supports both bank line items and attribute items.
-        
+
         PATCH /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
-        
+
         For bank/credit card:
         {
             "description": "Updated description",
             "credit": "150.00",  // will change from debit to credit
             "gl_account_id": 456
         }
-        
+
         For other document types:
         {
             "value": "updated value",
@@ -1054,23 +1082,18 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer,
-                MonthlyDocumentAttributeItemSerializer
-            )
-            
             line_item, item_type, error_response = self._get_line_item(
                 client_id, accounting_id, document_id, line_item_id, request
             )
             if error_response:
                 return error_response
-            
+
             # Use appropriate serializer based on item type
             if item_type == 'banking_type':
                 serializer = MonthlyDocumentBankLineItemSerializer(
-                    line_item, 
-                    data=request.data, 
-                    partial=True, 
+                    line_item,
+                    data=request.data,
+                    partial=True,
                     context={'request': request}
                 )
             else:
@@ -1080,10 +1103,10 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                     partial=True,
                     context={'request': request}
                 )
-            
+
             if serializer.is_valid():
                 updated_item = serializer.save()
-                
+
                 # Use appropriate output serializer
                 if item_type == 'banking_type':
                     output_serializer = MonthlyDocumentBankLineItemSerializer(
@@ -1093,19 +1116,19 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                     output_serializer = MonthlyDocumentAttributeItemSerializer(
                         updated_item, context={'request': request}
                     )
-                
+
                 return create_api_response(
-                    status.HTTP_200_OK, 
-                    "Line item updated successfully.", 
+                    status.HTTP_200_OK,
+                    "Line item updated successfully.",
                     data=output_serializer.data
                 )
-            
+
             return create_api_response(
-                status.HTTP_400_BAD_REQUEST, 
-                "Validation failed.", 
+                status.HTTP_400_BAD_REQUEST,
+                "Validation failed.",
                 errors=serializer.errors
             )
-        
+
         except Exception as e:
             logger.error(f"Error updating line item {line_item_id}: {str(e)}")
             return create_api_response(
@@ -1119,50 +1142,49 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         Delete a specific line item.
         For bank items: renumber subsequent lines.
         For attribute items: just delete (no renumbering needed).
-        
+
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem
-            
             line_item, item_type, error_response = self._get_line_item(
                 client_id, accounting_id, document_id, line_item_id, request
             )
             if error_response:
                 return error_response
-            
+
             if item_type == 'bank':
                 page_number = line_item.page_number
                 document = line_item.document
                 deleted_line_number = line_item.line_number
-                
+
                 with transaction.atomic():
                     # Delete the line item
                     line_item.delete()
-                    
+
                     # Renumber subsequent lines on the same page
                     updated_count = MonthlyDocumentBankLineItem.objects.filter(
-                        document=document, 
-                        page_number=page_number, 
+                        document=document,
+                        page_number=page_number,
                         line_number__gt=deleted_line_number
                     ).update(line_number=models.F('line_number') - 1)
-                    
-                    logger.error(f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
-                
+
+                    logger.error(
+                        f"Deleted line {deleted_line_number} and renumbered {updated_count} subsequent lines")
+
                 return create_api_response(
-                    status.HTTP_200_OK, 
+                    status.HTTP_200_OK,
                     f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
                 )
             else:
                 # For attribute items, just delete
                 line_item.delete()
                 logger.error(f"Deleted attribute item {line_item_id}")
-                
+
                 return create_api_response(
                     status.HTTP_200_OK,
                     "Line item deleted successfully."
                 )
-        
+
         except Exception as e:
             logger.error(f"Error deleting line item {line_item_id}: {str(e)}")
             return create_api_response(

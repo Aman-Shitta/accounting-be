@@ -12,23 +12,28 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterModelOptions(
             name='dimaicaccountant',
-            options={'verbose_name': 'Accountant', 'verbose_name_plural': 'Accountants'},
+            options={'verbose_name': 'Accountant',
+                     'verbose_name_plural': 'Accountants'},
         ),
         migrations.AlterModelOptions(
             name='dimaicassistant',
-            options={'verbose_name': 'Assistant', 'verbose_name_plural': 'Assistants'},
+            options={'verbose_name': 'Assistant',
+                     'verbose_name_plural': 'Assistants'},
         ),
         migrations.AlterModelOptions(
             name='dimaicclient',
-            options={'verbose_name': 'Client', 'verbose_name_plural': 'Clients'},
+            options={'verbose_name': 'Client',
+                     'verbose_name_plural': 'Clients'},
         ),
         migrations.AlterModelOptions(
             name='dimaiccontact',
-            options={'verbose_name': 'Contact', 'verbose_name_plural': 'Contacts'},
+            options={'verbose_name': 'Contact',
+                     'verbose_name_plural': 'Contacts'},
         ),
         migrations.AlterModelOptions(
             name='dimaiccustomer',
-            options={'verbose_name': 'Customer', 'verbose_name_plural': 'Customers'},
+            options={'verbose_name': 'Customer',
+                     'verbose_name_plural': 'Customers'},
         ),
         migrations.AlterModelTable(
             name='dimaicaccountant',

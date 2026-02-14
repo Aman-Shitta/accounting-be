@@ -1,8 +1,8 @@
-from typing import List, Dict, Union
-
-
 import logging
+from typing import Dict, List, Union
+
 logger = logging.getLogger(__name__)
+
 
 class Configuration:
     def __init__(
@@ -88,7 +88,6 @@ class Configuration:
                         {formatting}
             """
 
-
         else:
             return """
             You are an expert data extraction specialist. 
@@ -104,7 +103,7 @@ def prepare_prompt(config: Configuration) -> str:
     Generates a refined prompt based on the given configuration and document type.
     """
     prompt = config.base_prompt
-    
+
     if config.doc_type in ["bank_statement", "credit_card"]:
         # Handle bank statement and credit card documents
         return _prepare_bank_statement_prompt(config, prompt)
@@ -123,7 +122,7 @@ def _prepare_bank_statement_prompt(config: Configuration, prompt: str) -> str:
     # Add instructions based on configuration
     if config.extract_key_items and config.key_items:
         prompt += f"\nExtract key items such as:\n{chr(10).join(config.key_items)}.\n"
-    
+
     if config.extract_line_items and config.line_items:
         prompt += f"\nExtract line items (transactions) including {', '.join(config.line_items)}.\n"
 
@@ -133,15 +132,18 @@ def _prepare_bank_statement_prompt(config: Configuration, prompt: str) -> str:
     # Format key items and line items for bank statements
     key_items_str = ""
     line_items_str = ""
-    
+
     if config.key_items_formatted:
         if isinstance(config.key_items_formatted, list):
-            key_items_str = ", ".join([f'"{convert_to_snake_case(item.split(":")[0])}": "value/null"' for item in config.key_items_formatted])
+            key_items_str = ", ".join(
+                [f'"{convert_to_snake_case(item.split(":")[0])}": "value/null"' for item in config.key_items_formatted])
         elif isinstance(config.key_items_formatted, dict):
-            key_items_str = ", ".join([f'"{convert_to_snake_case(key)}": "value/null"' for key in config.key_items_formatted.keys()])
-    
+            key_items_str = ", ".join(
+                [f'"{convert_to_snake_case(key)}": "value/null"' for key in config.key_items_formatted.keys()])
+
     if config.line_items:
-        line_items_str = ", ".join([f'"{convert_to_snake_case(item.split(":")[0])}": "value/null"' for item in config.line_items])
+        line_items_str = ", ".join(
+            [f'"{convert_to_snake_case(item.split(":")[0])}": "value/null"' for item in config.line_items])
 
     formatting = f"""
     **Handling Different Formats:**  
@@ -180,40 +182,42 @@ def _prepare_sales_prompt(config: Configuration, prompt: str) -> str:
     # Generate attribute-specific instructions from key_items_formatted
     attribute_instructions = ""
     key_items_json = ""
-    
+
     if config.key_items_formatted:
         if isinstance(config.key_items_formatted, dict):
             # key_items_formatted is a dict with attribute names as keys and instructions as values
             instructions_list = []
             json_fields = []
-            
+
             for attribute, instruction in config.key_items_formatted.items():
                 snake_case_attr = convert_to_snake_case(attribute)
                 instructions_list.append(f"- **{attribute}**: {instruction}")
                 json_fields.append(f'"{snake_case_attr}": "value/null"')
-            
+
             attribute_instructions = "\n".join(instructions_list)
             key_items_json = ",\n            ".join(json_fields)
-            
+
         elif isinstance(config.key_items_formatted, list):
             # Fallback: key_items_formatted is a list of strings
             instructions_list = []
             json_fields = []
-            
+
             for item in config.key_items_formatted:
                 if ":" in item:
                     attr_name, instruction = item.split(":", 1)
                     snake_case_attr = convert_to_snake_case(attr_name.strip())
-                    instructions_list.append(f"- **{attr_name.strip()}**: {instruction.strip()}")
+                    instructions_list.append(
+                        f"- **{attr_name.strip()}**: {instruction.strip()}")
                     json_fields.append(f'"{snake_case_attr}": "value/null"')
                 else:
                     snake_case_attr = convert_to_snake_case(item)
-                    instructions_list.append(f"- **{item}**: Extract the value for {item}")
+                    instructions_list.append(
+                        f"- **{item}**: Extract the value for {item}")
                     json_fields.append(f'"{snake_case_attr}": "value/null"')
-            
+
             attribute_instructions = "\n".join(instructions_list)
             key_items_json = ",\n            ".join(json_fields)
-    
+
     # Add excluded fields instruction
     if config.excluded_fields:
         prompt += f"\n**EXCLUDED FIELDS:** Do not extract the following fields: {', '.join(config.excluded_fields)}.\n"
@@ -238,9 +242,10 @@ def _prepare_sales_prompt(config: Configuration, prompt: str) -> str:
         attribute_instructions=attribute_instructions,
         formatting=formatting
     )
-    prompt =  prompt.replace("    ", "") # Remove leading spaces for cleaner formatting
+    # Remove leading spaces for cleaner formatting
+    prompt = prompt.replace("    ", "")
     logger.error("Sales Prompt formed:", prompt)
-    return  prompt
+    return prompt
 
 
 def _prepare_generic_prompt(config: Configuration, prompt: str) -> str:
@@ -250,14 +255,15 @@ def _prepare_generic_prompt(config: Configuration, prompt: str) -> str:
     # Add basic instructions
     if config.extract_key_items and config.key_items:
         prompt += f"\nExtract key items: {', '.join(config.key_items)}.\n"
-    
+
     if config.excluded_fields:
         prompt += f"\nDo not extract: {', '.join(config.excluded_fields)}.\n"
-    
+
     # Basic formatting placeholder
     if "{formatting}" in prompt:
-        prompt = prompt.format(formatting="Return data as a structured JSON object.")
-    
+        prompt = prompt.format(
+            formatting="Return data as a structured JSON object.")
+
     logger.error("Generic Prompt formed:", prompt)
     return prompt
 

@@ -1,12 +1,17 @@
 
 from rest_framework import serializers
 
+
 class AzureInviteCustomerSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    customer_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    street = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    city = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    state_abrevation = serializers.CharField(max_length=2, required=False, allow_blank=True)
+    customer_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True)
+    street = serializers.CharField(
+        max_length=255, required=False, allow_blank=True)
+    city = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
+    state_abrevation = serializers.CharField(
+        max_length=2, required=False, allow_blank=True)
     zip_code = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_email(self, value):

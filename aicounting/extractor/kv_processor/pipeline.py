@@ -1,5 +1,6 @@
 import re
-import os, sys
+import os
+import sys
 import json
 from django.db import transaction
 from typing import List, Dict
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class TransactionExtractor:
-    
+
     def __init__(self, processor, schema, prompt):
         self.processor = processor
         self.schema = schema
@@ -48,7 +49,8 @@ class TransactionExtractor:
         except Exception as te:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
             return {}
 
         try:
@@ -57,8 +59,10 @@ class TransactionExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
             parsed_data = {}
 
         for item in parsed_data.get("line_items", []):
@@ -81,7 +85,7 @@ class DocumentProcessor(BaseDocumentProcessor):
 
     def __init__(self, config: Configuration, doc: MonthlyAccountingDocument):
         super().__init__(config, doc)
-        
+
         # Define the transaction extraction schema
         self.ai_schema = \
             types.Schema(
@@ -102,30 +106,35 @@ class DocumentProcessor(BaseDocumentProcessor):
                 required=["key_items"]
             )
         self.page_data = list()
-        self.extracted_attributes = set()  # Track already extracted attributes to avoid duplicates
-        self.transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
+        # Track already extracted attributes to avoid duplicates
+        self.extracted_attributes = set()
+        self.transaction_extractor = TransactionExtractor(
+            self, self.ai_schema, self.prompt)
 
     def process_document(self, file_bytes: bytes, mime_type: str, md: bool) -> Dict[str, any]:
         from extractor.utils import split_pdf_to_pages
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
-    
+
         for i, page_bytes in enumerate(page_bytes_list):
             try:
-                parsed_data = self.transaction_extractor.extract(page_bytes, mime_type)
+                parsed_data = self.transaction_extractor.extract(
+                    page_bytes, mime_type)
                 # Store page data with page number
                 page_result = {
                     "page_number": i + 1,
                     "key_items": parsed_data.get("key_items", [])
                 }
                 self.page_data.append(page_result)
-                
+
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
-        
+                logger.error(
+                    f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
+                logger.error(
+                    f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes: {page_bytes[:20]}")
+
         # Process and save extracted data
         processing_stats = self._save_extracted_data()
         return {
@@ -133,14 +142,14 @@ class DocumentProcessor(BaseDocumentProcessor):
             "processing_stats": processing_stats,
             "page_count": len(self.page_data)
         }
-    
+
     def _save_extracted_data(self) -> Dict[str, int]:
         """
         Save extracted data to database models.
-        
+
         Args:
             self.page_data: List of page data from processor
-            
+
         Returns:
             Dict with processing statistics
         """
@@ -154,7 +163,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         configured_attribute_instances = {
             obj.name.lower().replace(" ", "_"): obj
             for obj in FactAICInputFileAttributeSnapshot.objects.only('id', 'name', 'type', 'gl_account', 'offset_gl_account')
-                .filter(input_file_snapshot=self.document.input_file_snapshot)
+            .filter(input_file_snapshot=self.document.input_file_snapshot)
         }
 
         with transaction.atomic():
@@ -162,14 +171,16 @@ class DocumentProcessor(BaseDocumentProcessor):
                 page_number = page_result.get("page_number", 1)
                 extracted_attributes_data = page_result.get("key_items", [])
                 for extracted_attribute in extracted_attributes_data:
-                    extracted_key_name = extracted_attribute.get("key", "").lower().replace(" ", "_")
-                    
+                    extracted_key_name = extracted_attribute.get(
+                        "key", "").lower().replace(" ", "_")
+
                     # Skip if this attribute was already extracted from a previous page
                     if extracted_key_name in self.extracted_attributes:
                         stats["duplicate_attributes_skipped"] += 1
                         continue
 
-                    attribute_instance = configured_attribute_instances.get(extracted_key_name)
+                    attribute_instance = configured_attribute_instances.get(
+                        extracted_key_name)
 
                     if attribute_instance and (extracted_attribute.get("value").strip() and extracted_attribute.get("value").strip().lower() != "null"):
                         MonthlyDocumentAttributeItem.objects.create(
@@ -188,7 +199,9 @@ class DocumentProcessor(BaseDocumentProcessor):
 
             for attr_name, attr_obj in configured_attribute_instances.items():
                 if attr_name not in self.extracted_attributes:
-                    logger.error("Saving empty attribute for missing: ", attr_name)
+                    logger.error(
+                        "Saving empty attribute for missing: %s", attr_name
+                    )
                     MonthlyDocumentAttributeItem.objects.create(
                         document=self.document,
                         attribute=attr_obj,

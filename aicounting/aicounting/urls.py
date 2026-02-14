@@ -26,15 +26,14 @@ app_v1_url_patterns = [
     # path("document/", include('document.urls')),
     path("user/", include('user.urls')),
     path("account/", include('account.urls')),
- 
+
 ]
- 
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/v1/", include((app_v1_url_patterns, 'api_v1'))),
 
-] 
+]
 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-

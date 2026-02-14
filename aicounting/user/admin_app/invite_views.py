@@ -18,6 +18,7 @@ from authentication.constants import CUSTOMER, REVIEWER
 import logging
 logger = logging.getLogger(__name__)
 
+
 class AzureInviteView(GenericAPIView):
     """
     Invite a customer to Azure AD B2C and create a local customer record in non-verified state.
@@ -26,7 +27,7 @@ class AzureInviteView(GenericAPIView):
     serializer_class = AzureInviteCustomerSerializer
     permission_classes = [IsSuperUser]
     authentication_classes = [AdminJWTAuthentication]
-    
+
     msal_graph = MsalGraphConf()
 
     def post(self, request, *args, **kwargs):
@@ -43,20 +44,21 @@ class AzureInviteView(GenericAPIView):
         request_user = request.user
 
         # Validate the serializer
-        serializer = self.serializer_class(data=data, context={'request': request})
+        serializer = self.serializer_class(
+            data=data, context={'request': request})
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message=AzureInviteViewMessages["validation_error"],
                 errors=serializer.errors
             )
-        
+
         if user_type not in [CUSTOMER, REVIEWER]:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message="Invalid user type for invitation."
             )
-        
+
         if user_type == CUSTOMER:
             # Check if customer already exists
             added_user, error_message = create_user_for_customer(
@@ -100,16 +102,17 @@ class AzureInviteView(GenericAPIView):
 
         # Send Azure AD B2C invite
         invite_result = self.msal_graph.send_azure_invite_with_group(
-            email=email, 
-            first_name=first_name, 
-            last_name=last_name, 
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
             user_type=user_type,
             redirect_url=self.msal_graph.APP_REDIRECT_URI,
             message_body=message_body
         )
 
         if not invite_result.get("success"):
-            logger.error("[DEBUG] Azure invite failed:", invite_result.get("error"))
+            logger.error("[DEBUG] Azure invite failed:",
+                         invite_result.get("error"))
             # If Azure invite fails, we should clean up the created customer
             added_user.system_user.delete()
             return create_api_response(

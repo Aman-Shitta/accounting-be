@@ -7,7 +7,7 @@ per assistant by Celery Beat.
 
 import uuid
 from django.db import models
-
+from django.utils import timezone
 
 class ClassificationQueue(models.Model):
     """
@@ -150,14 +150,12 @@ class ClassificationQueue(models.Model):
     
     def mark_processing(self):
         """Mark this item as processing."""
-        from django.utils import timezone
         self.status = self.Status.PROCESSING
         self.started_at = timezone.now()
         self.save(update_fields=['status', 'started_at', 'updated_at'])
     
     def mark_completed(self):
         """Mark this item as completed."""
-        from django.utils import timezone
         self.status = self.Status.COMPLETED
         self.completed_at = timezone.now()
         self.save(update_fields=['status', 'completed_at', 'updated_at'])
@@ -168,7 +166,6 @@ class ClassificationQueue(models.Model):
         
         If retries remaining, set back to pending for retry.
         """
-        from django.utils import timezone
         self.retry_count += 1
         self.error_message = error_message
         

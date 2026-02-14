@@ -1,22 +1,26 @@
+import logging
 import re
 from decimal import Decimal, InvalidOperation
-from django.db import transaction, models
+
+from django.db import models, transaction
 from rest_framework import serializers
 
 from account.models import (
-    MonthlyDocumentBankLineItem, 
-    MonthlyDocumentAttributeItem
+    DimAICGLAcct,
+    MonthlyDocumentAttributeItem,
+    MonthlyDocumentBankLineItem,
+    FactAICInputFileAttributeSnapshot,
 )
-from account.models import DimAICGLAcct
 
-import logging
 logger = logging.getLogger(__name__)
+
 
 class GLAccountNestedSerializer(serializers.ModelSerializer):
     """Nested serializer for GL Account details"""
     class Meta:
         model = DimAICGLAcct
-        fields = ["id", "account_number", "account_name", "description", "account_class", "sub_class"]
+        fields = ["id", "account_number", "account_name",
+                  "description", "account_class", "sub_class"]
 
 
 class MonthlyDocumentLineItemSerializer(serializers.Serializer):
@@ -27,7 +31,8 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     page_number = serializers.IntegerField()
     line_number = serializers.IntegerField()
-    date = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+    date = serializers.CharField(
+        allow_null=True, allow_blank=True, required=False)
     description = serializers.CharField()
     debit = serializers.SerializerMethodField()
     credit = serializers.SerializerMethodField()
@@ -41,25 +46,25 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     gl_account = GLAccountNestedSerializer(read_only=True)
     offset_gl_account = GLAccountNestedSerializer(read_only=True)
     gl_account_id = serializers.PrimaryKeyRelatedField(
-        queryset=DimAICGLAcct.objects.all(), 
-        write_only=True, 
-        required=False, 
+        queryset=DimAICGLAcct.objects.all(),
+        write_only=True,
+        required=False,
         allow_null=True,
         help_text="ID of the GL account to assign"
     )
-    
+
     def get_is_rectified(self, obj):
         """Return rectification flag"""
         if isinstance(obj, MonthlyDocumentBankLineItem):
             return obj.is_rectified
         return False
-    
+
     def get_was_missing(self, obj):
         """Return was_missing flag"""
         if isinstance(obj, MonthlyDocumentBankLineItem):
             return obj.was_missing
         return False
-    
+
     def get_was_compared(self, obj):
         """Return was_compared flag"""
         if isinstance(obj, MonthlyDocumentBankLineItem):
@@ -71,19 +76,19 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
             return obj.rectified_confidence
         return None
-    
+
     def get_rectification_reasoning(self, obj):
         """Return rectification reasoning"""
         if isinstance(obj, MonthlyDocumentBankLineItem) and obj.is_rectified:
             return obj.rectification_reasoning
         return None
-    
+
     def get_rectified_debit(self, obj):
         """Return rectified debit amount if available"""
         if isinstance(obj, MonthlyDocumentBankLineItem):
             return str(obj.debit_amount)
         return None
-    
+
     def get_rectified_credit(self, obj):
         """Return rectified credit amount if available"""
         if isinstance(obj, MonthlyDocumentBankLineItem):
@@ -145,7 +150,8 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
             return {
                 'id': instance.id,
                 'page_number': instance.page_number,  # Use actual page_number from the model
-                'line_number': getattr(instance, '_line_number', 1),  # Will be set during queryset annotation
+                # Will be set during queryset annotation
+                'line_number': getattr(instance, '_line_number', 1),
                 'date': None,  # Attributes don't have dates
                 'description': instance.attribute.name if instance.attribute else 'Unknown Attribute',
                 'debit': self.get_debit(instance),
@@ -171,17 +177,20 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         is_create = self.instance is None
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
-        
+
         if is_create:
             if not debit and not credit:
-                raise serializers.ValidationError("Either 'debit' or 'credit' amount is required.")
+                raise serializers.ValidationError(
+                    "Either 'debit' or 'credit' amount is required.")
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
         else:
             # For updates, allow neither (no amount change) or only one
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
-        
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
+
         return attrs
 
     def _parse_amount(self, clean_value):
@@ -201,27 +210,28 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         document = self.context.get('document')
         if not document:
             raise serializers.ValidationError("Document context is required.")
-        
+
         # Only support creating BankLineItems, not AttributeItems
-        if document.doc_type not in ['bank_statement', 'credit_card']:
-            raise serializers.ValidationError("Creating line items is only supported for bank statements and credit cards.")
-        
+        if document.doc_type not in BANKING_DOCS:
+            raise serializers.ValidationError(
+                "Creating line items is only supported for bank statements and credit cards.")
+
         return self._create_bank_line_item(validated_data)
 
     def _create_bank_line_item(self, validated_data):
         """Create MonthlyDocumentBankLineItem"""
         request = self.context.get('request')
         document = self.context.get('document')
-        
+
         page_number = validated_data.get('page_number')
         line_number = validated_data.get('line_number')
         date = validated_data.get('date')
         description = validated_data.get('description')
         gl_account = validated_data.get('gl_account_id')
-        
+
         if not page_number:
             raise serializers.ValidationError("Page number is required.")
-        
+
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
 
@@ -232,25 +242,25 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         if line_number is None or line_number <= 0:
             # Append to end of page
             max_line = MonthlyDocumentBankLineItem.objects.filter(
-                document=document, 
+                document=document,
                 page_number=page_number
             ).aggregate(max_line=models.Max('line_number'))['max_line']
             line_number = (max_line or 0) + 1
         else:
             # For specific line number insertion, avoid conflicts
             existing_lines = list(MonthlyDocumentBankLineItem.objects.filter(
-                document=document, 
+                document=document,
                 page_number=page_number
             ).values_list('line_number', flat=True).order_by('line_number'))
-            
+
             if line_number in existing_lines:
                 # Need to shift lines to make room
                 lines_to_update = MonthlyDocumentBankLineItem.objects.filter(
-                    document=document, 
-                    page_number=page_number, 
+                    document=document,
+                    page_number=page_number,
                     line_number__gte=line_number
                 ).order_by('-line_number')
-                
+
                 # Shift each line individually to avoid bulk update conflicts
                 for line_item in lines_to_update:
                     line_item.line_number = line_item.line_number + 1
@@ -288,14 +298,16 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         """Update existing line item - only supports MonthlyDocumentBankLineItem for now"""
         if not isinstance(instance, MonthlyDocumentBankLineItem):
-            raise serializers.ValidationError("Updating is only supported for bank line items.")
-        
+            raise serializers.ValidationError(
+                "Updating is only supported for bank line items.")
+
         request = self.context.get('request')
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
-        
+
         if debit and credit:
-            raise serializers.ValidationError("Provide only one of 'debit' or 'credit'.")
+            raise serializers.ValidationError(
+                "Provide only one of 'debit' or 'credit'.")
 
         # Update basic fields
         if 'date' in validated_data:
@@ -309,10 +321,11 @@ class MonthlyDocumentLineItemSerializer(serializers.Serializer):
         if debit is not None or credit is not None:
             debit_amount = self._parse_amount(debit)
             credit_amount = self._parse_amount(credit)
-            
+
             if debit_amount is not None and credit_amount is not None:
-                raise serializers.ValidationError("Only one of debit or credit can be set.")
-            
+                raise serializers.ValidationError(
+                    "Only one of debit or credit can be set.")
+
             if debit_amount is not None:
                 instance.transaction_type = 'debit'
                 instance.amount = debit_amount
@@ -331,14 +344,15 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
     gl_account = GLAccountNestedSerializer(read_only=True)
     offset_gl_account = GLAccountNestedSerializer(read_only=True)
     gl_account_id = serializers.PrimaryKeyRelatedField(
-        queryset=DimAICGLAcct.objects.all(), 
-        write_only=True, 
-        required=False, 
+        queryset=DimAICGLAcct.objects.all(),
+        write_only=True,
+        required=False,
         allow_null=True,
         help_text="ID of the GL account to assign"
     )
     attribute_id = serializers.IntegerField(write_only=True, required=True)
-    attribute_name = serializers.CharField(source='attribute.name', read_only=True)
+    attribute_name = serializers.CharField(
+        source='attribute.name', read_only=True)
 
     class Meta:
         model = MonthlyDocumentAttributeItem
@@ -351,7 +365,7 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
             "debit",
             "credit",
             "gl_account",
-            "offset_gl_account", 
+            "offset_gl_account",
             "gl_account_id",
         ]
         read_only_fields = ["id", "attribute_name"]
@@ -390,14 +404,18 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         if is_create:
             # For create, we need either debit or credit
             if not debit and not credit:
-                raise serializers.ValidationError("Either 'debit' or 'credit' amount is required.")
+                raise serializers.ValidationError(
+                    "Either 'debit' or 'credit' amount is required.")
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
         else:
             # For updates, check the instance's transaction type
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
-        logger.error("self.instance.transaction_type :: ", self.instance.transaction_type)
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
+        logger.error("self.instance.transaction_type :: ",
+                     self.instance.transaction_type)
 
         # Check if trying to update the wrong column based on transaction type
         if self.instance.transaction_type == 'debit':
@@ -410,7 +428,7 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "credit": "This is a credit transaction. You can only update the 'credit' column, not 'debit'."
                 })
-        
+
         return attrs
 
     def _parse_amount(self, clean_value):
@@ -428,26 +446,27 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create new attribute item"""
         request = self.context.get('request')
-        document = self.context.get('document')  # MonthlyAccountingDocument instance
-        
+        # MonthlyAccountingDocument instance
+        document = self.context.get('document')
+
         if not document:
             raise serializers.ValidationError("Document context is required.")
-        
+
         page_number = validated_data.get('page_number', 1)
         attribute_id = validated_data.pop('attribute_id')
         gl_account = validated_data.get('gl_account_id')
         value = validated_data.get('value')
-        
+
         # Get the attribute snapshot from the input file
         try:
-            from account.models import FactAICInputFileAttributeSnapshot
             attribute = FactAICInputFileAttributeSnapshot.objects.get(
                 id=attribute_id,
                 input_file=document.input_file_snapshot
             )
         except FactAICInputFileAttributeSnapshot.DoesNotExist:
-            raise serializers.ValidationError("Invalid attribute_id or attribute does not belong to this document.")
-        
+            raise serializers.ValidationError(
+                "Invalid attribute_id or attribute does not belong to this document.")
+
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
 
@@ -459,7 +478,8 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         amount = debit_amount if transaction_type == 'debit' else credit_amount
 
         # Get default offset GL account from the attribute
-        default_offset_gl = attribute.offset_gl_account if hasattr(attribute, 'offset_gl_account') else None
+        default_offset_gl = attribute.offset_gl_account if hasattr(
+            attribute, 'offset_gl_account') else None
 
         # Create the attribute item
         item = MonthlyDocumentAttributeItem.objects.create(
@@ -479,9 +499,10 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
-        
+
         if debit and credit:
-            raise serializers.ValidationError("Provide only one of 'debit' or 'credit'.")
+            raise serializers.ValidationError(
+                "Provide only one of 'debit' or 'credit'.")
 
         # Update basic fields
         if 'page_number' in validated_data:
@@ -493,10 +514,11 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
         if debit is not None or credit is not None:
             debit_amount = self._parse_amount(debit)
             credit_amount = self._parse_amount(credit)
-            
+
             if debit_amount is not None and credit_amount is not None:
-                raise serializers.ValidationError("Only one of debit or credit can be set.")
-            
+                raise serializers.ValidationError(
+                    "Only one of debit or credit can be set.")
+
             if debit_amount is not None:
                 instance.transaction_type = 'debit'
                 instance.value = debit_amount
@@ -515,9 +537,9 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
     gl_account = GLAccountNestedSerializer(read_only=True)
     offset_gl_account = GLAccountNestedSerializer(read_only=True)
     gl_account_id = serializers.PrimaryKeyRelatedField(
-        queryset=DimAICGLAcct.objects.all(), 
-        write_only=True, 
-        required=False, 
+        queryset=DimAICGLAcct.objects.all(),
+        write_only=True,
+        required=False,
         allow_null=True,
         help_text="ID of the GL account to assign"
     )
@@ -527,7 +549,7 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "page_number",
-            "line_number", 
+            "line_number",
             "date",
             "description",
             "debit",
@@ -557,17 +579,20 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         is_create = self.instance is None
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
-        
+
         if is_create:
             if not debit and not credit:
-                raise serializers.ValidationError("Either 'debit' or 'credit' amount is required.")
+                raise serializers.ValidationError(
+                    "Either 'debit' or 'credit' amount is required.")
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
         else:
             # For updates, allow neither (no amount change) or only one
             if debit and credit:
-                raise serializers.ValidationError("Provide only one of 'debit' or 'credit', not both.")
-        
+                raise serializers.ValidationError(
+                    "Provide only one of 'debit' or 'credit', not both.")
+
         return attrs
 
     def _parse_amount(self, clean_value):
@@ -585,20 +610,21 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create new line item with proper line number handling to avoid duplicate key constraint"""
         request = self.context.get('request')
-        document = self.context.get('document')  # MonthlyAccountingDocument instance
-        
+        # MonthlyAccountingDocument instance
+        document = self.context.get('document')
+
         if not document:
             raise serializers.ValidationError("Document context is required.")
-        
+
         page_number = validated_data.get('page_number')
         line_number = validated_data.get('line_number')
         date = validated_data.get('date')
         description = validated_data.get('description')
         gl_account = validated_data.get('gl_account_id')
-        
+
         if not page_number:
             raise serializers.ValidationError("Page number is required.")
-        
+
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
 
@@ -609,7 +635,7 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         if line_number is None or line_number <= 0:
             # Append to end of page
             max_line = MonthlyDocumentBankLineItem.objects.filter(
-                document=document, 
+                document=document,
                 page_number=page_number
             ).aggregate(max_line=models.Max('line_number'))['max_line']
             line_number = (max_line or 0) + 1
@@ -617,19 +643,19 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
             # For specific line number insertion, avoid conflicts
             # Get all existing line numbers on this page
             existing_lines = list(MonthlyDocumentBankLineItem.objects.filter(
-                document=document, 
+                document=document,
                 page_number=page_number
             ).values_list('line_number', flat=True).order_by('line_number'))
-            
+
             if line_number in existing_lines:
                 # Need to shift lines to make room
                 # Update in reverse order to avoid constraint violations
                 lines_to_update = MonthlyDocumentBankLineItem.objects.filter(
-                    document=document, 
-                    page_number=page_number, 
+                    document=document,
+                    page_number=page_number,
                     line_number__gte=line_number
                 ).order_by('-line_number')
-                
+
                 # Shift each line individually to avoid bulk update conflicts
                 for line_item in lines_to_update:
                     line_item.line_number = line_item.line_number + 1
@@ -639,11 +665,12 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         transaction_type = 'debit' if debit_amount is not None else 'credit'
         amount = debit_amount if transaction_type == 'debit' else credit_amount
 
-        user = self.context.get('request').user if self.context.get('request') else None
+        user = self.context.get(
+            'request').user if self.context.get('request') else None
 
         # Get default offset GL account from input file snapshot
         default_offset_gl = None
-        
+
         if not hasattr(user, 'reviewer_profile'):
             try:
                 bank_attributes = document.input_file_snapshot.attribute_snapshots.all()
@@ -676,9 +703,10 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         debit = request.data.get('debit') if request else None
         credit = request.data.get('credit') if request else None
-        
+
         if debit and credit:
-            raise serializers.ValidationError("Provide only one of 'debit' or 'credit'.")
+            raise serializers.ValidationError(
+                "Provide only one of 'debit' or 'credit'.")
 
         # Update basic fields
         if 'date' in validated_data:
@@ -693,10 +721,11 @@ class MonthlyDocumentBankLineItemSerializer(serializers.ModelSerializer):
         if debit is not None or credit is not None:
             debit_amount = self._parse_amount(debit)
             credit_amount = self._parse_amount(credit)
-            
+
             if debit_amount is not None and credit_amount is not None:
-                raise serializers.ValidationError("Only one of debit or credit can be set.")
-            
+                raise serializers.ValidationError(
+                    "Only one of debit or credit can be set.")
+
             if debit_amount is not None:
                 instance.transaction_type = 'debit'
                 instance.amount = debit_amount

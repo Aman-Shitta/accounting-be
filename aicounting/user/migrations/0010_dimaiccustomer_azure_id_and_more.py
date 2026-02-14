@@ -13,26 +13,31 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='dimaiccustomer',
             name='azure_id',
-            field=models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration', max_length=255, null=True, unique=True, verbose_name='Azure ID'),
+            field=models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration',
+                                   max_length=255, null=True, unique=True, verbose_name='Azure ID'),
         ),
         migrations.AddField(
             model_name='dimaiccustomer',
             name='refresher_token',
-            field=models.TextField(blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token'),
+            field=models.TextField(
+                blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token'),
         ),
         migrations.AddField(
             model_name='dimaicuser',
             name='azure_id',
-            field=models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration', max_length=255, null=True, unique=True, verbose_name='Azure ID'),
+            field=models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration',
+                                   max_length=255, null=True, unique=True, verbose_name='Azure ID'),
         ),
         migrations.AddField(
             model_name='dimaicuser',
             name='refresher_token',
-            field=models.TextField(blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token'),
+            field=models.TextField(
+                blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token'),
         ),
         migrations.AlterField(
             model_name='dimaicclientdocument',
             name='document_type',
-            field=models.CharField(choices=[('chart_of_account', 'Chart of Accounts'), ('vendor_list', 'Vendor List'), ('gl_history', 'GL History')], max_length=20, verbose_name='Document Type'),
+            field=models.CharField(choices=[('chart_of_account', 'Chart of Accounts'), ('vendor_list', 'Vendor List'), (
+                'gl_history', 'GL History')], max_length=20, verbose_name='Document Type'),
         ),
     ]

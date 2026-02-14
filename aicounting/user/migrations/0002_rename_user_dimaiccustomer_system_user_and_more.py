@@ -21,13 +21,15 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='dimaicclient',
             name='id',
-            field=models.CharField(default=1, max_length=255, verbose_name='Client Assigned ID'),
+            field=models.CharField(
+                default=1, max_length=255, verbose_name='Client Assigned ID'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='dimaicuser',
             name='system_user',
-            field=models.OneToOneField(default=1, help_text='Link to Django user for authentication and permissions', on_delete=django.db.models.deletion.CASCADE, related_name='User_profile', to=settings.AUTH_USER_MODEL, verbose_name='Linked Django User'),
+            field=models.OneToOneField(default=1, help_text='Link to Django user for authentication and permissions',
+                                       on_delete=django.db.models.deletion.CASCADE, related_name='User_profile', to=settings.AUTH_USER_MODEL, verbose_name='Linked Django User'),
             preserve_default=False,
         ),
     ]

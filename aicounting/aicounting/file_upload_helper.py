@@ -13,13 +13,15 @@ Usage:
     models.FileField(upload_to=upload_to_input_files_folder)
 """
 
-from datetime import datetime
-import os
 import json
 import logging
-from typing import Optional, Any, Dict, Union
-from django.core.files.storage import default_storage
+import os
+from datetime import datetime
+from typing import Any, Dict, Optional, Union
+
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+
 from aicounting.azure_storage_paths import AzureBlobPathBuilder, AzureStoragePathConstants
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ def get_blob_path_builder(instance: Any) -> Optional[AzureBlobPathBuilder]:
     """
     Centralized helper to extract Customer/Client info from ANY model instance
     and return an AzureBlobPathBuilder.
-    
+
     Traverses common relationships (client, customer, monthly_accounting, calculations).
     """
     try:
@@ -42,20 +44,20 @@ def get_blob_path_builder(instance: Any) -> Optional[AzureBlobPathBuilder]:
         elif hasattr(instance, 'customer'):
             # Some models might link direct to customer, but usually we need client for full path
             customer = instance.customer
-            # If strictly customer based, we might lack client_id. 
-            # The Builder requires both. If no client, we can't use the standard builder 
+            # If strictly customer based, we might lack client_id.
+            # The Builder requires both. If no client, we can't use the standard builder
             # effectively without a dummy client structure or a different builder.
             # However, most file uploads in this system seem client-centric.
             pass
-            
+
         # Indirect relationships (common in this codebase)
         elif hasattr(instance, 'monthly_accounting') and hasattr(instance.monthly_accounting, 'client'):
             client = instance.monthly_accounting.client
-        
+
         # If we found a client, we get the customer from it
         if client:
             customer = client.customer
-            
+
         if client and customer:
             return AzureBlobPathBuilder(
                 customer_id=customer.id,
@@ -64,8 +66,9 @@ def get_blob_path_builder(instance: Any) -> Optional[AzureBlobPathBuilder]:
                 client_name=client.client_name or "Unknown"
             )
     except Exception as e:
-        logger.warning(f"Failed to create AzureBlobPathBuilder for {type(instance)}: {e}")
-        
+        logger.warning(
+            f"Failed to create AzureBlobPathBuilder for {type(instance)}: {e}")
+
     return None
 
 
@@ -120,7 +123,7 @@ def upload_to_montly_accounting_folder(instance, filename):
     """
     builder = get_blob_path_builder(instance)
     doc_id = str(getattr(instance, 'id', 'unknown'))
-    
+
     if builder:
         return builder.monthly_accounting_document_path(filename, doc_id=doc_id, add_timestamp=True)
     return f"accounting/{doc_id}/{_add_timestamp_to_filename(filename)}"
@@ -156,7 +159,7 @@ def upload_to_processed_documents_folder(instance, filename):
     """
     builder = get_blob_path_builder(instance)
     doc_id = str(getattr(instance, 'id', 'unknown'))
-    
+
     if builder:
         return builder.processed_document_path(doc_id, filename, add_timestamp=True)
     return f"processed_documents/{_add_timestamp_to_filename(filename)}"
@@ -204,12 +207,12 @@ def upload_to_montly_accounting_path_folder(document, path, filename):
     builder = get_blob_path_builder(document)
     if not builder:
         return f"monthly_accounting/{path}/{_add_timestamp_to_filename(filename)}"
-        
+
     # Heuristic routing based on 'path' string
     if 'processed' in path:
         doc_id = str(document.id)
         return builder.processed_document_path(doc_id, filename, add_timestamp=True)
-    
+
     # Default to document path
     doc_id = str(document.id)
     return builder.monthly_accounting_document_path(filename, doc_id, add_timestamp=True)
@@ -239,15 +242,19 @@ def get_file_size_display(size_bytes):
     return f"{size_bytes:.2f}{size_names[i]}"
 
 
-ALLOWED_DOCUMENT_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv']
+ALLOWED_DOCUMENT_EXTENSIONS = [
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv']
 ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff']
 ALLOWED_BANK_STATEMENT_EXTENSIONS = ['pdf', 'csv', 'xls', 'xlsx', 'txt']
+
 
 def validate_document_file(filename):
     return is_allowed_file_type(filename, ALLOWED_DOCUMENT_EXTENSIONS)
 
+
 def validate_image_file(filename):
     return is_allowed_file_type(filename, ALLOWED_IMAGE_EXTENSIONS)
+
 
 def validate_bank_statement_file(filename):
     return is_allowed_file_type(filename, ALLOWED_BANK_STATEMENT_EXTENSIONS)
@@ -262,20 +269,21 @@ class DocumentDebugStorage:
     Helper to save processing artifacts (formerly debug files).
     Now routes to 'processing_artifacts' via AzureBlobPathBuilder.
     """
-    
+
     def __init__(self, document):
         self.document = document
         self.doc_id = str(document.id)
         self._path_builder = get_blob_path_builder(document)
-        
+
         if not self._path_builder:
-            logger.warning(f"Could not initialize path builder for document {self.doc_id}")
-    
+            logger.warning(
+                f"Could not initialize path builder for document {self.doc_id}")
+
     def _save_file(self, content: Union[bytes, str], path: str, content_type: str = "application/octet-stream") -> Optional[str]:
         try:
             if isinstance(content, str):
                 content = content.encode('utf-8')
-            
+
             content_file = ContentFile(content)
             saved_path = default_storage.save(path, content_file)
             logger.info(f"Artifact saved: {saved_path}")
@@ -283,7 +291,7 @@ class DocumentDebugStorage:
         except Exception as e:
             logger.error(f"Failed to save artifact to {path}: {e}")
             return None
-    
+
     def _save_json(self, data: Any, path: str) -> Optional[str]:
         try:
             json_content = json.dumps(data, indent=2, default=str)
@@ -296,57 +304,62 @@ class DocumentDebugStorage:
 
     def save_raw_input(self, file_bytes: bytes, original_filename: str) -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_raw_input_path(self.doc_id, original_filename)
+            path = self._path_builder.artifact_raw_input_path(
+                self.doc_id, original_filename)
         else:
             path = f"debug_files/{self.doc_id}/01_raw_input/{original_filename}"
         return self._save_file(file_bytes, path)
-    
+
     def save_parsed_markdown(self, markdown_content: str, filename: str = "full_document.md") -> Optional[str]:
         if self._path_builder:
             path = self._path_builder.artifact_ocr_path(self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/02_ocr_output/{filename}"
         return self._save_file(markdown_content, path, "text/markdown")
-    
+
     def save_page_markdown(self, page_num: int, markdown_content: str) -> Optional[str]:
         filename = f"page_{page_num:03d}.md"
         return self.save_parsed_markdown(markdown_content, filename)
-    
+
     def save_extracted_data(self, extracted_data: Dict, filename: str = "extracted_data.json") -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_landing_ai_path(self.doc_id, filename)
+            path = self._path_builder.artifact_landing_ai_path(
+                self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/03_landing_ai/{filename}"
         return self._save_json(extracted_data, path)
-    
+
     def save_extracted_metadata(self, metadata: Dict, filename: str = "extraction_metadata.json") -> Optional[str]:
         return self.save_extracted_data(metadata, filename)
-    
+
     def save_rectified_data(self, rectified_data: Dict, filename: str = "rectified_data.json") -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_rectification_path(self.doc_id, filename)
+            path = self._path_builder.artifact_rectification_path(
+                self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/06_rectification/{filename}"
         return self._save_json(rectified_data, path)
-    
+
     def save_rectifier_items(self, rectifier_items: list, filename: str = "rectifier_items.json") -> Optional[str]:
         return self.save_rectified_data({"rectifier_items": rectifier_items}, filename)
-    
+
     def save_classified_data(self, classified_data: Dict, filename: str = "classified_data.json") -> Optional[str]:
         # Using Rectification folder for classification results as they are often paired stages
         if self._path_builder:
-            path = self._path_builder.artifact_rectification_path(self.doc_id, filename)
+            path = self._path_builder.artifact_rectification_path(
+                self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/06_rectification/{filename}"
         return self._save_json(classified_data, path)
-    
+
     def save_final_output(self, final_output: Dict, filename: str = "final_output.json") -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_final_summary_path(self.doc_id, filename)
+            path = self._path_builder.artifact_final_summary_path(
+                self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/07_final_summary/{filename}"
         return self._save_json(final_output, path)
-    
+
     def save_processing_summary(self, summary: Dict) -> Optional[str]:
         from datetime import datetime
         summary_with_meta = {
@@ -357,7 +370,7 @@ class DocumentDebugStorage:
             **summary
         }
         return self.save_final_output(summary_with_meta, "processing_summary.json")
-    
+
     def save_error_log(self, error: Exception, context: Dict = None) -> Optional[str]:
         import traceback
         error_data = {
@@ -369,7 +382,7 @@ class DocumentDebugStorage:
             "context": context or {}
         }
         return self.save_final_output(error_data, "error_log.json")
-    
+
     def get_debug_folder_path(self) -> str:
         if self._path_builder:
             return self._path_builder.debug_base_path(self.doc_id)

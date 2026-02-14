@@ -1,11 +1,22 @@
+import os
+import sys
+
+import logging
+
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+
+from account.models import (
+    DimAICJEFreq,
+    DimAICJETemplateHeader
+)
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
-
-import logging
-logger = logging.getLogger(__name__)
 
 # Import snapshot models - using lazy imports to avoid circular dependencies
 def get_snapshot_models():
@@ -135,8 +146,6 @@ class FactAICMonthlyAccounting(models.Model):
     
     def create_snapshots(self):
         """Create snapshots of current templates and input files configuration"""
-        from .dim_aic_je_template_header_model import DimAICJETemplateHeader
-        from .dim_aic_je_freq_model import DimAICJEFreq
         
         # Get monthly frequency templates
         try:
@@ -167,7 +176,6 @@ class FactAICMonthlyAccounting(models.Model):
                     self._create_template_snapshot(template)
                     
         except Exception as e:
-            import os, sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
@@ -175,10 +183,7 @@ class FactAICMonthlyAccounting(models.Model):
     
     def _create_input_file_snapshot(self, input_file):
         """Create snapshot of an input file and its attributes"""
-        import os
-        from django.core.files.base import ContentFile
-        from django.core.files.storage import default_storage
-        
+       
         # Get snapshot models
         models_dict = get_snapshot_models()
         FactAICInputFileSnapshot = models_dict['FactAICInputFileSnapshot']
@@ -310,7 +315,6 @@ class FactAICMonthlyAccounting(models.Model):
                         original_updated_at=attribute.updated_at
                     )
             except Exception as e:
-                import os, sys
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print(exc_type, fname, exc_tb.tb_lineno)

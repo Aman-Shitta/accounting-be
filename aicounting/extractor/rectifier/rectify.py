@@ -5,7 +5,8 @@ This module provides AI-powered rectification of extracted banking data using
 Google Gemini to verify and provide probable corrections for transaction data 
 and check data extracted from bank statements.
 """
-import os, sys
+import os
+import sys
 import re
 import logging
 from datetime import datetime
@@ -16,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from google.genai import types
 
 from extractor.gemini_service import GeminiMixin, JSONHelper
-            
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 class DocumentRectifier(GeminiMixin):
     """
     Rectifier that uses Gemini AI to verify and correct extracted banking data.
-    
+
     The rectifier takes extracted transaction and check data along with the 
     original page image/bytes and uses Gemini's visual capabilities to:
     1. Verify extracted values against the visual document
@@ -34,7 +35,7 @@ class DocumentRectifier(GeminiMixin):
 
     def __init__(self):
         self.init_gemini()
-   
+
     def rectify_document(
         self,
         page_bytes: bytes,
@@ -43,7 +44,7 @@ class DocumentRectifier(GeminiMixin):
     ) -> Dict[str, Any]:
         """
         Rectify extracted document data using Gemini AI.
-        
+
         Verifies transaction amounts against the visual document and provides
         rectified amounts with confidence scores when discrepancies are detected.
 
@@ -61,11 +62,11 @@ class DocumentRectifier(GeminiMixin):
             # Get line items from extracted data
             transactions = extracted_data.get('transactions', {})
             line_items = transactions.get('line_items', [])
-            
+
             if not line_items:
                 logger.info("No line items to rectify")
                 return extracted_data
-            
+
             # # Limit processing to avoid token limits (process in batches if needed)
             # max_items_per_call = 30
             # if len(line_items) > max_items_per_call:
@@ -77,19 +78,21 @@ class DocumentRectifier(GeminiMixin):
             # Build prompt for Gemini
             prompt = self._build_rectification_prompt(items_to_rectify)
             logger.debug(f"Rectification prompt length: {len(prompt)} chars")
-            
+
             # Call Gemini API
-            logger.info(f"Rectifying {len(items_to_rectify)} line items using Gemini AI")
-            
+            logger.info(
+                f"Rectifying {len(items_to_rectify)} line items using Gemini AI")
+
             # Create parts using service helper
             page_part = self._gemini_service.create_pdf_part(page_bytes)
-            prompt_part = self._gemini_service.cretate_part_from_text(text=prompt)
+            prompt_part = self._gemini_service.cretate_part_from_text(
+                text=prompt)
 
             content = [
                 prompt_part,
                 page_part
             ]
-            
+
             rectification_schema = self._get_rectification_schema()
 
             # Generate content with structured JSON response
@@ -103,54 +106,58 @@ class DocumentRectifier(GeminiMixin):
                 contents=content,
                 config=config
             )
-            
+
             # Parse response
             rectified_data = JSONHelper.parse_json(response_text)
 
-            logger.info(f"Rectification data received from Gemini :: {rectified_data}")
-            
+            logger.info(
+                f"Rectification data received from Gemini :: {rectified_data}")
+
             if not rectified_data or 'rectifications' not in rectified_data:
-                logger.warning("No valid rectification data returned from Gemini")
+                logger.warning(
+                    "No valid rectification data returned from Gemini")
                 return extracted_data
-            
+
             # Apply rectifications to line items
             rectifications = rectified_data.get('rectifications', [])
-            rectified_items, rectified_count = self._apply_rectifications(line_items, rectifications)
-            
+            rectified_items, rectified_count = self._apply_rectifications(
+                line_items, rectifications)
+
             # Update extracted data with rectified items
             extracted_data['transactions']['line_items'] = rectified_items
-            
+
             # Add metadata
             extracted_data['rectification_metadata'] = {
                 'total_items': len(line_items),
                 'rectified_items': rectified_count,
                 'rectification_timestamp': datetime.now().isoformat()
             }
-            
+
             logger.info(
                 f"Rectification complete: {rectified_count} "
                 f"items corrected out of {len(items_to_rectify)}"
             )
-            
+
             return extracted_data
-            
+
         except Exception as e:
 
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
 
-            logger.error(f"Error during rectification: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error during rectification: {str(e)}", exc_info=True)
             # Return original data if rectification fails
             return extracted_data
-    
+
     def _build_rectification_prompt(self, line_items: List[Dict[str, Any]]) -> str:
         """
         Build the prompt for Gemini to rectify transaction amounts.
-        
+
         Args:
             line_items: List of extracted transaction line items
-            
+
         Returns:
             Formatted prompt string
         """
@@ -183,17 +190,18 @@ class DocumentRectifier(GeminiMixin):
 
         **Extracted Transactions to Verify:**
         """
-        
+
         for idx, item in enumerate(line_items, 1):
             debit = item.get('debit_amount') or 'None'
             credit = item.get('credit_amount') or 'None'
             date = item.get('date', 'N/A')
-            desc = item.get('description', 'N/A')[:60]  # Truncate long descriptions
-            
+            # Truncate long descriptions
+            desc = item.get('description', 'N/A')[:60]
+
             prompt += f"\n{idx}. Date: {date}, Description: {desc}\n"
             prompt += f"   Extracted Values - Debit: {debit}, Credit: {credit}\n"
             prompt += f"   → Look at row {idx} in the image and verify if these amounts are correct\n"
-        
+
         prompt += """
             **Your Response Format:**
             Return a JSON with rectifications array. For EACH transaction, provide:
@@ -230,11 +238,11 @@ class DocumentRectifier(GeminiMixin):
             Remember: Set needs_correction to TRUE only when there is an ACTUAL DISCREPANCY between image and extraction!
             """
         return prompt
-    
+
     def _get_rectification_schema(self) -> Dict[str, Any]:
         """
         Get the JSON schema for rectification response.
-        
+
         Returns:
             JSON schema dictionary for Gemini structured output
         """
@@ -268,29 +276,29 @@ class DocumentRectifier(GeminiMixin):
             },
             "required": ["rectifications"]
         }
-    
+
     def _apply_rectifications(
-        self, 
-        line_items: List[Dict[str, Any]], 
+        self,
+        line_items: List[Dict[str, Any]],
         rectifications: List[Dict[str, Any]]
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Apply rectification corrections to line items.
-        
+
         When AI detects a correction is needed with sufficient confidence,
         the debit_amount and credit_amount values are directly overwritten
         with the corrected values. Rectification metadata is added for tracking.
-        
+
         Args:
             line_items: Original line items
             rectifications: Rectification suggestions from Gemini
-            
+
         Returns:
             Line items with rectified values and rectification metadata
         """
         rectified_items = []
         rectified_count = 0
-        
+
         # Helper function to clean null/empty values
         def _parse_amount(value):
             """Parse amount string to Decimal, handling common formats"""
@@ -302,34 +310,38 @@ class DocumentRectifier(GeminiMixin):
                 return Decimal(value)
             except Exception as e:
                 logger.warning(f"Failed to parse amount '{value}': {str(e)}")
-            
+
             return value
-            
+
         for item in line_items:
             # Create a copy to avoid mutating original
             rectified_item = item.copy()
-            
+
             # Initialize rectification fields
             rectified_item['is_rectified'] = False
             rectified_item['rectified_confidence'] = None
             rectified_item['rectification_reasoning'] = None
-            
+
             rectified_items.append(rectified_item)
-        
+
         # Apply rectifications by index (enumerate to match line items by position)
         for idx, rect in enumerate(rectifications):
-            
+
             if idx >= len(rectified_items):
-                logger.warning(f"Rectification index {idx} exceeds line items count {len(rectified_items)}")
+                logger.warning(
+                    f"Rectification index {idx} exceeds line items count {len(rectified_items)}")
                 break
-            
+
             confidence = rect.get('confidence', 0.0)
 
-            original_debit = _parse_amount(rectified_items[idx].get('debit_amount'))
-            original_credit = _parse_amount(rectified_items[idx].get('credit_amount'))
-            
+            original_debit = _parse_amount(
+                rectified_items[idx].get('debit_amount'))
+            original_credit = _parse_amount(
+                rectified_items[idx].get('credit_amount'))
+
             rectified_debit = _parse_amount(rect.get('rectified_debit_amount'))
-            rectified_credit = _parse_amount(rect.get('rectified_credit_amount'))
+            rectified_credit = _parse_amount(
+                rect.get('rectified_credit_amount'))
 
             needs_correction = False
             has_debit_change = False
@@ -337,15 +349,17 @@ class DocumentRectifier(GeminiMixin):
 
             if original_debit:
                 # Check if there's an actual change in values
-                has_debit_change = str(original_debit or '').strip() != str(rectified_debit or '').strip()
+                has_debit_change = str(original_debit or '').strip() != str(
+                    rectified_debit or '').strip()
                 if has_debit_change:
                     needs_correction = True
 
             if original_credit:
-                has_credit_change = str(original_credit or '').strip() != str(rectified_credit or '').strip()
+                has_credit_change = str(original_credit or '').strip() != str(
+                    rectified_credit or '').strip()
                 if has_credit_change:
                     needs_correction = True
-            
+
             if not original_debit and not original_credit:
                 # Both original amounts are missing, check if rectified provides a value
                 if rectified_debit or rectified_credit:
@@ -353,20 +367,20 @@ class DocumentRectifier(GeminiMixin):
                     has_credit_change = bool(rectified_credit)
                     needs_correction = True
 
-        
             # Only apply corrections with sufficient confidence AND needs_correction flag
             if needs_correction and confidence >= 0.7:
-                
+
                 if has_debit_change or has_credit_change:
                     # Directly overwrite the debit_amount and credit_amount with rectified values
                     rectified_items[idx]['debit_amount'] = rectified_debit
                     rectified_items[idx]['credit_amount'] = rectified_credit
-                    
+
                     # Set rectification metadata
                     rectified_items[idx]['is_rectified'] = True
                     rectified_items[idx]['rectified_confidence'] = confidence
-                    rectified_items[idx]['rectification_reasoning'] = rect.get('reasoning')
-                    
+                    rectified_items[idx]['rectification_reasoning'] = rect.get(
+                        'reasoning')
+
                     logger.info(
                         f"Item {idx+1}: Applied rectification - "
                         f"Original Debit: {original_debit} -> {rectified_debit}, "
@@ -375,12 +389,15 @@ class DocumentRectifier(GeminiMixin):
                     )
                     rectified_count += 1
                 else:
-                    logger.debug(f"Item {idx+1}: needs_correction=True but values unchanged, skipping")
+                    logger.debug(
+                        f"Item {idx+1}: needs_correction=True but values unchanged, skipping")
             else:
                 # Log when no correction is needed
                 if not needs_correction:
-                    logger.debug(f"Item {idx+1}: No correction needed - {rect.get('reasoning', 'Amount matches')}")
+                    logger.debug(
+                        f"Item {idx+1}: No correction needed - {rect.get('reasoning', 'Amount matches')}")
                 elif confidence < 0.7:
-                    logger.debug(f"Item {idx+1}: Low confidence ({confidence}) - skipping correction")
-        
+                    logger.debug(
+                        f"Item {idx+1}: Low confidence ({confidence}) - skipping correction")
+
         return rectified_items, rectified_count

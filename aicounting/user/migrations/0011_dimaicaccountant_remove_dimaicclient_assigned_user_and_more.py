@@ -16,18 +16,29 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='DimAICAccountant',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True,
+                                           primary_key=True, serialize=False, verbose_name='ID')),
                 ('username', models.CharField(max_length=8, verbose_name='Username')),
-                ('first_name', models.CharField(max_length=100, verbose_name='First Name')),
-                ('last_name', models.CharField(max_length=100, verbose_name='Last Name')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Created At')),
-                ('email', models.EmailField(max_length=254, unique=True, verbose_name='User Email')),
-                ('verified', models.BooleanField(default=False, verbose_name='Verified')),
-                ('azure_id', models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration', max_length=255, null=True, unique=True, verbose_name='Azure ID')),
-                ('refresher_token', models.TextField(blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token')),
-                ('customer', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='user.dimaiccustomer', verbose_name='Customer ID')),
-                ('input_user', models.ForeignKey(blank=True, help_text='User who created this accountant record', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_accountants', to=settings.AUTH_USER_MODEL, verbose_name='Input User')),
-                ('system_user', models.OneToOneField(help_text='Link to Django user for authentication and permissions', on_delete=django.db.models.deletion.CASCADE, related_name='accountant_profile', to=settings.AUTH_USER_MODEL, verbose_name='Linked Django User')),
+                ('first_name', models.CharField(
+                    max_length=100, verbose_name='First Name')),
+                ('last_name', models.CharField(
+                    max_length=100, verbose_name='Last Name')),
+                ('created_at', models.DateTimeField(
+                    auto_now_add=True, verbose_name='Created At')),
+                ('email', models.EmailField(max_length=254,
+                                            unique=True, verbose_name='User Email')),
+                ('verified', models.BooleanField(
+                    default=False, verbose_name='Verified')),
+                ('azure_id', models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration',
+                                              max_length=255, null=True, unique=True, verbose_name='Azure ID')),
+                ('refresher_token', models.TextField(
+                    blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token')),
+                ('customer', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE,
+                                               to='user.dimaiccustomer', verbose_name='Customer ID')),
+                ('input_user', models.ForeignKey(blank=True, help_text='User who created this accountant record', null=True,
+                                                 on_delete=django.db.models.deletion.SET_NULL, related_name='created_accountants', to=settings.AUTH_USER_MODEL, verbose_name='Input User')),
+                ('system_user', models.OneToOneField(help_text='Link to Django user for authentication and permissions',
+                                                     on_delete=django.db.models.deletion.CASCADE, related_name='accountant_profile', to=settings.AUTH_USER_MODEL, verbose_name='Linked Django User')),
             ],
             options={
                 'verbose_name': 'AIC Accountant',
@@ -45,6 +56,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='dimaicclient',
             name='assigned_accountants',
-            field=models.ManyToManyField(blank=True, related_name='assigned_clients', to='user.dimaicaccountant', verbose_name='Assigned Accountants'),
+            field=models.ManyToManyField(blank=True, related_name='assigned_clients',
+                                         to='user.dimaicaccountant', verbose_name='Assigned Accountants'),
         ),
     ]

@@ -19,6 +19,7 @@ from authentication.authenticate import AdminJWTAuthentication
 
 User = get_user_model()
 
+
 class AdminLoginView(GenericAPIView):
     """
     Admin login API that provides JWT tokens for superadmin users.
@@ -38,7 +39,7 @@ class AdminLoginView(GenericAPIView):
             'exp': datetime.now() + timedelta(hours=24),
             'iat': datetime.now(),
         }
-        
+
         # Use Django SECRET_KEY for JWT signing
         secret_key = getattr(settings, 'SECRET_KEY', 'your-secret-key')
         token = jwt.encode(payload, secret_key, algorithm='HS256')
@@ -46,7 +47,7 @@ class AdminLoginView(GenericAPIView):
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
-        
+
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -59,7 +60,7 @@ class AdminLoginView(GenericAPIView):
 
         # Authenticate user
         user = authenticate(username=username, password=password)
-        
+
         if not user:
             return create_api_response(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -111,15 +112,18 @@ class CustomerListView(GenericAPIView):
             )
 
         # Get all customers with their status
-        customers = DimAICCustomer.objects.select_related('system_user', 'input_user').all()
-        
+        customers = DimAICCustomer.objects.select_related(
+            'system_user', 'input_user').all()
+
         # Serialize customer data
         customer_serializer = CustomerDetailSerializer(customers, many=True)
-        
+
         # Calculate counts
         customer_data = customer_serializer.data
-        verified_count = len([c for c in customer_data if c['verification_status'] == 'verified'])
-        pending_count = len([c for c in customer_data if c['verification_status'] == 'pending'])
+        verified_count = len(
+            [c for c in customer_data if c['verification_status'] == 'verified'])
+        pending_count = len(
+            [c for c in customer_data if c['verification_status'] == 'pending'])
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
@@ -149,9 +153,12 @@ class AdminDashboardView(GenericAPIView):
 
         # Calculate statistics
         total_customers = DimAICCustomer.objects.count()
-        verified_customers = DimAICCustomer.objects.filter(system_user__is_active=True).count()
-        pending_customers = DimAICCustomer.objects.filter(system_user__is_active=False).count()
-        verification_rate = (verified_customers / total_customers * 100) if total_customers > 0 else 0
+        verified_customers = DimAICCustomer.objects.filter(
+            system_user__is_active=True).count()
+        pending_customers = DimAICCustomer.objects.filter(
+            system_user__is_active=False).count()
+        verification_rate = (
+            verified_customers / total_customers * 100) if total_customers > 0 else 0
 
         # Prepare statistics data
         statistics_data = {
@@ -162,7 +169,8 @@ class AdminDashboardView(GenericAPIView):
         }
 
         # Get recent customers
-        recent_customers_queryset = DimAICCustomer.objects.select_related('system_user').order_by('-id')[:5]
+        recent_customers_queryset = DimAICCustomer.objects.select_related(
+            'system_user').order_by('-id')[:5]
 
         # Serialize the data
         # statistics_serializer = CustomerStatisticsSerializer(statistics_data)

@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='dimaiccontact',
             name='contact_phone',
-            field=models.CharField(max_length=15, validators=[django.core.validators.RegexValidator(message='Enter a valid phone number (7 to 15 digits, optional leading +)', regex='^(?:\\d{10,15}|\\d{3}-\\d{3}-\\d{4})$')], verbose_name='Contact Phone'),
+            field=models.CharField(max_length=15, validators=[django.core.validators.RegexValidator(
+                message='Enter a valid phone number (7 to 15 digits, optional leading +)', regex='^(?:\\d{10,15}|\\d{3}-\\d{3}-\\d{4})$')], verbose_name='Contact Phone'),
         ),
     ]

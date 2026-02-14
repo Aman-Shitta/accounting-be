@@ -1,7 +1,5 @@
-# Third-party imports
 from django.contrib import admin
 
-# Local imports
 from user.models import (
     DimAICAccountant,
     DimAICAssistant,
@@ -12,24 +10,26 @@ from user.models import (
     DimAICReviewer,
 )
 
+
 @admin.register(DimAICAccountant)
 class DimAICAccountantAdmin(admin.ModelAdmin):
-    list_display = ('id', 'username', 'first_name', 'last_name', 'customer', 'verified', 'clients_count', 'created_at')
+    list_display = ('id', 'username', 'first_name', 'last_name',
+                    'customer', 'verified', 'clients_count', 'created_at')
     search_fields = ('username', 'first_name', 'last_name', 'email')
     list_filter = ('customer', 'verified', 'created_at')
     ordering = ('customer', 'id')
-    
+
     def clients_count(self, obj):
         """Display the number of assigned clients"""
         return obj.assigned_clients.count()
     clients_count.short_description = 'Assigned Clients'
-    
+
     def get_queryset(self, request):
         """Optionally filter by customer if needed"""
         qs = super().get_queryset(request)
         # You can add customer filtering here if needed for specific users
         return qs
-    
+
     fieldsets = (
         ('Basic Information', {
             'fields': ('system_user', 'customer', 'username', 'first_name', 'last_name', 'email')
@@ -95,12 +95,12 @@ class DimAICClientAdmin(admin.ModelAdmin):
     ordering = ('id', 'client_id')
     readonly_fields = ('id', 'created_at', 'updated_at')
     inlines = [DimAICContactInline, DimAICClientDocumentInline]
-    
+
     def accountants_count(self, obj):
         """Display the number of assigned accountants"""
         return obj.assigned_accountants.count()
     accountants_count.short_description = 'Accountants'
-    
+
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         """Filter accountants to show only those belonging to the client's customer"""
         if db_field.name == "assigned_accountants":
@@ -108,17 +108,18 @@ class DimAICClientAdmin(admin.ModelAdmin):
             if hasattr(request, '_obj_'):
                 client = request._obj_
                 if client and client.customer:
-                    kwargs["queryset"] = DimAICAccountant.objects.filter(customer=client.customer)
+                    kwargs["queryset"] = DimAICAccountant.objects.filter(
+                        customer=client.customer)
             else:
                 # For new clients, we can't filter yet, so show empty queryset
                 kwargs["queryset"] = DimAICAccountant.objects.none()
         return super().formfield_for_manytomany(db_field, request, **kwargs)
-    
+
     def get_form(self, request, obj=None, **kwargs):
         """Store the object in request for use in formfield_for_manytomany"""
         request._obj_ = obj
         return super().get_form(request, obj, **kwargs)
-    
+
     fieldsets = (
         ('Client Information', {
             'fields': ('customer', 'client_name', 'client_id')
@@ -135,6 +136,7 @@ class DimAICClientAdmin(admin.ModelAdmin):
         }),
     )
 
+
 @admin.register(DimAICContact)
 class DimAICContactAdmin(admin.ModelAdmin):
     list_display = (
@@ -144,10 +146,11 @@ class DimAICContactAdmin(admin.ModelAdmin):
     list_filter = ('client_id',)
     ordering = ('client_id', 'contact_name')
 
+
 @admin.register(DimAICCustomer)
 class DimAICCustomerAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state_abrevation', 
+        'id', 'customer_secure_id', 'customer_name', 'street', 'city', 'state_abrevation',
         'zip_code', 'accountants_count', 'clients_count', 'verified', 'input_user', 'created_at', 'updated_at'
     )
     search_fields = ('customer_name', 'city', 'customer_secure_id', 'email')
@@ -155,17 +158,17 @@ class DimAICCustomerAdmin(admin.ModelAdmin):
     ordering = ('id',)
     readonly_fields = ('id', 'customer_secure_id', 'created_at', 'updated_at')
     inlines = [DimAICAccountantInline, DimAICClientInline]
-    
+
     def accountants_count(self, obj):
         """Display the number of accountants for this customer"""
         return obj.accountants.count()
     accountants_count.short_description = 'Accountants'
-    
+
     def clients_count(self, obj):
         """Display the number of clients for this customer"""
         return obj.clients.count()
     clients_count.short_description = 'Clients'
-    
+
     fieldsets = (
         ('Customer Information', {
             'fields': ('id', 'customer_secure_id', 'customer_name', 'system_user')
@@ -187,12 +190,13 @@ class DimAICCustomerAdmin(admin.ModelAdmin):
 @admin.register(DimAICAssistant)
 class DimAICAssistantAdmin(admin.ModelAdmin):
     list_display = (
-        'client', 'assistant_name', 'assistant_id', 'vector_store_id', 
+        'client', 'assistant_name', 'assistant_id', 'vector_store_id',
         'model_name', 'temperature', 'top_p', 'is_active', 'created_at'
     )
     list_filter = ('is_active', 'model_name', 'created_at')
     search_fields = ('client__client_name', 'assistant_name', 'assistant_id')
-    readonly_fields = ('assistant_id', 'vector_store_id', 'created_at', 'updated_at')
+    readonly_fields = ('assistant_id', 'vector_store_id',
+                       'created_at', 'updated_at')
     fieldsets = (
         ('Client Information', {
             'fields': ('client', 'assistant_name')
@@ -211,17 +215,19 @@ class DimAICAssistantAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         })
     )
-    
+
     def get_readonly_fields(self, request, obj=None):
         if obj:  # Editing an existing object
             return self.readonly_fields + ('client',)
         return self.readonly_fields
-    
+
 
 @admin.register(DimAICReviewer)
 class DimAICReviewerAdmin(admin.ModelAdmin):
-    list_display = ('id', 'system_user', 'email', 'verified', 'azure_id', 'review_assigned_at', 'created_at')
-    search_fields = ('email', 'system_user__username', 'system_user__first_name', 'system_user__last_name')
+    list_display = ('id', 'system_user', 'email', 'verified',
+                    'azure_id', 'review_assigned_at', 'created_at')
+    search_fields = ('email', 'system_user__username',
+                     'system_user__first_name', 'system_user__last_name')
     list_filter = ('verified', 'created_at')
     readonly_fields = ('created_at', 'updated_at', 'azure_id')
     ordering = ('id',)

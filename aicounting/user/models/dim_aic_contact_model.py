@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, validate_email
 from django.db import models
 
+
 class DimAICContact(models.Model):
     """
     Contact details for a client, with explicit fields for name, email, and phone.
@@ -50,7 +51,8 @@ class DimAICContact(models.Model):
         try:
             validate_email(self.contact_email)
         except ValidationError:
-            raise ValidationError({'contact_email': 'Enter a valid email address.'})
+            raise ValidationError(
+                {'contact_email': 'Enter a valid email address.'})
 
     def save(self, *args, **kwargs):
         self.full_clean()  # Run validations

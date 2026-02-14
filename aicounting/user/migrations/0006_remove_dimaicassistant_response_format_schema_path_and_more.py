@@ -17,7 +17,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='dimaicassistant',
             name='response_schema',
-            field=models.JSONField(default={}, help_text='JSON schema response format', verbose_name='Response Format Schema'),
+            field=models.JSONField(
+                default={}, help_text='JSON schema response format', verbose_name='Response Format Schema'),
             preserve_default=False,
         ),
     ]

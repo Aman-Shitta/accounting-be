@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='dimaicaccountant',
             name='customer',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='accountants', to='user.dimaiccustomer', verbose_name='Customer ID'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE,
+                                    related_name='accountants', to='user.dimaiccustomer', verbose_name='Customer ID'),
         ),
     ]

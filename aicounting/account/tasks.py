@@ -1,35 +1,30 @@
-# System imports
 import logging
 import os
 import sys
 import time
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
-# Third-party imports
 from celery import shared_task, chain
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.conf import settings
-
-# Local imports
-from extractor.processor import MonthlyAccountingDocumentProcessor
-from extractor.config_factory import DocumentConfig
-
-
-
-from decimal import Decimal, ROUND_HALF_UP
 from django.db.models import Sum, Q
+
+from aicounting.file_upload_helper import DocumentDebugStorage
 from account.models import (
     MonthlyAccountingDocument,
     MonthlyDocumentBankLineItem
 )
-
+from agentic_doc.config import ParseConfig
+from agentic_doc.parse import parse
+from extractor.config_factory import DocumentConfig
+from extractor.processor import MonthlyAccountingDocumentProcessor
+from extractor.utils import split_pdf_to_pages
 from user.models import DimAICReviewer
 
-from agentic_doc.parse import parse
-from agentic_doc.config import ParseConfig
-from extractor.utils import split_pdf_to_pages
-from aicounting.file_upload_helper import DocumentDebugStorage
+from account.models import ClassificationQueue
+from extractor.services import GLClassificationService
 
 logger = logging.getLogger(__name__)
 
@@ -39,27 +34,27 @@ def preprocess_document_markdown(doc_id: str):
     """
     Pre-process document by generating markdown for all pages and storing in Azure.
     This runs before actual extraction to prepare markdown files.
-    
+
     Args:
         doc_id: MonthlyAccountingDocument ID
     """
-    
-    
+
     doc = None
     try:
         doc = MonthlyAccountingDocument.objects.get(id=doc_id)
-        
+
         # Only pre-process bank statements and credit cards
-        if doc.doc_type not in ['bank_statement', 'credit_card']:
-            logger.error(f"Document type {doc.doc_type} doesn't require markdown pre-processing")
+        if doc.doc_type not in BANKING_DOCS:
+            logger.error(
+                f"Document type {doc.doc_type} doesn't require markdown pre-processing")
             doc.status = 'uploaded'
             doc.save()
             return {"status": "skipped", "reason": "Document type doesn't require markdown"}
-        
+
         logger.info(f"Starting markdown pre-processing for document {doc.id}")
         doc.status = 'pre_processing'
         doc.save()
-        
+
         # Get file from Azure storage
         file_path = doc.file.name if doc.file else None
         if not file_path or not default_storage.exists(file_path):
@@ -67,57 +62,60 @@ def preprocess_document_markdown(doc_id: str):
             doc.status = 'failed'
             doc.save()
             return {"status": "failed", "error": "File not found"}
-        
+
         with default_storage.open(file_path, 'rb') as azure_file:
             file_bytes = azure_file.read()
-        
+
         # Split PDF into pages
         page_bytes_list = split_pdf_to_pages(file_bytes)
         logger.info(f"Split PDF into {len(page_bytes_list)} pages")
-        
+
         # Initialize Landing AI parser
         landing_ai_key = settings.LANDING_AI_API_KEY
         landing_ai_config = ParseConfig(
             api_key=landing_ai_key,
         )
-        
+
         # Prepare storage paths
         doc_folder = f"monthly_accounting/{doc.monthly_accounting.client_id}/{doc.monthly_accounting.id}/documents/{doc.id}"
         markdown_folder = f"{doc_folder}/markdown"
-        
+
         # Generate markdown for each page
         markdown_pages = []
         for i, page_bytes in enumerate(page_bytes_list):
             page_num = i + 1
             try:
-                logger.info(f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
-                
+                logger.info(
+                    f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
+
                 # Parse page with Landing AI
                 result = parse(
                     documents=page_bytes,
                     config=landing_ai_config
                 )
                 page_markdown = result[0].markdown
-                
+
                 # Save markdown to Azure
                 markdown_filename = f"page_{page_num}.md"
                 markdown_path = f"{markdown_folder}/{markdown_filename}"
-                
+
                 markdown_content = ContentFile(page_markdown.encode("utf-8"))
-                saved_path = default_storage.save(markdown_path, markdown_content)
-                
-                
-                markdown_url = default_storage.url(saved_path, expire_minutes=10)
-                
+                saved_path = default_storage.save(
+                    markdown_path, markdown_content)
+
+                markdown_url = default_storage.url(
+                    saved_path, expire_minutes=10)
+
                 markdown_pages.append({
                     "page_number": page_num,
                     "path": saved_path,
                     "url": markdown_url,
                     "size": len(page_markdown)
                 })
-                
-                logger.info(f"Saved markdown for page {page_num} to {saved_path}")
-                
+
+                logger.info(
+                    f"Saved markdown for page {page_num} to {saved_path}")
+
             except Exception as e:
                 logger.error(f"Failed to process page {page_num}: {str(e)}")
                 markdown_pages.append({
@@ -126,7 +124,7 @@ def preprocess_document_markdown(doc_id: str):
                     "url": None,
                     "error": str(e)
                 })
-        
+
         # Save metadata
         markdown_metadata = {
             "total_pages": len(page_bytes_list),
@@ -136,31 +134,32 @@ def preprocess_document_markdown(doc_id: str):
             "generated_at": datetime.now().isoformat(),
             "sas_expiry_hours": 24
         }
-        
+
         doc.markdown_metadata = markdown_metadata
         doc.status = 'pre_processed'
         doc.save()
-        
+
         logger.info(f"Markdown pre-processing complete for document {doc.id}")
         return {
             "status": "success",
             "total_pages": len(page_bytes_list),
             "processed_pages": markdown_metadata["processed_pages"]
         }
-        
+
     except Exception as e:
-        logger.error(f"Error in markdown pre-processing for document {doc_id}: {str(e)}")
+        logger.error(
+            f"Error in markdown pre-processing for document {doc_id}: {str(e)}")
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
-        
+
         if doc:
             doc.status = 'failed'
             doc.save()
-        
+
         return {
             "status": "error",
-        } 
+        }
 
 
 @shared_task
@@ -170,14 +169,14 @@ def process_uploaded_document(
 ):
     """
     Process a document uploaded to Azure Blob Storage using the new MonthlyAccountingDocumentProcessor.
-    
+
     This task handles extraction only. For bank statements and credit cards,
     use process_and_classify_document() to chain extraction with classification.
-    
+
     Args:
         doc_id: MonthlyAccountingDocument ID (UUID string)
         config_params: Configuration dict for the document processor
-        
+
     Returns:
         dict: Processing result with status and stats
     """
@@ -188,10 +187,10 @@ def process_uploaded_document(
             doc_config = DocumentConfig.from_dict(config_params)
         else:
             doc_config = config_params
-        
+
         # Convert to legacy Configuration (contains prompt-building logic)
         config = doc_config.to_configuration()
-            
+
         doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
         if not doc:
             logger.error(f"Document does not exist: {doc_id} invalid id")
@@ -213,21 +212,23 @@ def process_uploaded_document(
         # Use the MonthlyAccountingDocumentProcessor
         processor = MonthlyAccountingDocumentProcessor(doc, config)
         processor.set_doc_processor(doc.doc_type)
-        
+
         start_time = time.time()
         special_rules = doc.input_file_snapshot.description if doc.input_file_snapshot else ""
-        result = processor.start_process(file_bytes, md=True, special_rules=special_rules)
-        
+        result = processor.start_process(
+            file_bytes, md=True, special_rules=special_rules)
+
         processing_time = time.time() - start_time
         logger.info(f"Document processing time: {processing_time} seconds")
         processor.__release_resources__()
-       
+
         # Save processing output
         debug_storage = DocumentDebugStorage(doc)
         debug_storage.save_final_output(result, "processing_result.json")
-        
-        logger.info(f"Document {doc.id} processed successfully: {result.get('processing_stats', {})}")
-        
+
+        logger.info(
+            f"Document {doc.id} processed successfully: {result.get('processing_stats', {})}")
+
         return {
             "status": "success",
             "doc_id": str(doc.id),
@@ -303,7 +304,6 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
                 "client_id": client_id,
             }
 
-
         line_items = MonthlyDocumentBankLineItem.objects.filter(document=doc)
         sums = line_items.aggregate(
             total_debits=Sum('amount', filter=Q(transaction_type='debit')),
@@ -312,8 +312,10 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
         sum_debits = Decimal(str(sums['total_debits'] or 0))
         sum_credits = Decimal(str(sums['total_credits'] or 0))
 
-        beginning_balance = Decimal(str(control_total.get('beginning_balance') or 0))
-        expected_ending = Decimal(str(control_total.get('ending_balance') or 0))
+        beginning_balance = Decimal(
+            str(control_total.get('beginning_balance') or 0))
+        expected_ending = Decimal(
+            str(control_total.get('ending_balance') or 0))
 
         calculated_ending = beginning_balance - sum_debits + sum_credits
 
@@ -412,7 +414,6 @@ def enqueue_classification_task(_previous_result=None, document_id: str = None):
         dict: Queue result with status
     """
     try:
-        from account.models import MonthlyAccountingDocument, ClassificationQueue
 
         doc = MonthlyAccountingDocument.objects.get(id=document_id)
         client_id = str(doc.monthly_accounting.client_id)
@@ -449,67 +450,64 @@ def enqueue_classification_task(_previous_result=None, document_id: str = None):
 def process_classification_queue_task():
     """
     Celery Beat task to process the classification queue.
-    
+
     This task runs periodically and processes ONE pending classification
     per client. This ensures each client's assistant is only used by one
     task at a time.
-    
+
     Returns:
         dict: Processing summary
     """
-    from account.models import ClassificationQueue
-    from extractor.services import GLClassificationService
-    
     # Get all clients with pending work
     pending_clients = ClassificationQueue.get_all_pending_clients()
-    
+
     if not pending_clients:
         return {"status": "idle", "message": "No pending classifications"}
-    
+
     results = []
-    
+
     for client_id in pending_clients:
         # Get next item for this client (returns None if one is already processing)
         queue_item = ClassificationQueue.get_next_for_client(client_id)
-        
+
         if not queue_item:
             # Already processing for this client, skip
             continue
-        
+
         # Mark as processing
         queue_item.mark_processing()
         document_id = str(queue_item.document_id)
-        
+
         try:
             logger.info(
                 f"Processing classification queue item {queue_item.id} "
                 f"for document {document_id} (client: {client_id})"
             )
-            
+
             # Run the actual classification
             service = GLClassificationService.from_document_id(document_id)
             classified_count = service.classify_line_items()
-            
+
             # Update document status
             doc = service.document
             doc.status = "classified"
             doc.save()
-            
+
             # Mark queue item as completed
             queue_item.mark_completed()
-            
+
             logger.info(
                 f"Classification completed for document {document_id}: "
                 f"{classified_count} items classified"
             )
-            
+
             results.append({
                 "queue_id": str(queue_item.id),
                 "doc_id": document_id,
                 "status": "completed",
                 "classified_count": classified_count
             })
-            
+
         except Exception as e:
             error_msg = str(e)
             logger.error(
@@ -518,10 +516,10 @@ def process_classification_queue_task():
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
-            
+
             # Mark as failed (will retry if retries remaining)
             queue_item.mark_failed(error_msg)
-            
+
             results.append({
                 "queue_id": str(queue_item.id),
                 "doc_id": document_id,
@@ -529,7 +527,7 @@ def process_classification_queue_task():
                 "error": error_msg,
                 "will_retry": queue_item.status == ClassificationQueue.Status.PENDING
             })
-    
+
     return {
         "status": "processed",
         "processed_count": len(results),
@@ -540,13 +538,13 @@ def process_classification_queue_task():
 def process_and_classify_document(doc_id: str, config_params: dict):
     """
     Convenience function to process a document through the full pipeline.
-    
+
     Creates a Celery chain: extraction → control-total validation → classification
-    
+
     Args:
         doc_id: MonthlyAccountingDocument ID
         config_params: Configuration dict
-        
+
     Returns:
         Celery AsyncResult for the chain
     """
@@ -555,4 +553,3 @@ def process_and_classify_document(doc_id: str, config_params: dict):
         validate_control_totals_task.s(document_id=doc_id)
     )
     return task_chain.apply_async()
-

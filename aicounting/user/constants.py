@@ -60,11 +60,10 @@ AzureInviteViewMessages = {
     "azure_error": "Failed to send invitation through Azure. Please try again later.",
 }
 
-    
+
 # Contact View Messages
 ContactCreateViewMessages = {
     "success": "Contact created successfully.",
     "error": "Failed to create contact. Please try again.",
     "validation_error": "Please correct the errors in the form and try again.",
 }
-

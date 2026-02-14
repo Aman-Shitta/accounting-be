@@ -39,7 +39,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 class LandingAIService:
     def __init__(self):
         self.config = ParseConfig(
@@ -60,11 +59,13 @@ class LandingAIService:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Landing AI OCR failed: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Landing AI OCR failed: {e}")
             return ""
 
+
 class PageClassifier:
-    
+
     def __init__(self, processor):
         self.processor = processor
         self.schema = types.Schema(
@@ -82,7 +83,7 @@ class PageClassifier:
         """
         Classify page content using markdown text for better LLM understanding.
         Falls back to PDF if markdown is not available.
-        
+
         Args:
             md_bytes: Markdown content bytes (preferred)
             page_bytes: PDF page bytes (fallback)
@@ -110,22 +111,26 @@ class PageClassifier:
 
         Example: {"page_types": ["transaction_table"]}
         """
-        
+
         # Prefer markdown over PDF for classification
         if md_bytes:
-            logger.error(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
+            logger.error(
+                f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
             content = [
-                types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"),
+                types.Part.from_bytes(
+                    data=md_bytes, mime_type="text/markdown"),
                 "Analyze the above markdown content from a bank statement page."
             ]
         elif page_bytes and mime_type:
-            logger.error(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
+            logger.error(
+                f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
             content = [
                 types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
                 "Analyze the above PDF page content from a bank statement."
             ]
         else:
-            logger.error(f"[ERROR] No content provided for page classification")
+            logger.error(
+                f"[ERROR] No content provided for page classification")
             return ["other"]
 
         gemini_config = {
@@ -137,7 +142,7 @@ class PageClassifier:
             "system_instruction": [self.prompt],
             "max_output_tokens": 500,  # Classification needs minimal output
         }
-        
+
         try:
             stream_response = self.processor._generate_content_stream(
                 contents=content,
@@ -146,42 +151,48 @@ class PageClassifier:
             raw = ""
             for resp in stream_response:
                 raw += resp.text
-                
-            logger.error(f"[DEBUG] Classification raw response: {raw[:200]}...")
-            
+
+            logger.error(
+                f"[DEBUG] Classification raw response: {raw[:200]}...")
+
             try:
                 clean_json_str = JSONCleaner.updated_json_repair(raw)
                 try:
                     parsed = json.loads(clean_json_str)
                 except Exception:
-                    fallback_json = JSONCleaner.extract_first_json(clean_json_str)
+                    fallback_json = JSONCleaner.extract_first_json(
+                        clean_json_str)
                     parsed = json.loads(fallback_json)
-                
+
                 page_types = parsed.get("page_types", ["other"])
                 confidence = parsed.get("confidence", 0.5)
                 elements = parsed.get("detected_elements", [])
-                
-                logger.error(f"[DEBUG] Classification result: {page_types} (confidence: {confidence})")
+
+                logger.error(
+                    f"[DEBUG] Classification result: {page_types} (confidence: {confidence})")
                 if elements:
                     logger.error(f"[DEBUG] Detected elements: {elements}")
-                
+
                 return page_types
-                
+
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
+                logger.error(
+                    f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page classification JSON parsing failed: {e}")
                 logger.error(f"[ERROR] Raw response: {raw}")
                 return ["other"]
-                
+
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
             return ["other"]
 
+
 class TransactionExtractor:
-    
+
     def __init__(self, processor, schema, prompt):
         self.processor = processor
         self.schema = schema
@@ -193,15 +204,16 @@ class TransactionExtractor:
         content = [
             types.Part.from_bytes(data=page_bytes, mime_type=mime_type),
         ]
-        
+
         # Build instruction text separately to keep it cleaner
         instruction = f"Extract transactions from this bank statement page.\n\n**Context from previous page:** {previous_page_context}\n\n**Important:** Extract ONLY data from the current page."
-        
+
         if md_bytes:
             # Add markdown AFTER PDF but BEFORE instruction for better context flow
-            content.append(types.Part.from_bytes(data=md_bytes, mime_type="text/markdown"))
+            content.append(types.Part.from_bytes(
+                data=md_bytes, mime_type="text/markdown"))
             instruction = "**PDF provides visual layout, Markdown provides text data.**\n\n" + instruction
-        
+
         content.append(instruction)
 
         gemini_config = {
@@ -223,15 +235,17 @@ class TransactionExtractor:
             for resp in stream_response:
                 raw += resp.text
                 chunk_count += 1
-            
+
             # Log if response seems truncated
             if chunk_count > 0 and not raw.strip().endswith('}'):
-                logger.error(f"[WARN] Response may be truncated, received {chunk_count} chunks, length: {len(raw)}")
-                
+                logger.error(
+                    f"[WARN] Response may be truncated, received {chunk_count} chunks, length: {len(raw)}")
+
         except Exception as te:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction Stream error: {te}")
             return {"line_items": []}
 
         # Validate and repair JSON with expected structure
@@ -246,8 +260,10 @@ class TransactionExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output (first 1000 chars): {raw[:1000]}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output (first 1000 chars): {raw[:1000]}")
             parsed_data = {"line_items": []}
 
         # Ensure line_items exists
@@ -270,8 +286,9 @@ class TransactionExtractor:
 
         return parsed_data
 
+
 class CheckImageExtractor:
-    
+
     def __init__(self, processor):
         self.processor = processor
         self.schema = types.Schema(
@@ -325,13 +342,14 @@ class CheckImageExtractor:
                 config=gemini_config
             )
             raw = ""
-                
+
             for resp in stream_response:
                 raw += resp.text
         except Exception as ce:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
             return {}
 
         try:
@@ -340,14 +358,17 @@ class CheckImageExtractor:
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
             parsed_data = {"checks": []}
         return parsed_data
 
+
 class BankStatementSummarizer:
-    def __init__(self, processor, schema: types.Schema=None):
-        
+    def __init__(self, processor, schema: types.Schema = None):
+
         self.processor = processor
 
         self.response_schema = schema if schema and isinstance(schema, types.Schema) else types.Schema(
@@ -402,10 +423,9 @@ class BankStatementSummarizer:
             ),
         ]
 
-
         gemini_config: types.GenerateContentConfigDict = {
             "response_schema": self.response_schema,
-            "response_mime_type":"application/json",
+            "response_mime_type": "application/json",
             "temperature": 0.2,
             "top_p": 0.85,
             "top_k": 20,   # Moderate value for summary extraction
@@ -430,15 +450,18 @@ class BankStatementSummarizer:
                 summary = json.loads(clean_json_str)
             except json.JSONDecodeError as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
-                logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
+                logger.error(
+                    f"[ERROR][Line {exc_tb.tb_lineno}] JSONDecodeError: {e}")
+                logger.error(
+                    f"[ERROR][Line {exc_tb.tb_lineno}] Raw response : {raw}")
                 summary = {}
 
             return summary
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logger.error(f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
+            logger.error(
+                f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
             return {}
 
     def _clean_json_string(self, raw: str) -> str:
@@ -451,8 +474,10 @@ class BankStatementSummarizer:
         raw = raw.replace("None", "null")
 
         # Remove control characters except newline/tab
-        raw = ''.join(c for c in raw if unicodedata.category(c)[0] != 'C' or c in '\n\t')
+        raw = ''.join(c for c in raw if unicodedata.category(c)
+                      [0] != 'C' or c in '\n\t')
         return raw
+
 
 class DocumentProcessor(BaseDocumentProcessor):
 
@@ -481,48 +506,50 @@ class DocumentProcessor(BaseDocumentProcessor):
             },
             required=["line_items"]
         )
-    
+
     def _validate_and_repair_json(self, raw_json: str, expected_structure: dict) -> dict:
         """
         Validate and repair incomplete JSON responses from LLM.
-        
+
         Args:
             raw_json: Raw JSON string from LLM
             expected_structure: Expected keys in the response
-            
+
         Returns:
             Parsed and validated JSON dict
         """
         try:
             clean_json_str = JSONCleaner.updated_json_repair(raw_json)
             parsed_data = json.loads(clean_json_str)
-            
+
             # Validate expected structure
             for key in expected_structure.keys():
                 if key not in parsed_data:
-                    logger.error(f"Missing key '{key}' in LLM response, adding default value")
+                    logger.error(
+                        f"Missing key '{key}' in LLM response, adding default value")
                     parsed_data[key] = expected_structure[key]
-            
+
             return parsed_data
-            
+
         except Exception as e:
             logger.error(f"Failed to parse JSON: {e}")
             logger.error(f"Raw JSON (first 500 chars): {raw_json[:500]}")
-            
+
             # Try to extract partial JSON using fallback
             try:
                 fallback_json = JSONCleaner.extract_first_json(raw_json)
                 parsed_data = json.loads(fallback_json)
-                
+
                 # Fill in missing keys
                 for key in expected_structure.keys():
                     if key not in parsed_data:
                         parsed_data[key] = expected_structure[key]
-                        
+
                 return parsed_data
             except:
                 # Return default structure if all parsing fails
-                logger.error("All JSON parsing attempts failed, returning default structure")
+                logger.error(
+                    "All JSON parsing attempts failed, returning default structure")
                 return expected_structure
 
     def process_document(self, file_bytes: bytes, **kwargs):
@@ -531,7 +558,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         md = kwargs.get("md", False)
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
-        
+
         # Optimize: Use compact context instead of full parsed data
         # Only track last transaction date and count to maintain continuity
         previous_page_context = ""
@@ -540,8 +567,9 @@ class DocumentProcessor(BaseDocumentProcessor):
         markdown_pages_data = {}
         if md and self.document.markdown_metadata:
             metadata = self.document.markdown_metadata
-            logger.error(f"Using pre-generated markdown for {metadata.get('total_pages', 0)} pages")
-            
+            logger.error(
+                f"Using pre-generated markdown for {metadata.get('total_pages', 0)} pages")
+
             # Build a dict for quick lookup: page_number -> markdown data
             for page_info in metadata.get('pages', []):
                 page_num = page_info.get('page_number')
@@ -550,59 +578,72 @@ class DocumentProcessor(BaseDocumentProcessor):
 
         # Create extractors once and reuse
         page_classifier = PageClassifier(self)
-        transaction_extractor = TransactionExtractor(self, self.ai_schema, self.prompt)
+        transaction_extractor = TransactionExtractor(
+            self, self.ai_schema, self.prompt)
         check_image_extractor = CheckImageExtractor(self)
-        parser = LandingAIService() if (md and not markdown_pages_data) else None  # Only if no pre-generated markdown
+        # Only if no pre-generated markdown
+        parser = LandingAIService() if (md and not markdown_pages_data) else None
         summarizer = None
 
         for i, page_bytes in enumerate(page_bytes_list):
             try:
                 md_bytes = None
                 page_num = i + 1
-                
+
                 if md:
                     # Try to get pre-generated markdown first
                     if page_num in markdown_pages_data:
-                        logger.error(f"Using pre-generated markdown for page {page_num}")
+                        logger.error(
+                            f"Using pre-generated markdown for page {page_num}")
                         page_info = markdown_pages_data[page_num]
-                        
+
                         # Fetch markdown from Azure using the stored path
                         try:
                             with default_storage.open(page_info['path'], 'rb') as md_file:
                                 md_bytes = md_file.read()
-                            logger.error(f"Loaded pre-generated markdown for page {page_num} ({len(md_bytes)} bytes)")
+                            logger.error(
+                                f"Loaded pre-generated markdown for page {page_num} ({len(md_bytes)} bytes)")
                         except Exception as e:
-                            logger.error(f"Failed to load pre-generated markdown for page {page_num}: {e}")
+                            logger.error(
+                                f"Failed to load pre-generated markdown for page {page_num}: {e}")
                             md_bytes = None
-                    
+
                     # Fallback to real-time generation if pre-generated not available
                     if md_bytes is None and parser:
-                        logger.error(f"Generating markdown in real-time for page {page_num}")
-                        page_markdown = parser.extract_markdown(page_bytes=page_bytes)
+                        logger.error(
+                            f"Generating markdown in real-time for page {page_num}")
+                        page_markdown = parser.extract_markdown(
+                            page_bytes=page_bytes)
                         if page_markdown:
                             md_bytes = page_markdown.encode("utf-8")
-                            logger.error(f"Generated markdown for page {page_num} ({len(md_bytes)} bytes)")
+                            logger.error(
+                                f"Generated markdown for page {page_num} ({len(md_bytes)} bytes)")
                         else:
-                            logger.error(f"Failed to generate markdown for page {page_num}")
+                            logger.error(
+                                f"Failed to generate markdown for page {page_num}")
                             md_bytes = None
 
                 # 1. Classify the page using markdown first, fallback to PDF
                 # if md_bytes:
                 #     page_types = page_classifier.classify(md_bytes=md_bytes)
                 # else:
-                page_types = page_classifier.classify(md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
-                logger.error(f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
+                page_types = page_classifier.classify(
+                    md_bytes=None, page_bytes=page_bytes, mime_type=mime_type)
+                logger.error(
+                    f"\n\n[DEBUG] Page {i+1} classified as: {page_types}")
                 page_result = {"page_types": page_types}
 
                 # 2. Extract data based on classification
                 if "transaction_table" in page_types:
-                    parsed_data = transaction_extractor.extract(page_bytes, md_bytes, mime_type, previous_page_context)
+                    parsed_data = transaction_extractor.extract(
+                        page_bytes, md_bytes, mime_type, previous_page_context)
                     page_result["transactions"] = parsed_data
-                    
+
                     # Optimize: Keep only minimal context (last 2 transactions summary)
                     line_items = parsed_data.get("line_items", [])
                     if line_items:
-                        last_items = line_items[-2:] if len(line_items) >= 2 else line_items
+                        last_items = line_items[-2:] if len(
+                            line_items) >= 2 else line_items
                         previous_page_context = f"Last {len(last_items)} transaction(s): " + "; ".join([
                             f"{item.get('date', 'N/A')}: {item.get('description', 'N/A')[:50]}"
                             for item in last_items
@@ -611,7 +652,8 @@ class DocumentProcessor(BaseDocumentProcessor):
                         previous_page_context = "No transactions on previous page"
 
                 if "check_images" in page_types:
-                    parsed_data = check_image_extractor.extract(page_bytes, mime_type)
+                    parsed_data = check_image_extractor.extract(
+                        page_bytes, mime_type)
                     page_result["check_data"] = parsed_data
 
                 if "summary_table" in page_types and not self.control_totals:
@@ -622,16 +664,17 @@ class DocumentProcessor(BaseDocumentProcessor):
 
                 self.page_data.append({f"page_{i+1}": page_result})
                 logger.error(f"[DEBUG] Page {i+1} data is: {page_result}")
-                
+
                 # Reduce sleep time from 3s to 1s for better throughput
                 time.sleep(1)
-
 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
-                logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes preview: {page_bytes[:20] if page_bytes else 'None'}")
+                logger.error(
+                    f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception during processing page {i+1}: {e}")
+                logger.error(
+                    f"[ERROR][{fname}:{exc_tb.tb_lineno}] Page bytes preview: {page_bytes[:20] if page_bytes else 'None'}")
                 # Log but continue processing other pages
                 continue
             finally:
@@ -640,7 +683,7 @@ class DocumentProcessor(BaseDocumentProcessor):
                     del md_bytes
                 if 'page_bytes' in locals():
                     del page_bytes
-        
+
         # Clean up extractors after all pages are processed
         try:
             del page_classifier
@@ -672,10 +715,10 @@ class DocumentProcessor(BaseDocumentProcessor):
     def _save_extracted_data(self) -> Dict[str, int]:
         """
         Save extracted data to database models.
-        
+
         Args:
             page_data: List of page data from processor
-            
+
         Returns:
             Dict with processing statistics
         """
@@ -691,10 +734,10 @@ class DocumentProcessor(BaseDocumentProcessor):
             for page_idx, page_item in enumerate(page_data):
                 page_key = f"page_{page_idx + 1}"
                 page_content = page_item.get(page_key, {})
-                
+
                 # Process transactions
                 transactions = page_content.get("transactions", {})
-                
+
                 # Save key items (summary data)
                 key_items_data = transactions.get("key_items", {})
                 if isinstance(key_items_data, dict):
@@ -708,32 +751,34 @@ class DocumentProcessor(BaseDocumentProcessor):
                         stats["key_items"] += 1
                 line_items_data = transactions.get("line_items", [])
                 # Save line items (transactions)
-                
+
                 for line_idx, line_item in enumerate(line_items_data):
                     # check if check related transaction already exists
                     if line_item.get("check_number").strip() and (line_item.get("check_number") in checks_linked):
                         if len(checks_linked[line_item.get("check_number")].description) > len(line_item.get("description", "")):
                             continue
                         else:
-                            checks_linked[line_item.get("check_number")].description = line_item.get("description", "")
+                            checks_linked[line_item.get("check_number")].description = line_item.get(
+                                "description", "")
                             continue
 
-                    line_item = self._save_line_item(page_idx + 1, line_idx + 1, line_item)
+                    line_item = self._save_line_item(
+                        page_idx + 1, line_idx + 1, line_item)
                     if line_item.is_check_transaction and line_item.check_number:
                         checks_linked[line_item.check_number] = line_item
 
                     stats["line_items"] += 1
-                
+
                 # Save check data
                 check_data = page_content.get("check_data", {})
                 checks = check_data.get("checks", [])
                 for check_item in checks:
                     check_obj = self._save_check_item(page_idx + 1, check_item)
                     stats["check_items"] += 1
-                    
+
                     # Try to link check to line item
                     self._link_check_to_line_item(check_obj)
-                
+
                 stats["pages_processed"] += 1
         # cleanup
         del(checks_linked)
@@ -743,43 +788,43 @@ class DocumentProcessor(BaseDocumentProcessor):
     def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
         """
         Parse amount string to Decimal.
-        
+
         Args:
             amount_str: Amount string from extraction
-            
+
         Returns:
             Parsed Decimal amount or None if parsing fails
         """
         if not amount_str or str(amount_str).strip() in ['', 'null', 'none', '-']:
             return None
-        
+
         amount_str = re.sub(r'[^\d\.]', '', str(amount_str))
 
         try:
             # Clean the amount string
-            clean_amount = str(amount_str).replace(',', '').replace('$', '').replace('(', '-').replace(')', '').strip()
-            
+            clean_amount = str(amount_str).replace(',', '').replace(
+                '$', '').replace('(', '-').replace(')', '').strip()
+
             # Handle parentheses for negative amounts
             if clean_amount.startswith('-'):
                 clean_amount = clean_amount[1:]
                 return -Decimal(clean_amount)
-            
+
             return Decimal(clean_amount)
-            
+
         except (InvalidOperation, ValueError, TypeError) as e:
             logger.error(f"Failed to parse amount '{amount_str}': {e}")
             return None
 
-
     def _save_line_item(self, page_number: int, line_number: int, line_data: Dict) -> MonthlyDocumentBankLineItem:
         """
         Save a transaction line item to the database.
-        
+
         Args:
             page_number: Page number
             line_number: Line number within page
             line_data: Raw line item data from extractor
-            
+
         Returns:
             Created MonthlyDocumentBankLineItem instance
         """
@@ -788,11 +833,11 @@ class DocumentProcessor(BaseDocumentProcessor):
         description = line_data.get("description", "")
         debit_amount_raw = line_data.get("debit_amount", "")
         credit_amount_raw = line_data.get("credit_amount", "")
-        
+
         # Determine transaction type and amount
         transaction_type = None
         amount = None
-        
+
         try:
             if debit_amount_raw and str(debit_amount_raw).strip() and str(debit_amount_raw).lower() not in ['', 'null', 'none', '-']:
                 transaction_type = 'debit'
@@ -801,12 +846,14 @@ class DocumentProcessor(BaseDocumentProcessor):
                 transaction_type = 'credit'
                 amount = self._parse_amount(credit_amount_raw)
         except Exception as e:
-            logger.error(f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
-        
+            logger.error(
+                f"Failed to parse amounts for line {page_number}.{line_number}: {e}")
+
         # Check transaction detection
         is_check_transaction = line_data.get("is_check_transaction", False)
-        check_number = line_data.get("check_number", "") if is_check_transaction else None
-        
+        check_number = line_data.get(
+            "check_number", "") if is_check_transaction else None
+
         # Create line item
         line_item = MonthlyDocumentBankLineItem.objects.create(
             document=self.document,
@@ -817,24 +864,25 @@ class DocumentProcessor(BaseDocumentProcessor):
             amount=amount,
             transaction_type=transaction_type,
             debit_amount=str(debit_amount_raw) if debit_amount_raw else None,
-            credit_amount=str(credit_amount_raw) if credit_amount_raw else None,
+            credit_amount=str(
+                credit_amount_raw) if credit_amount_raw else None,
             is_check_transaction=is_check_transaction,
             check_number=check_number,
             # GL accounts will be set during classification
             gl_account=None,
             offset_gl_account=None
         )
-        
+
         return line_item
-    
+
     def _save_check_item(self, page_number: int, check_data: Dict) -> MonthlyDocumentBankCheckItem:
         """
         Save a check item to the database.
-        
+
         Args:
             page_number: Page number
             check_data: Raw check data from extractor
-            
+
         Returns:
             Created MonthlyDocumentBankCheckItem instance
         """
@@ -849,32 +897,33 @@ class DocumentProcessor(BaseDocumentProcessor):
             check_number=check_data.get("check_number", ""),
             related_line_item=None  # Will be set in _link_check_to_line_item
         )
-        
+
         return check_item
-    
+
     def _link_check_to_line_item(self, check_item: MonthlyDocumentBankCheckItem):
         """
         Try to link a check item to its corresponding line item.
         If not found, add the check object item data into the transaction table 
         under the same page number, with line number as the last line number in that page.
-        
+
         Args:
             check_item: MonthlyDocumentBankCheckItem to link
         """
         if not check_item.check_number:
             return
-        
+
         # Look for line item with matching check number
         matching_line_item = MonthlyDocumentBankLineItem.objects.filter(
             document=self.document,
             check_number=check_item.check_number,
             is_check_transaction=True
         ).first()
-        
+
         if matching_line_item:
             check_item.related_line_item = matching_line_item
             check_item.save()
-            logger.error(f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
+            logger.error(
+                f"Linked check #{check_item.check_number} to line item {matching_line_item.id}")
         else:
             # Check not found in line items, add it as a new line item in the transaction table
             # Get the last line number for this page
@@ -882,20 +931,22 @@ class DocumentProcessor(BaseDocumentProcessor):
                 document=self.document,
                 page_number=check_item.page_number
             ).order_by('-line_number').first()
-            
+
             # Calculate next line number for this page
-            next_line_number = (last_line_item.line_number + 1) if last_line_item else 1
-            
+            next_line_number = (last_line_item.line_number +
+                                1) if last_line_item else 1
+
             # Parse amount from check
             amount = self._parse_amount(check_item.amount)
-            
+
             # Create a new line item from the check data
             new_line_item = MonthlyDocumentBankLineItem.objects.create(
                 document=self.document,
                 page_number=check_item.page_number,
                 line_number=next_line_number,
                 date=check_item.clearing_date or check_item.passing_date or "",
-                description=f"Check #{check_item.check_number} to {check_item.payee}" + (f" - {check_item.memo}" if check_item.memo else ""),
+                description=f"Check #{check_item.check_number} to {check_item.payee}" + (
+                    f" - {check_item.memo}" if check_item.memo else ""),
                 amount=amount,
                 transaction_type='debit',  # Checks are typically debits
                 debit_amount=check_item.amount,
@@ -905,8 +956,9 @@ class DocumentProcessor(BaseDocumentProcessor):
                 gl_account=None,
                 offset_gl_account=None
             )
-            
+
             # Link the check to the newly created line item
             check_item.related_line_item = new_line_item
             check_item.save()
-            logger.error(f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")
+            logger.error(
+                f"Check #{check_item.check_number} not found in line items. Created new line item {new_line_item.id} on page {check_item.page_number}, line {next_line_number}")

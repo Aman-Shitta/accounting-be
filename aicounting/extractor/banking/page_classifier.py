@@ -1,5 +1,6 @@
 
-import os, sys
+import os
+import sys
 import json
 
 from google.genai import types
@@ -10,18 +11,19 @@ from extractor.gemini_service import GeminiService, JSONHelper
 import logging
 logger = logging.getLogger(__name__)
 
+
 class PageClassifier:
     """
     Page classifier for bank statements using Gemini AI.
-    
+
     Classifies bank statement pages into categories like transaction tables,
     check images, summary tables, etc.
     """
-    
+
     def __init__(self, processor):
         """
         Initialize the classifier with a document processor.
-        
+
         Args:
             processor: A processor instance with Gemini capabilities (e.g., BaseDocumentProcessor)
         """
@@ -48,7 +50,7 @@ class PageClassifier:
         """
         Classify page content using markdown text for better LLM understanding.
         Falls back to PDF if markdown is not available.
-        
+
         Args:
             md_bytes: Markdown content bytes (preferred)
             page_bytes: PDF page bytes (fallback)
@@ -78,22 +80,25 @@ class PageClassifier:
 
         Example: {"page_types": [{"type": "transaction_table", "confidence": 0.95}, {"type": "summary_table", "confidence": 0.85}]}
         """
-        
+
         # Use service helpers to create content parts
         if md_bytes:
-            logger.error(f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
+            logger.error(
+                f"[DEBUG] Classifying page using markdown content ({len(md_bytes)} bytes)")
             content = [
                 GeminiService.create_markdown_part(md_bytes),
                 "Analyze the above markdown content from a bank statement page."
             ]
         elif page_bytes and mime_type:
-            logger.error(f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
+            logger.error(
+                f"[DEBUG] Classifying page using PDF fallback ({len(page_bytes)} bytes)")
             content = [
                 GeminiService.create_part_from_bytes(page_bytes, mime_type),
                 "Analyze the above PDF page content from a bank statement."
             ]
         else:
-            logger.error(f"[ERROR] No content provided for page classification")
+            logger.error(
+                f"[ERROR] No content provided for page classification")
             return ["other"]
 
         gemini_config = {
@@ -105,7 +110,7 @@ class PageClassifier:
             "system_instruction": [classification_prompt],
             "max_output_tokens": 500,  # Classification needs minimal output
         }
-        
+
         try:
             stream_response = self.processor._generate_content_stream(
                 contents=content,
@@ -114,23 +119,26 @@ class PageClassifier:
             raw = ""
             for resp in stream_response:
                 raw += resp.text
-                
-            logger.error(f"[DEBUG] Classification raw response: {raw[:200]}...")
-            
+
+            logger.error(
+                f"[DEBUG] Classification raw response: {raw[:200]}...")
+
             # Use JSONHelper for robust parsing
-            parsed = JSONHelper.parse_json(raw, default={"page_types": [{"type": "other", "confidence": 0.1337}]})
-            
-            page_types = parsed.get("page_types", [{"type": "other", "confidence": 0.1337}])
+            parsed = JSONHelper.parse_json(
+                raw, default={"page_types": [{"type": "other", "confidence": 0.1337}]})
+
+            page_types = parsed.get(
+                "page_types", [{"type": "other", "confidence": 0.1337}])
             elements = parsed.get("detected_elements", [])
-            
+
             if elements:
                 logger.error(f"[DEBUG] Detected elements: {elements}")
-            
+
             return page_types
-                
+
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
+            logger.error(
+                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Exception in page classification: {e}")
             return ["other"]
-

@@ -67,4 +67,3 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
 
     def get_created_by(self, obj):
         return obj.input_user.username if obj.input_user else None
-
