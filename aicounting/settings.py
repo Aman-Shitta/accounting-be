@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 # System imports
-from .env_settings import *
 import os
 from datetime import date
 from pathlib import Path
@@ -158,31 +157,21 @@ REST_FRAMEWORK = {
 today = date.today().strftime("%Y-%m-%d")
 
 # Use Azure for file storage
-DEFAULT_FILE_STORAGE = 'aicounting.azure_storage_backends.AzureMediaStorage'
+_DEFAULT_FILE_STORAGE = 'aicounting.azure_storage_backends.AzureMediaStorage'
 
-# STORAGES = {
-#     "default": {
-#         "BACKEND": DEFAULT_FILE_STORAGE,
-#     },
-#     "staticfiles": {
-#         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-#     },
-# }
+# Django 5+ uses STORAGES over DEFAULT_FILE_STORAGE; ensure Azure is used for media
+STORAGES = {
+    "default": {
+        "BACKEND": _DEFAULT_FILE_STORAGE,
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
 
 CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://*",
-]
-CORS_ALLOW_CREDENTIALS = True
-
-# CSRF_TRUSTED_ORIGINS = [
-#         'http://127.0.0.1:4200',
-#         'http://*',
-#         'https://*',
-#     ],
 
 # Update MEDIA settings - MEDIA_URL will be handled by the storage backend
 # For Azure storage, URLs are generated dynamically with SAS tokens
@@ -211,20 +200,8 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Cache Configuration
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-#         'LOCATION': 'unique-snowflake',
-#         'TIMEOUT': 7200,  # 2 hours in seconds
-#         'OPTIONS': {
-#             'MAX_ENTRIES': 1000,
-#         }
-#     }
-# }
-
-
 # Logging
 # from .app_logging import LOGGING
 
 # Local imports
+from .env_settings import *
