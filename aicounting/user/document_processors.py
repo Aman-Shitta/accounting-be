@@ -17,12 +17,12 @@ class ClientDocumentProcessor:
     """
     Handles processing of uploaded documents (COA, GL History, Vendor List)
     """
-    
+
     def __init__(self, customer, uploaded_by, client=None):
         self.customer = customer
         self.uploaded_by = uploaded_by
         self.client = client
-    
+
     def process_document(self, file_path, document_type):
         """
         Main method to process documents based on type
@@ -51,42 +51,45 @@ class ClientDocumentProcessor:
                 'records': [],
                 'errors': [str(e)]
             }
-    
+
     def process_coa_file(self, file_path):
         """
         Process Chart of Accounts CSV/Excel file
         Expected columns: Class, SubClass, GL Code, DL Description
-        """ 
+        """
         try:
             # Read file (supports both CSV and Excel)
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            
+
             # Normalize column names (remove spaces, make lowercase)
             df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
 
-            required_columns = ['class', 'subclass', 'gl_code', 'gl_description']
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            
+            required_columns = ['class', 'subclass',
+                                'gl_code', 'gl_description']
+            missing_columns = [
+                col for col in required_columns if col not in df.columns]
+
             if missing_columns:
-                raise ValidationError(f"Missing required columns: {missing_columns}")
-            
+                raise ValidationError(
+                    f"Missing required columns: {missing_columns}")
+
             processed_records = []
             errors = []
-            
+
             with transaction.atomic():
                 # Clear existing COA for this customer and client (optional)
                 # DimAICGLAcct.objects.filter(cust_id=self.customer).delete()
-                
+
                 for index, row in df.iterrows():
                     try:
                         # Clean and validate data
                         gl_code = str(row['gl_code']).strip()
                         account_class = str(row['class']).strip()
                         sub_class = str(row['subclass']).strip()
-                        
+
                         # Handle both 'gl_description' and 'dl_description' column names
                         if 'gl_description' in df.columns:
                             description = str(row['gl_description']).strip()
@@ -94,19 +97,21 @@ class ClientDocumentProcessor:
                             description = str(row['dl_description']).strip()
                         else:
                             description = ''
-                        
+
                         if not all([gl_code, account_class, sub_class, description]):
-                            errors.append(f"Row {index + 1}: Missing required data")
+                            errors.append(
+                                f"Row {index + 1}: Missing required data")
                             continue
-                        
+
                         # Use the client passed to the processor, or get the first client
                         client = self.client
                         if not client:
                             client = self.customer.dimaicclient_set.first()
                             if not client:
-                                errors.append(f"Row {index + 1}: No client found for customer")
+                                errors.append(
+                                    f"Row {index + 1}: No client found for customer")
                                 continue
-                        
+
                         # Create or update GL Account record
                         gl_account, created = DimAICGLAcct.objects.update_or_create(
                             customer=self.customer,
@@ -121,7 +126,7 @@ class ClientDocumentProcessor:
                                 'account_type': None  # Can be null as requested
                             }
                         )
-                        
+
                         processed_records.append({
                             'gl_acct_id': gl_account.id,
                             'gl_code': gl_code,
@@ -130,28 +135,30 @@ class ClientDocumentProcessor:
                             'description': description,
                             'created': created
                         })
-                        
+
                     except Exception as e:
                         errors.append(f"Row {index + 1}: {str(e)}")
-                        logger.error(f"Error processing COA row {index + 1}: {e}")
-            
+                        logger.error(
+                            f"Error processing COA row {index + 1}: {e}")
+
             # Check if there were too many errors that should cause failure
             total_rows = len(df)
             if total_rows == 0:
                 raise ValidationError("No data rows found in the file")
-            
+
             # If more than 50% of rows failed, consider it a failure
             error_percentage = len(errors) / total_rows
             if error_percentage > 0.5:
-                raise ValidationError(f"Too many processing errors ({len(errors)} out of {total_rows} rows). Please check your file format.")
-            
+                raise ValidationError(
+                    f"Too many processing errors ({len(errors)} out of {total_rows} rows). Please check your file format.")
+
             return {
                 'success': True,
                 'processed_count': len(processed_records),
                 'records': processed_records,
                 'errors': errors
             }
-            
+
         except Exception as e:
             logger.error(f"Error processing COA file: {e}")
             return {
@@ -161,7 +168,7 @@ class ClientDocumentProcessor:
                 'records': [],
                 'errors': [str(e)]
             }
-    
+
     def process_gl_history_file(self, file_path):
         """
         Process Gl History List CSV/Excel file
@@ -174,7 +181,7 @@ class ClientDocumentProcessor:
             'records': [],
             'errors': []
         }
-    
+
     def process_vendor_list_file(self, file_path):
         """
         Process Vendor List CSV/Excel file

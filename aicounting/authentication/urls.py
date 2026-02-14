@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import (
-    SSOLoginView,
+
+from authentication.views import (
     SSOGenerateTokenView,
-    SSORefreshTokenView
+    SSOLoginView,
+    SSORefreshTokenView,
 )
 
 urlpatterns = [

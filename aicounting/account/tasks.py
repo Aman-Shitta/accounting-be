@@ -23,6 +23,9 @@ from extractor.processor import MonthlyAccountingDocumentProcessor
 from extractor.utils import split_pdf_to_pages
 from user.models import DimAICReviewer
 
+from account.models import ClassificationQueue
+from extractor.services import GLClassificationService
+
 logger = logging.getLogger(__name__)
 
 
@@ -411,7 +414,6 @@ def enqueue_classification_task(_previous_result=None, document_id: str = None):
         dict: Queue result with status
     """
     try:
-        from account.models import MonthlyAccountingDocument, ClassificationQueue
 
         doc = MonthlyAccountingDocument.objects.get(id=document_id)
         client_id = str(doc.monthly_accounting.client_id)
@@ -456,9 +458,6 @@ def process_classification_queue_task():
     Returns:
         dict: Processing summary
     """
-    from account.models import ClassificationQueue
-    from extractor.services import GLClassificationService
-
     # Get all clients with pending work
     pending_clients = ClassificationQueue.get_all_pending_clients()
 

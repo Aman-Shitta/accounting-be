@@ -14,7 +14,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterModelOptions(
             name='dimaicclient',
-            options={'verbose_name': 'AIC Client', 'verbose_name_plural': 'AIC Clients'},
+            options={'verbose_name': 'AIC Client',
+                     'verbose_name_plural': 'AIC Clients'},
         ),
         migrations.AlterUniqueTogether(
             name='dimaiccontact',
@@ -23,25 +24,29 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='dimaiccontact',
             name='contact_email',
-            field=models.CharField(default=1, max_length=100, verbose_name='Contact Email'),
+            field=models.CharField(
+                default=1, max_length=100, verbose_name='Contact Email'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='dimaiccontact',
             name='contact_name',
-            field=models.CharField(default=1, max_length=100, verbose_name='Contact Name'),
+            field=models.CharField(
+                default=1, max_length=100, verbose_name='Contact Name'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='dimaiccontact',
             name='contact_phone',
-            field=models.CharField(default=1, max_length=15, validators=[django.core.validators.RegexValidator(message='Enter a valid phone number (7 to 15 digits, optional leading +)', regex='^\\+?\\d{7,15}$')], verbose_name='Contact Phone'),
+            field=models.CharField(default=1, max_length=15, validators=[django.core.validators.RegexValidator(
+                message='Enter a valid phone number (7 to 15 digits, optional leading +)', regex='^\\+?\\d{7,15}$')], verbose_name='Contact Phone'),
             preserve_default=False,
         ),
         migrations.AlterField(
             model_name='dimaiccontact',
             name='client_id',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='contacts', to='user.dimaicclient', verbose_name='Client'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE,
+                                    related_name='contacts', to='user.dimaicclient', verbose_name='Client'),
         ),
         migrations.AlterField(
             model_name='dimaiccontact',

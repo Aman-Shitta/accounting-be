@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='dimaicclientdocument',
             name='file',
-            field=models.FileField(help_text='File will be stored in Azure Blob Storage with customer/client folder structure.', max_length=500, upload_to=user.models.dim_aic_client_model.upload_to_customer_client_folder, verbose_name='Document File'),
+            field=models.FileField(help_text='File will be stored in Azure Blob Storage with customer/client folder structure.',
+                                   max_length=500, upload_to=user.models.dim_aic_client_model.upload_to_customer_client_folder, verbose_name='Document File'),
         ),
     ]

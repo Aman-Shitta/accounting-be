@@ -1,18 +1,17 @@
-from aicounting.response import create_api_response
-from rest_framework.generics import GenericAPIView
-from .accountant_serializers import AzureInviteAccountantSerializer
-from .client_serializers import DimAICAccountantSerializer
-from rest_framework import status
-from aicounting.msal_conf import MsalGraphConf
-
-from user.services import create_user_for_accountant
-from .constants import AccountantInviteViewMessages, AccountantListViewMessages
-
-from authentication.permissions import IsCustomer, IsCustomerOrAccountant
-from authentication.authenticate import JSONWebTokenAuthentication
-
-
 import logging
+
+from rest_framework import status
+from rest_framework.generics import GenericAPIView
+
+from aicounting.msal_conf import MsalGraphConf
+from aicounting.response import create_api_response
+from authentication.authenticate import JSONWebTokenAuthentication
+from authentication.permissions import IsCustomer, IsCustomerOrAccountant
+from user.accountant_serializers import AzureInviteAccountantSerializer
+from user.client_serializers import DimAICAccountantSerializer
+from user.constants import AccountantInviteViewMessages, AccountantListViewMessages
+from user.services import create_user_for_accountant
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +23,7 @@ class AzureAccountantInviteView(GenericAPIView):
     serializer_class = AzureInviteAccountantSerializer
     authentication_classes = [JSONWebTokenAuthentication]
     permission_classes = [IsCustomer]
-    
+
     msal_graph = MsalGraphConf()
 
     def post(self, request):
@@ -41,14 +40,15 @@ class AzureAccountantInviteView(GenericAPIView):
         customer = request_user.customer_profile
 
         # Validate the serializer
-        serializer = self.serializer_class(data=data, context={'request': request})
+        serializer = self.serializer_class(
+            data=data, context={'request': request})
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 message=AccountantInviteViewMessages["validation_error"],
                 errors=serializer.errors
             )
-        
+
         # Check if accountant already exists
         accountant, error_message = create_user_for_accountant(
             user_email=user_email,
@@ -74,16 +74,17 @@ class AzureAccountantInviteView(GenericAPIView):
         message_body = f"""Hi There, You have been invited to join our platform as an accountant by {customer.customer_name}. Please click the link below to accept the invitation and set up your account. We look forward to having you on board!"""
 
         invite_result = self.msal_graph.send_azure_invite_with_group(
-            email=user_email, 
-            first_name=first_name, 
-            last_name=last_name, 
+            email=user_email,
+            first_name=first_name,
+            last_name=last_name,
             user_type=user_type,
             redirect_url=self.msal_graph.APP_REDIRECT_URI,
             message_body=message_body
         )
 
         if not invite_result.get("success"):
-            logger.error("[DEBUG] Azure invite failed:", invite_result.get("error"))
+            logger.error("[DEBUG] Azure invite failed:",
+                         invite_result.get("error"))
             # If Azure invite fails, we should clean up the created accountant
             accountant.system_user.delete()
             return create_api_response(
@@ -103,6 +104,7 @@ class AzureAccountantInviteView(GenericAPIView):
                 "azure_invite": invite_result
             }
         )
+
 
 class AccountantListView(GenericAPIView):
     """

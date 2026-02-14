@@ -16,6 +16,7 @@ from account.models.monthly_document_line_models import MonthlyDocumentBankLineI
 import logging
 logger = logging.getLogger(__name__)
 
+
 class OpeAIThread(OpeAIClient):
     """OpenAI Client with Thread Management."""
 
@@ -30,15 +31,15 @@ class OpeAIThread(OpeAIClient):
                 tool_resources={
                     "file_search": {
                         "vector_store_ids": vector_store_ids
-                        }
                     }
+                }
             )
             self.thread_id = thread.id
             logger.error(f"Created Thread: {self.thread_id}")
         except Exception as e:
             logger.error(f"Error creating thread: {e}")
             return None
-    
+
     # Create Thread
     def delete_thread(self, thread_id):
         try:
@@ -56,10 +57,12 @@ class OpeAIThread(OpeAIClient):
     def send_to_thread(self, payload: str):
         try:
             if not self.thread_id:
-                raise Exception("Thread not initialized. Call create_thread() first.")
+                raise Exception(
+                    "Thread not initialized. Call create_thread() first.")
 
             # Get latest timestamp before sending
-            messages_before = self.client.beta.threads.messages.list(thread_id=self.thread_id, order="desc")
+            messages_before = self.client.beta.threads.messages.list(
+                thread_id=self.thread_id, order="desc")
             last_timestamp = messages_before.data[0].created_at if messages_before.data else 0
 
             # Send user message
@@ -146,10 +149,10 @@ class GLClassifier(OpeAIThread):
     def classify_extracted_data(self, extracted_data: dict):
         """
         Classify GL accounts for pre-built extracted data.
-        
+
         Args:
             extracted_data: Dict structured as {page_number: {"line_items": {...}}}
-            
+
         Returns:
             Dict of classified results by page
         """
@@ -164,30 +167,37 @@ class GLClassifier(OpeAIThread):
                 self.create_thread(self.vector_store_ids)
                 line_items = page_data.get("line_items", {})
                 if not line_items:
-                    logger.error(f"[DEBUG] No line items found for page {page_num}")
+                    logger.error(
+                        f"[DEBUG] No line items found for page {page_num}")
                     continue
 
                 payload = self.format_line_items(line_items)
 
-                logger.error(f"[DEBUG] Payload for page {page_num}:\n{payload}")
+                logger.error(
+                    f"[DEBUG] Payload for page {page_num}:\n{payload}")
 
                 page_results = self.send_to_thread(payload)
 
-                logger.error(f"[DEBUG] Page results for page {page_num}: {page_results}")
+                logger.error(
+                    f"[DEBUG] Page results for page {page_num}: {page_results}")
                 classified_data = []
                 if (
                     page_results
                     and isinstance(page_results, list)
                     and isinstance(ast.literal_eval(page_results[0]), dict)
                 ):
-                    classified_data = ast.literal_eval(page_results[0]).get("schema")
+                    classified_data = ast.literal_eval(
+                        page_results[0]).get("schema")
                     results[page_num] = classified_data
 
-                logger.error(f" classified_data @ page : {page_num} :: ", classified_data)
+                logger.error(
+                    f" classified_data @ page : {page_num} :: ", classified_data)
 
-                time.sleep(1)  # shorter sleep; adjust if rate limits encountered
+                # shorter sleep; adjust if rate limits encountered
+                time.sleep(1)
             except Exception as e:
-                logger.error(f"[ERROR] Exception processing page {page_num}: {e}")
+                logger.error(
+                    f"[ERROR] Exception processing page {page_num}: {e}")
                 continue  # Skip to next page on error
 
             self.delete_thread(self.thread_id)

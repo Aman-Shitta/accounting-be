@@ -14,24 +14,38 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='dimaicclient',
             name='id',
-            field=models.CharField(max_length=255, unique=True, verbose_name='Client Assigned ID'),
+            field=models.CharField(
+                max_length=255, unique=True, verbose_name='Client Assigned ID'),
         ),
         migrations.CreateModel(
             name='DimAICAssistant',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('assistant_id', models.CharField(help_text='The OpenAI Assistant ID for this client', max_length=255, verbose_name='OpenAI Assistant ID')),
-                ('vector_store_id', models.CharField(help_text="The OpenAI Vector Store ID containing client's documents", max_length=255, verbose_name='Vector Store ID')),
-                ('assistant_name', models.CharField(max_length=255, verbose_name='Assistant Name')),
-                ('model_name', models.CharField(default='gpt-4o', max_length=100, verbose_name='OpenAI Model')),
-                ('temperature', models.FloatField(default=1.0, help_text='Controls randomness in responses (0.0 to 2.0)', verbose_name='Temperature')),
-                ('top_p', models.FloatField(default=1.0, help_text='Controls diversity of responses (0.0 to 1.0)', verbose_name='Top P')),
-                ('response_format_schema_path', models.CharField(help_text='Path to the JSON schema file for response format', max_length=500, verbose_name='Response Format Schema Path')),
-                ('special_rules', models.TextField(blank=True, help_text='Additional client-specific rules for the assistant', null=True, verbose_name='Special Rules')),
-                ('is_active', models.BooleanField(default=True, verbose_name='Is Active')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('client', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='assistant', to='user.dimaicclient', verbose_name='Client')),
+                ('id', models.BigAutoField(auto_created=True,
+                                           primary_key=True, serialize=False, verbose_name='ID')),
+                ('assistant_id', models.CharField(help_text='The OpenAI Assistant ID for this client',
+                                                  max_length=255, verbose_name='OpenAI Assistant ID')),
+                ('vector_store_id', models.CharField(
+                    help_text="The OpenAI Vector Store ID containing client's documents", max_length=255, verbose_name='Vector Store ID')),
+                ('assistant_name', models.CharField(
+                    max_length=255, verbose_name='Assistant Name')),
+                ('model_name', models.CharField(default='gpt-4o',
+                                                max_length=100, verbose_name='OpenAI Model')),
+                ('temperature', models.FloatField(
+                    default=1.0, help_text='Controls randomness in responses (0.0 to 2.0)', verbose_name='Temperature')),
+                ('top_p', models.FloatField(
+                    default=1.0, help_text='Controls diversity of responses (0.0 to 1.0)', verbose_name='Top P')),
+                ('response_format_schema_path', models.CharField(
+                    help_text='Path to the JSON schema file for response format', max_length=500, verbose_name='Response Format Schema Path')),
+                ('special_rules', models.TextField(
+                    blank=True, help_text='Additional client-specific rules for the assistant', null=True, verbose_name='Special Rules')),
+                ('is_active', models.BooleanField(
+                    default=True, verbose_name='Is Active')),
+                ('created_at', models.DateTimeField(
+                    auto_now_add=True, verbose_name='Created At')),
+                ('updated_at', models.DateTimeField(
+                    auto_now=True, verbose_name='Updated At')),
+                ('client', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE,
+                                                related_name='assistant', to='user.dimaicclient', verbose_name='Client')),
             ],
             options={
                 'verbose_name': 'AIC Assistant',

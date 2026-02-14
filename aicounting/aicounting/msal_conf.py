@@ -1,19 +1,18 @@
-# System imports
-import os, sys
+import logging
+import os
+import sys
 
-# Third-party imports
 import jwt
 import msal
 import requests
 from asgiref.sync import async_to_sync
-
-
 from msgraph.generated.models.invitation import Invitation
 from msgraph.generated.models.invited_user_message_info import InvitedUserMessageInfo
 
-from authentication.constants import CUSTOMER, ACCOUNTANT, REVIEWER
-import logging
+from authentication.constants import ACCOUNTANT, CUSTOMER, REVIEWER
+
 logger = logging.getLogger(__name__)
+
 
 class MsalConf:
 
@@ -24,13 +23,13 @@ class MsalConf:
 
     APP_REDIRECT_URI = os.environ.get('APP_REDIRECT_URI')
 
-    AUTHORITY= f"https://login.microsoftonline.com/{TENANT_ID}"
-    APP_URI= f""
-    
-    JWKS_URI= f"{AUTHORITY}/discovery/v2.0/keys"
+    AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+    APP_URI = f""
+
+    JWKS_URI = f"{AUTHORITY}/discovery/v2.0/keys"
 
     SCOPE = ["User.Read"]
-    
+
     MSAL_APP = msal.ConfidentialClientApplication(
         CLIENT_ID,
         authority=AUTHORITY,
@@ -38,11 +37,11 @@ class MsalConf:
     )
 
     GROUPS = {
-            CUSTOMER: os.environ.get('CUSTOMER_GROUP_ID'),
-            ACCOUNTANT: os.environ.get('ACCOUNTANT_GROUP_ID'),
-            REVIEWER: os.environ.get('REVIEWER_GROUP_ID')
-        }
-        
+        CUSTOMER: os.environ.get('CUSTOMER_GROUP_ID'),
+        ACCOUNTANT: os.environ.get('ACCOUNTANT_GROUP_ID'),
+        REVIEWER: os.environ.get('REVIEWER_GROUP_ID')
+    }
+
     def get_public_key(self, jwt_token):
         public_key = ""
         # Get Azure AD public keys for token signature verification
@@ -62,17 +61,16 @@ class MsalConf:
         else:
             # Handle the case where a matching key was not found
             raise ValueError("Matching key not found in JWKS")
-        
+
         return public_key
-    
-    
+
     def refresh_access_token(self, refresh_token):
         """
         Refresh an access token using a refresh token.
-        
+
         Args:
             refresh_token: The stored refresh token from the database
-            
+
         Returns:
             dict with new tokens or None if refresh failed
             {
@@ -84,12 +82,12 @@ class MsalConf:
         if not refresh_token:
             logger.warning("No refresh token provided")
             return None
-        
+
         try:
             # MSAL doesn't have a direct refresh_token method in ConfidentialClientApplication
             # We need to use the OAuth2 token endpoint directly
             token_url = f"{self.AUTHORITY}/oauth2/v2.0/token"
-            
+
             data = {
                 'client_id': self.CLIENT_ID,
                 'client_secret': self.CLIENT_SECRET,
@@ -97,25 +95,28 @@ class MsalConf:
                 'grant_type': 'refresh_token',
                 'scope': ' '.join(self.SCOPE) + ' offline_access openid profile'
             }
-            
+
             response = requests.post(token_url, data=data)
-            
+
             if response.status_code == 200:
                 result = response.json()
                 logger.info("Successfully refreshed access token")
                 return {
                     'id_token': result.get('id_token'),
                     'access_token': result.get('access_token'),
-                    'refresh_token': result.get('refresh_token'),  # New rotated refresh token
+                    # New rotated refresh token
+                    'refresh_token': result.get('refresh_token'),
                     'expires_in': result.get('expires_in')
                 }
             else:
-                logger.error(f"Token refresh failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Token refresh failed: {response.status_code} - {response.text}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error refreshing token: {str(e)}")
             return None
+
 
 class MsalGraphConf(MsalConf):
     """
@@ -133,7 +134,7 @@ class MsalGraphConf(MsalConf):
             client_id=self.CLIENT_ID,
             client_secret=self.CLIENT_SECRET
         )
-        
+
         scopes = ['https://graph.microsoft.com/.default']
         return GraphServiceClient(credentials=credential, scopes=scopes)
 
@@ -162,52 +163,56 @@ class MsalGraphConf(MsalConf):
         This is a placeholder for actual mapping logic.
         """
         return self.GROUPS.get(user_type, None)
-    
+
     def get_group(self, user_type):
         graph_client = self.get_graph_client()
         groups = async_to_sync(graph_client.groups.get)()
         azure_groups = groups.value if hasattr(groups, 'value') else []
 
         return azure_groups
-    
 
     def add_user_to_group(self, user_id, group_id):
         from msgraph.generated.models.reference_create import ReferenceCreate
-        
+
         graph_client = self.get_graph_client()
-        
+
         # Create a proper reference object instead of a dictionary
         reference = ReferenceCreate()
         reference.odata_id = f"https://graph.microsoft.com/v1.0/directoryObjects/{user_id}"
-        
-        async_to_sync(graph_client.groups.by_group_id(group_id).members.ref.post)(reference)
+
+        async_to_sync(graph_client.groups.by_group_id(
+            group_id).members.ref.post)(reference)
 
     def send_azure_invite_with_group(self, email, first_name, last_name, user_type, redirect_url=None, group_id=None, message_body=None):
         try:
             # Use https://myapps.microsoft.com as default redirect URL to avoid localhost issues
             if not redirect_url:
                 redirect_url = self.APP_REDIRECT_URI or "https://myapps.microsoft.com"
-            
-            invitation = self.create_invitation(email, first_name, last_name, redirect_url, message_body)
+
+            invitation = self.create_invitation(
+                email, first_name, last_name, redirect_url, message_body)
             response = self.send_invitation(invitation)
             user_id = response.invited_user.id
-            
+
             # Try to assign group, but don't fail the entire operation if it fails
             group_assignment_result = {"success": False, "error": None}
-            
+
             try:
                 if not group_id:
                     group_id = self.get_user_type_group(user_type)
                     if not group_id:
-                        raise Exception(f"No group mapping found for user_type: {user_type}")
-                
+                        raise Exception(
+                            f"No group mapping found for user_type: {user_type}")
+
                 self.add_user_to_group(user_id, group_id)
-                group_assignment_result = {"success": True, "group_id": group_id}
-                
+                group_assignment_result = {
+                    "success": True, "group_id": group_id}
+
             except Exception as group_error:
                 logger.error(f"Group assignment failed: {str(group_error)}")
-                group_assignment_result = {"success": False, "error": str(group_error)}
-            
+                group_assignment_result = {
+                    "success": False, "error": str(group_error)}
+
             return {
                 "success": True,
                 "invitation_id": response.id,
@@ -223,9 +228,8 @@ class MsalGraphConf(MsalConf):
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
-            
+
             return {
                 "success": False,
                 "error": str(e)
             }
-    

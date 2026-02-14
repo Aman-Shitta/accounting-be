@@ -8,8 +8,8 @@ from account.models import (
     MonthlyDocumentAttributeItem,
     FactAICJETemplateHeaderSnapshot,
     MonthlyTemplateManualAttributeItem,
+    MonthlyDocumentBankLineItem,
 )
-
 from account.serializers import DimAICGLAcctSerializer
 
 logger = logging.getLogger(__name__)
@@ -170,8 +170,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Raises:
             ValidationError: If document is not verified
         """
-        from account.models import MonthlyDocumentBankLineItem
-
         attributes_data = []
 
         # Get extraction documents
@@ -314,7 +312,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             list: List of attribute data dictionaries with balanced entries
         """
-        from account.models import MonthlyDocumentAttributeItem
 
         attributes_data = []
 
@@ -459,8 +456,6 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         Returns:
             str: Attribute value
         """
-        from account.models import MonthlyTemplateManualAttributeItem
-
         try:
             # Try to get existing manual attribute
             attr_item = MonthlyTemplateManualAttributeItem.objects.get(

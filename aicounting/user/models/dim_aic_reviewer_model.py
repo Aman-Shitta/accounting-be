@@ -15,7 +15,7 @@ class DimAICReviewer(models.Model):
         verbose_name="System User",
         help_text="Reference to the system user account for this reviewer"
     )
-    
+
     email = models.EmailField(verbose_name="User Email", unique=True)
 
     verified = models.BooleanField(default=False, verbose_name="Verified")

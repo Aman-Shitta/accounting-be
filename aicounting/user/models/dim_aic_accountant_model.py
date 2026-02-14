@@ -15,7 +15,7 @@ class DimAICAccountant(models.Model):
     )
     customer = models.ForeignKey(
         'DimAICCustomer',
-        on_delete=models.CASCADE, 
+        on_delete=models.CASCADE,
         verbose_name="Customer ID",
         related_name="accountants"
     )

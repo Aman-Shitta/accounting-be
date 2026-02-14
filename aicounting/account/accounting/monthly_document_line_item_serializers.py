@@ -5,7 +5,12 @@ from decimal import Decimal, InvalidOperation
 from django.db import models, transaction
 from rest_framework import serializers
 
-from account.models import DimAICGLAcct, MonthlyDocumentAttributeItem, MonthlyDocumentBankLineItem
+from account.models import (
+    DimAICGLAcct,
+    MonthlyDocumentAttributeItem,
+    MonthlyDocumentBankLineItem,
+    FactAICInputFileAttributeSnapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +459,6 @@ class MonthlyDocumentAttributeItemSerializer(serializers.ModelSerializer):
 
         # Get the attribute snapshot from the input file
         try:
-            from account.models import FactAICInputFileAttributeSnapshot
             attribute = FactAICInputFileAttributeSnapshot.objects.get(
                 id=attribute_id,
                 input_file=document.input_file_snapshot

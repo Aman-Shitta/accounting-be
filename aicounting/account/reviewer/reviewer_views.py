@@ -9,8 +9,14 @@ from rest_framework.permissions import IsAuthenticated
 
 from account.accounting.monthly_document_line_item_serializers import (
     MonthlyDocumentBankLineItemSerializer,
+    MonthlyDocumentLineItemSerializer,
+    GLAccountNestedSerializer
 )
-from account.models import MonthlyAccountingDocument, MonthlyDocumentBankLineItem
+from account.models import (
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentAttributeItem,
+    MonthlyAccountingDocument,
+)
 from account.reviewer.reviewer_serializers import (
     ReviewActionResponseSerializer,
     ReviewSubmitSerializer,
@@ -264,9 +270,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-            from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
-
             document, error_response = self._get_document(document_id, request)
             if error_response:
                 return error_response
@@ -291,7 +294,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                         if bank_attributes.exists():
                             default_offset_gl_obj = bank_attributes.first().offset_gl_account
                             if default_offset_gl_obj:
-                                from .monthly_document_line_item_serializers import GLAccountNestedSerializer
+
                                 default_offset_gl = GLAccountNestedSerializer(
                                     default_offset_gl_obj).data
                 except Exception as e:
@@ -425,10 +428,6 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         Update a specific line item. Supports both bank line items and attribute items.
         """
         try:
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer,
-            )
-
             line_item, item_type, error_response = self._get_line_item(
                 document_id, line_item_id, request
             )
@@ -478,8 +477,6 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem
-
             line_item, item_type, error_response = self._get_line_item(
                 document_id, line_item_id, request
             )

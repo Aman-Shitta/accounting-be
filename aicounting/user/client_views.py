@@ -6,7 +6,7 @@ from rest_framework import generics, permissions, status
 
 from user.models import DimAICClient
 from .client_serializers import (
-    ClientCreateUpdateSerializer, 
+    ClientCreateUpdateSerializer,
     ClientRetrieveSerializer,
     ContactSerializer,
     ClientDocumentUploadSerializer,
@@ -37,20 +37,21 @@ class ClientCreateView(generics.GenericAPIView):
     Create a new client with associated contacts and documents.
     Supports nested creation of contacts and documents in a single request.
     """
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientCreateUpdateSerializer
     queryset = DimAICClient.objects.all()
 
-    
     def post(self, request, *args, **kwargs):
         try:
             # Use atomic transaction for all operations
             with transaction.atomic():
 
-                serializer = self.get_serializer(data=request.data, context={"request": self.request})
+                serializer = self.get_serializer(data=request.data, context={
+                                                 "request": self.request})
                 if not serializer.is_valid():
-                    logger.error(f"Client creation validation failed: {serializer.errors}")
+                    logger.error(
+                        f"Client creation validation failed: {serializer.errors}")
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message=ClientCreateViewMessages["validation_error"],
@@ -64,22 +65,25 @@ class ClientCreateView(generics.GenericAPIView):
                     client_obj=client,
                     api_key=settings.OPENAI_API_KEY,
                     client_id=client.client_id,
-                    special_rules=serializer.validated_data.get('special_rules', None)
+                    special_rules=serializer.validated_data.get(
+                        'special_rules', None)
                 )
                 # Provision the client GPT assistant
                 client_assistant.provison_client_assistant()
 
                 # Return success response with created client data
                 response_serializer = ClientRetrieveSerializer(client)
-                logger.error(f"Client created successfully: {client.client_id}")
-                
+                logger.error(
+                    f"Client created successfully: {client.client_id}")
+
                 return create_api_response(
                     status_code=status.HTTP_201_CREATED,
                     message=ClientCreateViewMessages["success"],
                     data=response_serializer.data
                 )
         except Exception as e:
-            import os, sys
+            import os
+            import sys
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
@@ -90,10 +94,11 @@ class ClientCreateView(generics.GenericAPIView):
                 message=ClientCreateViewMessages["server_error"]
             )
 
+
 class ClientListView(generics.GenericAPIView):
     """List all clients for the authenticated customer or accountant"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientRetrieveSerializer
 
     def get_queryset(self):
@@ -112,23 +117,24 @@ class ClientListView(generics.GenericAPIView):
         """
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        
+
         return create_api_response(
             status_code=status.HTTP_200_OK,
             message=ClientListViewMessages["success"],
             data=serializer.data
         )
 
+
 class ClientRetrieveView(generics.GenericAPIView):
     """Retrieve a specific client by ID"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientRetrieveSerializer
 
     def get_queryset(self, id):
         customer = getattr(self.request.user, 'customer_profile', None)
         accountant = getattr(self.request.user, 'accountant_profile', None)
-        
+
         if customer:
             return DimAICClient.objects.filter(customer=customer, id=id)
         elif accountant:
@@ -142,27 +148,28 @@ class ClientRetrieveView(generics.GenericAPIView):
         """
         assigned_id = kwargs.get('id')
         queryset = self.get_queryset(assigned_id)
-        
+
         if not queryset.exists():
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message=ClientRetrieveViewMessages["not_found"],
                 data=None
             )
-        
+
         client = queryset.first()
         serializer = self.get_serializer(client)
-        
+
         return create_api_response(
             status_code=status.HTTP_200_OK,
             message=ClientRetrieveViewMessages["success"],
             data=serializer.data
         )
 
+
 class ClientUpdateView(generics.GenericAPIView):
     """Update client information with support for contacts and documents"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientCreateUpdateSerializer
 
     def get_object(self, client_id):
@@ -179,7 +186,7 @@ class ClientUpdateView(generics.GenericAPIView):
         return None
 
     def put(self, request, *args, **kwargs):
-        try:            
+        try:
             # Use atomic transaction for update
             with transaction.atomic():
                 instance = self.get_object(kwargs.get('id'))
@@ -188,8 +195,9 @@ class ClientUpdateView(generics.GenericAPIView):
                         status_code=status.HTTP_404_NOT_FOUND,
                         message=ClientUpdateViewMessages["not_found"]
                     )
-                serializer = self.get_serializer(instance, data=request.data, partial=True, context={"request": self.request})
-                
+                serializer = self.get_serializer(
+                    instance, data=request.data, partial=True, context={"request": self.request})
+
                 if not serializer.is_valid():
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -204,13 +212,14 @@ class ClientUpdateView(generics.GenericAPIView):
                     client_obj=client,
                     api_key=settings.OPENAI_API_KEY,
                     client_id=client.client_id,
-                    special_rules=serializer.validated_data.get('special_rules', None)
+                    special_rules=serializer.validated_data.get(
+                        'special_rules', None)
                 )
                 # Provision the client GPT assistant
                 client_assistant.update_assistant_with_new_files()
 
                 response_serializer = ClientRetrieveSerializer(client)
-                
+
                 return create_api_response(
                     status_code=status.HTTP_200_OK,
                     message=ClientUpdateViewMessages["success"],
@@ -224,16 +233,17 @@ class ClientUpdateView(generics.GenericAPIView):
                 message=ClientUpdateViewMessages["server_error"]
             )
 
+
 class ContactCreateView(generics.GenericAPIView):
     """Create a new contact for a specific client"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomer]
     serializer_class = ContactSerializer
 
     def post(self, request, *args, **kwargs):
         try:
             client_id = kwargs.get('id')
-            
+
             # Use atomic transaction for contact creation
             with transaction.atomic():
                 # Get the client
@@ -243,10 +253,10 @@ class ContactCreateView(generics.GenericAPIView):
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message="User account not properly configured."
                     )
-                    
+
                 try:
                     client = DimAICClient.objects.get(
-                        id=client_id, 
+                        id=client_id,
                         customer=customer
                     )
                 except DimAICClient.DoesNotExist:
@@ -260,7 +270,8 @@ class ContactCreateView(generics.GenericAPIView):
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message="Client already has contacts assigned.",
-                        errors={"contacts": ["This client already has contacts. Please update existing contacts instead."]}
+                        errors={"contacts": [
+                            "This client already has contacts. Please update existing contacts instead."]}
                     )
                 serializer = self.get_serializer(data=request.data)
                 if not serializer.is_valid():
@@ -272,13 +283,13 @@ class ContactCreateView(generics.GenericAPIView):
 
                 # Create the contact
                 serializer.save(client=client)
-                
+
                 return create_api_response(
                     status_code=status.HTTP_201_CREATED,
                     message=ContactCreateViewMessages["success"],
                     data=serializer.data
                 )
-            
+
         except Exception as e:
             logger.error(f"Unexpected error during contact creation: {str(e)}")
             return create_api_response(
@@ -286,10 +297,11 @@ class ContactCreateView(generics.GenericAPIView):
                 message=ContactCreateViewMessages["error"]
             )
 
+
 class DocumentUploadView(generics.GenericAPIView):
     """Upload a document for a specific client"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomer] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomer]
     serializer_class = ClientDocumentUploadSerializer
 
     def post(self, request, *args, **kwargs):
@@ -305,10 +317,10 @@ class DocumentUploadView(generics.GenericAPIView):
                         status_code=status.HTTP_400_BAD_REQUEST,
                         message="User account not properly configured."
                     )
-                    
+
                 try:
                     client = DimAICClient.objects.get(
-                        id=client_id, 
+                        id=client_id,
                         customer=customer
                     )
                 except DimAICClient.DoesNotExist:
@@ -332,7 +344,7 @@ class DocumentUploadView(generics.GenericAPIView):
                         'uploaded_by': request.user
                     }
                 )
-                
+
                 if not serializer.is_valid():
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -342,17 +354,19 @@ class DocumentUploadView(generics.GenericAPIView):
 
                 # Create and process the documents
                 result = serializer.save()
-                
+
                 client_assistant = OpenAIAssistant(
                     customer=customer,
                     client_obj=client,
                     api_key=settings.OPENAI_API_KEY,
                     client_id=client.client_id,
-                    special_rules=serializer.validated_data.get('special_rules', None)
+                    special_rules=serializer.validated_data.get(
+                        'special_rules', None)
                 )
                 # Provision the client GPT assistant
                 document_ids = [doc.id for doc in result['documents']]
-                client_assistant.update_assistant_with_new_files(new_document_ids=document_ids)
+                client_assistant.update_assistant_with_new_files(
+                    new_document_ids=document_ids)
 
                 # Prepare response data
                 response_data = {
@@ -368,25 +382,26 @@ class DocumentUploadView(generics.GenericAPIView):
                         for doc in result['documents']
                     ]
                 }
-                
+
                 # Check if all processing was successful
                 all_successful = all(
                     res['success'] for res in result['processing_results'].values()
                 )
-                
+
                 if all_successful:
                     message = ClientDocumentUploadMessages["success"]
                 else:
                     message = "Documents uploaded successfully, but some may require additional processing."
-                
+
                 return create_api_response(
                     status_code=status.HTTP_201_CREATED,
                     message=message,
                     data=response_data
                 )
-            
+
         except Exception as e:
-            logger.error(f"Unexpected error during multiple document upload: {str(e)}")
+            logger.error(
+                f"Unexpected error during multiple document upload: {str(e)}")
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=ClientDocumentUploadMessages["error"]
@@ -395,8 +410,8 @@ class DocumentUploadView(generics.GenericAPIView):
 
 class ClientAssignAccountantsView(generics.GenericAPIView):
     """Append accountants to a client (without replacing existing ones)"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientAccountantAssignmentSerializer
 
     def get_object(self, client_id):
@@ -422,7 +437,7 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
         try:
             client_id = kwargs.get('id')
             client = self.get_object(client_id)
-            
+
             if not client:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
@@ -431,11 +446,11 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
 
             customer = client.customer
             serializer = self.get_serializer(
-                client, 
-                data=request.data, 
+                client,
+                data=request.data,
                 context={'customer': customer}
             )
-            
+
             if not serializer.is_valid():
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
@@ -444,26 +459,27 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                 )
 
             updated_client = serializer.save()
-            
+
             # Return updated client with all assigned accountants
             response_data = {
                 'client_id': updated_client.id,
                 'client_name': updated_client.client_name,
                 'assigned_accountants': DimAICAccountantSerializer(
-                    updated_client.assigned_accountants.all(), 
+                    updated_client.assigned_accountants.all(),
                     many=True
                 ).data,
                 'total_assigned_accountants': updated_client.assigned_accountants.count()
             }
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 "Accountants appended successfully.",
                 data=response_data
             )
-            
+
         except Exception as e:
-            logger.error(f"Unexpected error during accountant append: {str(e)}")
+            logger.error(
+                f"Unexpected error during accountant append: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred while appending accountants.",
@@ -473,8 +489,8 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
 
 class ClientAssignedAccountantsView(generics.GenericAPIView):
     """Retrieve all accountants assigned to a specific client"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = DimAICAccountantSerializer
 
     def get_object(self, client_id):
@@ -500,7 +516,7 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
         try:
             client_id = kwargs.get('id')
             client = self.get_object(client_id)
-            
+
             if not client:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
@@ -510,22 +526,23 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
             # Get all assigned accountants
             assigned_accountants = client.assigned_accountants.all()
             serializer = self.get_serializer(assigned_accountants, many=True)
-            
+
             response_data = {
                 'client_id': client.id,
                 'client_name': client.client_name,
                 'total_assigned_accountants': assigned_accountants.count(),
                 'assigned_accountants': serializer.data
             }
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 "Assigned accountants retrieved successfully.",
                 data=response_data
             )
-            
+
         except Exception as e:
-            logger.error(f"Unexpected error retrieving assigned accountants: {str(e)}")
+            logger.error(
+                f"Unexpected error retrieving assigned accountants: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred while retrieving assigned accountants.",
@@ -535,8 +552,8 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
 
 class ClientUnassignAccountantsView(generics.GenericAPIView):
     """Unassign specific accountants from a client"""
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = DimAICAccountantSerializer
 
     def get_object(self, client_id):
@@ -562,7 +579,7 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
         try:
             client_id = kwargs.get('id')
             client = self.get_object(client_id)
-            
+
             if not client:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
@@ -571,7 +588,7 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
 
             # Get accountant IDs to remove from request body or query params
             accountant_ids = request.data.get('accountant_ids', [])
-            
+
             if not accountant_ids:
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
@@ -579,10 +596,12 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
                 )
 
             # Validate that accountants are currently assigned to this client
-            currently_assigned = client.assigned_accountants.filter(id__in=accountant_ids)
-            
+            currently_assigned = client.assigned_accountants.filter(
+                id__in=accountant_ids)
+
             if currently_assigned.count() != len(accountant_ids):
-                assigned_ids = set(currently_assigned.values_list('id', flat=True))
+                assigned_ids = set(
+                    currently_assigned.values_list('id', flat=True))
                 invalid_ids = set(accountant_ids) - assigned_ids
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
@@ -591,11 +610,11 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
 
             # Remove the accountants
             client.assigned_accountants.remove(*accountant_ids)
-            
+
             # Get remaining assigned accountants
             remaining_accountants = client.assigned_accountants.all()
             serializer = self.get_serializer(remaining_accountants, many=True)
-            
+
             response_data = {
                 'client_id': client.id,
                 'client_name': client.client_name,
@@ -603,15 +622,16 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
                 'remaining_accountants': serializer.data,
                 'total_remaining_accountants': remaining_accountants.count()
             }
-            
+
             return create_api_response(
                 status.HTTP_200_OK,
                 f"Successfully unassigned {len(accountant_ids)} accountant(s) from client.",
                 data=response_data
             )
-            
+
         except Exception as e:
-            logger.error(f"Unexpected error during accountant unassignment: {str(e)}")
+            logger.error(
+                f"Unexpected error during accountant unassignment: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An unexpected error occurred during accountant unassignment.",

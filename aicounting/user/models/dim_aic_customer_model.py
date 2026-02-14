@@ -2,6 +2,8 @@ import random
 import string
 from django.db import models
 from django.contrib.auth import get_user_model
+
+
 class DimAICCustomer(models.Model):
     """
     Django model for the dim_AIC_Customer table, representing customer information.
@@ -16,32 +18,32 @@ class DimAICCustomer(models.Model):
     id = models.AutoField(
         primary_key=True,
         verbose_name="Customer ID",
-	)
+    )
     customer_secure_id = models.CharField(
         max_length=9,
         editable=False,
         verbose_name="Customer Secure ID",
-	)
+    )
     customer_name = models.CharField(
         max_length=255,
         verbose_name="Customer Name",
-	)
+    )
     street = models.CharField(
         max_length=255,
         verbose_name="Street",
-	)
+    )
     city = models.CharField(
         max_length=100,
         verbose_name="City",
-	)
+    )
     state_abrevation = models.CharField(
         max_length=2,
         verbose_name="State Abbrevation",
-	)
+    )
 
     zip_code = models.IntegerField(
         verbose_name="Zip Code",
-	)
+    )
 
     input_user = models.ForeignKey(
         get_user_model(),
@@ -75,12 +77,12 @@ class DimAICCustomer(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At",
-	)
+    )
 
     updated_at = models.DateTimeField(
         auto_now=True,
         verbose_name="Updated At",
-	)
+    )
 
     class Meta:
         # Define the table name in the database

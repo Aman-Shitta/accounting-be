@@ -18,10 +18,15 @@ from account.models import (
     FactAICJETemplateAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,
     MonthlyAccountingDocument,
+    MonthlyTemplateManualAttributeItem,
+    FactAICMonthlyAccounting
 )
 from aicounting.response import create_api_response
+from aicounting.constants import BANKING_DOCS
+
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant
+
 
 logger = logging.getLogger(__name__)
 
@@ -388,7 +393,6 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         Also validates that all entries have valid numeric values.
         Returns (is_valid, error_message, debit_sum, credit_sum)
         """
-        from decimal import Decimal
 
         # Get template attributes data
         template_data = JETemplateDataSerializer(template_snapshot).data
@@ -522,7 +526,6 @@ class JEAccountingVerifyView(generics.GenericAPIView):
             )
         # Get the JE template snapshot with proper authorization checks
         try:
-            from account.models import FactAICMonthlyAccounting
 
             # First verify the monthly accounting session exists and user has access
             if hasattr(user, 'customer_profile'):
@@ -695,7 +698,6 @@ class JEAttributeEditView(generics.GenericAPIView):
 
         # Get the JE template snapshot with proper authorization checks
         try:
-            from account.models import FactAICMonthlyAccounting
 
             # First verify the monthly accounting session exists and user has access
             if hasattr(user, 'customer_profile'):
@@ -812,7 +814,6 @@ class JEAttributeEditView(generics.GenericAPIView):
                 message="Invalid Amount. Amount cannot be negative."
             )
         # attribute.monthly_document_attributes
-        from account.models import MonthlyTemplateManualAttributeItem
         manual_attribute, _ = MonthlyTemplateManualAttributeItem.objects.get_or_create(
             template_attribute=attribute
         )

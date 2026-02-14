@@ -14,7 +14,7 @@ def create_api_response(status_code, message, data=None, errors=None, **kwargs):
 
     Returns:
         Response: Django REST framework Response object.
-        
+
     Response Format:
         {
             "status": "success" or "error",
@@ -36,7 +36,7 @@ def create_api_response(status_code, message, data=None, errors=None, **kwargs):
     # Add data for successful responses or when explicitly provided
     if data is not None:
         response["data"] = data
-    
+
     # Add structured field errors if provided
     if errors is not None:
         response["errors"] = format_serializer_errors(errors)
@@ -51,19 +51,19 @@ def create_api_response(status_code, message, data=None, errors=None, **kwargs):
 def format_serializer_errors(errors):
     """
     Format Django REST Framework serializer errors into a consistent structure.
-    
+
     Args:
         errors (dict): Serializer errors from serializer.errors
-        
+
     Returns:
         dict: Formatted errors with field names as keys and error lists as values
-        
+
     Example:
         Input: {'email': [ErrorDetail(string='This field is required.', code='required')]}
         Output: {'email': ['This field is required.']}
     """
     formatted_errors = {}
-    
+
     if isinstance(errors, dict):
         for field, error_list in errors.items():
             if isinstance(error_list, list):
@@ -79,7 +79,7 @@ def format_serializer_errors(errors):
         formatted_errors["non_field_errors"] = [str(error) for error in errors]
     else:
         formatted_errors["non_field_errors"] = [str(errors)]
-    
+
     return formatted_errors
 
 

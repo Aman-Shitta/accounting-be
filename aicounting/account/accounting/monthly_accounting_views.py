@@ -9,13 +9,27 @@ from rest_framework import generics, permissions, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from account.models import FactAICMonthlyAccounting, MonthlyAccountingDocument
+from account.models import (
+    FactAICMonthlyAccounting,
+    MonthlyAccountingDocument,
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentAttributeItem,
+)
+
 from aicounting.response import create_api_response
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant, IsCustomerOrAccountantOrReviewer
 from extractor.services import DocumentProcessingService, UnsupportedDocTypeError
 from user.models import DimAICClient
 
+from account.accounting.monthly_document_line_item_serializers import (
+    MonthlyDocumentBankLineItemSerializer,
+    MonthlyDocumentAttributeItemSerializer,
+    GLAccountNestedSerializer,
+    MonthlyDocumentLineItemSerializer,
+)
+
+from aicounting.constants import BANKING_DOCS
 logger = logging.getLogger(__name__)
 
 
@@ -324,8 +338,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 )
 
             # Get documents for upload (replacing input file snapshots)
-            from account.models import MonthlyAccountingDocument
-
             documents = MonthlyAccountingDocument.objects.filter(
                 monthly_accounting=monthly_accounting
             ).select_related('input_file_snapshot')
@@ -353,7 +365,6 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
             )
 
             # Get monthly accounting documents for status checking
-            from account.models import MonthlyAccountingDocument
             documents_map = {}
 
             # Create map of input file snapshot ID to document for quick lookup
@@ -748,7 +759,7 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
 
                     # Generate export file for the template
                     try:
-                        from .je_accounting_views import JEAccountingVerifyView
+                        from account.accounting.monthly_accounting_views import JEAccountingVerifyView
                         JEAccountingVerifyView.generate_export_file(
                             template_snapshot)
                         logger.error(
@@ -771,7 +782,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsCustomerOrAccountantOrReviewer]
 
     def _get_document(self, client_id, accounting_id, document_id, request):
-        from account.models import MonthlyAccountingDocument
         user = request.user
         if hasattr(user, 'customer_profile'):
             monthly_accounting = get_object_or_404(
@@ -808,9 +818,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         GET /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-            from .monthly_document_line_item_serializers import MonthlyDocumentLineItemSerializer
-
             document, error_response = self._get_document(
                 client_id, accounting_id, document_id, request)
             if error_response:
@@ -836,7 +843,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                         if bank_attributes.exists():
                             default_offset_gl_obj = bank_attributes.first().offset_gl_account
                             if default_offset_gl_obj:
-                                from .monthly_document_line_item_serializers import GLAccountNestedSerializer
                                 default_offset_gl = GLAccountNestedSerializer(
                                     default_offset_gl_obj).data
                 except Exception as e:
@@ -918,12 +924,6 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
         }
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer,
-                MonthlyDocumentAttributeItemSerializer
-            )
-
             document, error_response = self._get_document(
                 client_id, accounting_id, document_id, request)
             if error_response:
@@ -1018,8 +1018,6 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
     def _get_line_item(self, client_id, accounting_id, document_id, line_item_id, request):
         """Helper method to get line item with proper authorization - supports both BankLineItem and AttributeItem"""
-        from account.models import MonthlyAccountingDocument
-        from account.models import MonthlyDocumentBankLineItem, MonthlyDocumentAttributeItem
 
         user = request.user
         if hasattr(user, 'customer_profile'):
@@ -1084,11 +1082,6 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         }
         """
         try:
-            from .monthly_document_line_item_serializers import (
-                MonthlyDocumentBankLineItemSerializer,
-                MonthlyDocumentAttributeItemSerializer
-            )
-
             line_item, item_type, error_response = self._get_line_item(
                 client_id, accounting_id, document_id, line_item_id, request
             )
@@ -1153,8 +1146,6 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
         DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/documents/{document_id}/lines/{line_item_id}/
         """
         try:
-            from account.models import MonthlyDocumentBankLineItem
-
             line_item, item_type, error_response = self._get_line_item(
                 client_id, accounting_id, document_id, line_item_id, request
             )

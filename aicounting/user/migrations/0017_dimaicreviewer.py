@@ -16,15 +16,24 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='DimAICReviewer',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('email', models.EmailField(max_length=254, unique=True, verbose_name='User Email')),
-                ('verified', models.BooleanField(default=False, verbose_name='Verified')),
-                ('azure_id', models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration', max_length=255, null=True, unique=True, verbose_name='Azure ID')),
-                ('refresher_token', models.TextField(blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token')),
-                ('review_assigned_at', models.DateTimeField(blank=True, help_text='Timestamp when the reviewer was assigned a review task', null=True, verbose_name='Review Assigned At')),
-                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('system_user', models.OneToOneField(help_text='Reference to the system user account for this reviewer', on_delete=django.db.models.deletion.CASCADE, related_name='reviewer_profile', to=settings.AUTH_USER_MODEL, verbose_name='System User')),
+                ('id', models.BigAutoField(auto_created=True,
+                                           primary_key=True, serialize=False, verbose_name='ID')),
+                ('email', models.EmailField(max_length=254,
+                                            unique=True, verbose_name='User Email')),
+                ('verified', models.BooleanField(
+                    default=False, verbose_name='Verified')),
+                ('azure_id', models.CharField(blank=True, help_text='Azure Active Directory user ID for SSO integration',
+                                              max_length=255, null=True, unique=True, verbose_name='Azure ID')),
+                ('refresher_token', models.TextField(
+                    blank=True, help_text='Azure AD refresher token for SSO integration', null=True, verbose_name='Refresher Token')),
+                ('review_assigned_at', models.DateTimeField(
+                    blank=True, help_text='Timestamp when the reviewer was assigned a review task', null=True, verbose_name='Review Assigned At')),
+                ('created_at', models.DateTimeField(
+                    auto_now_add=True, verbose_name='Created At')),
+                ('updated_at', models.DateTimeField(
+                    auto_now=True, verbose_name='Updated At')),
+                ('system_user', models.OneToOneField(help_text='Reference to the system user account for this reviewer',
+                                                     on_delete=django.db.models.deletion.CASCADE, related_name='reviewer_profile', to=settings.AUTH_USER_MODEL, verbose_name='System User')),
             ],
             options={
                 'verbose_name': 'Reviewer',

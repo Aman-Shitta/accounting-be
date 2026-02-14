@@ -23,12 +23,12 @@ class DocumentAIMixin:
         )
 
         # Initialize Document AI client.
-        self.doc_ai_client = documentai_v1.DocumentProcessorServiceClient(client_options=opts)
+        self.doc_ai_client = documentai_v1.DocumentProcessorServiceClient(
+            client_options=opts)
 
         self.doc_ai_processor = self.init_processor(**kwargs)
 
     def init_processor(self, **kwargs):
-
         """
         returns
 
@@ -56,7 +56,7 @@ class DocumentAIMixin:
         return self.doc_ai_client.get_processor(
             request=processor_request
         )
-    
+
     def prepare_request_document(self, page_bytes, mime_type='application/pdf'):
         raw_document = documentai_v1.RawDocument(
             content=page_bytes,
@@ -70,14 +70,12 @@ class DocumentAIMixin:
             raw_document=raw_document
         )
         return request
-    
-    def process_request(self, request)-> documentai_v1.ProcessResponse:
+
+    def process_request(self, request) -> documentai_v1.ProcessResponse:
         result = self.doc_ai_client.process_document(
             request=request
         )
         return result
-
-
 
 
 class DocumentAIProcessor(DocumentAIMixin):
@@ -91,8 +89,7 @@ class DocumentAIProcessor(DocumentAIMixin):
             project_id=project_id,
             processor_id=processor_id
         )
-    
-    
+
     def extract_text_from_anchor(self, text_anchor, full_text: str) -> str:
         if not text_anchor.text_segments:
             return ""
@@ -125,7 +122,6 @@ class DocumentAIProcessor(DocumentAIMixin):
     def _y_center(self, word: Dict[str, Any]) -> float:
         return (self._y0(word) + self._y1(word)) / 2.0
 
-
     def _estimate_y_eps(self, words: List[Dict[str, Any]]) -> float:
         """
         Estimate row height tolerance (normalized y units).
@@ -138,7 +134,6 @@ class DocumentAIProcessor(DocumentAIMixin):
         med = deltas_sorted[len(deltas_sorted) // 2]
         # clamp to sane bounds; statements vary a lot
         return max(0.006, min(0.03, med * 0.9))
-
 
     def cluster_words_into_rows(self, words: List[Dict[str, Any]], y_eps: Optional[float] = None) -> List[List[Dict[str, Any]]]:
         """
@@ -157,7 +152,6 @@ class DocumentAIProcessor(DocumentAIMixin):
         # Return rows top-to-bottom
         rows = [buckets[k] for k in sorted(buckets.keys())]
         return rows
-
 
     def split_row_into_cells(
         self,
@@ -216,7 +210,6 @@ class DocumentAIProcessor(DocumentAIMixin):
 
         return cell_texts
 
-
     def build_rows_with_cells(self, words: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Returns:
@@ -241,7 +234,7 @@ class DocumentAIProcessor(DocumentAIMixin):
         return out
 
     def process_doc_to_json(self, doc: documentai_v1.Document):
-        
+
         full_text = doc.text or ""
         output: Dict[str, Any] = {"pages": []}
 
@@ -249,16 +242,19 @@ class DocumentAIProcessor(DocumentAIMixin):
             words_on_page: List[Dict[str, Any]] = []
 
             for token in page.tokens:
-                token_text = self.extract_text_from_anchor(token.layout.text_anchor, full_text).strip()
+                token_text = self.extract_text_from_anchor(
+                    token.layout.text_anchor, full_text).strip()
                 if not token_text:
                     continue
 
                 bounding_box = [
-                    {"x": v.x / page.dimension.width, "y": v.y / page.dimension.height}
+                    {"x": v.x / page.dimension.width,
+                        "y": v.y / page.dimension.height}
                     for v in token.layout.bounding_poly.vertices
                 ]
 
-                words_on_page.append({"text": token_text, "bounding_box": bounding_box})
+                words_on_page.append(
+                    {"text": token_text, "bounding_box": bounding_box})
 
             # rows = self.build_rows_with_cells_bounding_box(words_on_page)
             rows = self.build_rows_with_cells(words_on_page)
@@ -270,7 +266,7 @@ class DocumentAIProcessor(DocumentAIMixin):
 
         return output
 
-    def process_document_ai(self, page_bytes, mime_type)-> documentai_v1.Document:
+    def process_document_ai(self, page_bytes, mime_type) -> documentai_v1.Document:
 
         raw_document = self.prepare_request_document(
             page_bytes=page_bytes,

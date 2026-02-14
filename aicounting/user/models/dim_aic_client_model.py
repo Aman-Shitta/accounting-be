@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from aicounting.file_upload_helper import upload_to_customer_client_folder
 
+
 class DimAICClient(models.Model):
     """
     Represents a client entity associated with a customer and assigned user.
@@ -18,11 +19,16 @@ class DimAICClient(models.Model):
     )
 
     client_name = models.CharField(max_length=255, verbose_name="Client Name")
-    client_id = models.CharField(max_length=255, verbose_name="Client Assigned ID", unique=True)
-    street = models.CharField(max_length=255, verbose_name="Street", null=True, blank=True,)
-    city = models.CharField(max_length=100, verbose_name="City", null=True, blank=True,)
-    state = models.CharField(max_length=2, verbose_name="State Abbreviation", null=True, blank=True)
-    zip_code = models.IntegerField(verbose_name="Zip Code", null=True, blank=True,)
+    client_id = models.CharField(
+        max_length=255, verbose_name="Client Assigned ID", unique=True)
+    street = models.CharField(
+        max_length=255, verbose_name="Street", null=True, blank=True,)
+    city = models.CharField(
+        max_length=100, verbose_name="City", null=True, blank=True,)
+    state = models.CharField(
+        max_length=2, verbose_name="State Abbreviation", null=True, blank=True)
+    zip_code = models.IntegerField(
+        verbose_name="Zip Code", null=True, blank=True,)
 
     assigned_accountants = models.ManyToManyField(
         "DimAICAccountant",
@@ -39,7 +45,8 @@ class DimAICClient(models.Model):
         verbose_name="Input User (Admin)",
     )
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
     class Meta:
@@ -90,7 +97,8 @@ class DimAICClientDocument(models.Model):
         verbose_name="Uploaded By"
     )
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
     class Meta:
@@ -100,17 +108,16 @@ class DimAICClientDocument(models.Model):
 
     def __str__(self):
         return f"{self.client.client_name} - {self.get_document_type_display()}"
-    
+
     def get_secure_url(self, expire_minutes=10):
         """
         Get a secure temporary URL for the document file with 10-minute expiry
         """
         if not self.file:
             return ""
-        
+
         # Generate Azure SAS URL with 10-minute expiry (no permission checks)
         from django.core.files.storage import default_storage
         if hasattr(default_storage, 'url'):
             return default_storage.url(self.file.name, expire_minutes=expire_minutes)
         return ""
-    

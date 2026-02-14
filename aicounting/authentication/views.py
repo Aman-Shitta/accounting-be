@@ -1,41 +1,36 @@
-import jwt
-
-# Third-party imports
 from django.contrib.auth import get_user_model
-from rest_framework import status
+
+import jwt
+from rest_framework import permissions, status
 from rest_framework.generics import GenericAPIView
 
-# Local imports
 from aicounting.msal_conf import MsalConf
 from aicounting.response import create_api_response
-
-from user.models import (
-    DimAICCustomer,
-    DimAICAccountant,
-    DimAICReviewer
-)
-
-
-from rest_framework import permissions
-from authentication.permissions import IsCustomerOrAccountant
 from authentication import authenticate
-
 from authentication.constants import *
+from authentication.permissions import IsCustomerOrAccountant
+from user.models import (
+    DimAICAccountant,
+    DimAICCustomer,
+    DimAICReviewer,
+)
 
 msal = MsalConf()
 
+
 class SSOLoginView(GenericAPIView):
-    def get(self, request):        
+    def get(self, request):
         auth_url = msal.MSAL_APP.get_authorization_request_url(
             msal.SCOPE,
             redirect_uri=msal.AUTH_REDIRECT_URI
         )
-        
+
         return create_api_response(
             status_code=status.HTTP_200_OK,
             message="Authorization URL generated successfully.",
             data={"auth_url": auth_url}
         )
+
 
 class SSOGenerateTokenView(GenericAPIView):
 
@@ -89,7 +84,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     data=None,
                     message='User does not belong to any required groups.'
                 )
-            
+
             # Check for customer or accountant groups in priority order
             # Customer has higher priority than accountant
             user_role = None
@@ -97,19 +92,20 @@ class SSOGenerateTokenView(GenericAPIView):
                 if msal.GROUPS.get(role) in groups:
                     user_role = role
                     break
-            
+
             if not user_role:
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
                     message='Unauthorized group access. User must be a customer or accountant.'
                 )
-            
+
             user_name = ""
             customer_name = ""
 
             if user_role == CUSTOMER:
-                customer = DimAICCustomer.objects.filter(system_user__email=email).first()
+                customer = DimAICCustomer.objects.filter(
+                    system_user__email=email).first()
 
                 if not customer or not user_object_id:
                     return create_api_response(
@@ -120,7 +116,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 if not customer.verified:
                     customer.azure_id = user_object_id
                     customer.verified = True
-                
+
                 customer.refresher_token = refresh_token
                 customer.save()
 
@@ -132,7 +128,8 @@ class SSOGenerateTokenView(GenericAPIView):
 
             elif user_role == ACCOUNTANT:
 
-                accountant = DimAICAccountant.objects.filter(system_user__email=email).first()
+                accountant = DimAICAccountant.objects.filter(
+                    system_user__email=email).first()
                 if not accountant or not user_object_id:
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -142,7 +139,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 if not accountant.verified:
                     accountant.azure_id = user_object_id
                     accountant.verified = True
-                
+
                 accountant.refresher_token = refresh_token
                 accountant.save()
 
@@ -153,8 +150,9 @@ class SSOGenerateTokenView(GenericAPIView):
                 customer_name = accountant.customer.customer_name
 
             elif user_role == REVIEWER:
-                
-                reviewer = DimAICReviewer.objects.filter(system_user__email=email).first()
+
+                reviewer = DimAICReviewer.objects.filter(
+                    system_user__email=email).first()
                 if not reviewer or not user_object_id:
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -164,7 +162,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 if not reviewer.verified:
                     reviewer.azure_id = user_object_id
                     reviewer.verified = True
-                
+
                 reviewer.refresher_token = refresh_token
                 reviewer.save()
 
@@ -195,10 +193,10 @@ class SSOGenerateTokenView(GenericAPIView):
                     "user_type": user_role,
                     "email": email,
                     "name": user_name,
-                    "customer_name": f"{customer_name}" 
+                    "customer_name": f"{customer_name}"
                 }
             }
-            
+
             return create_api_response(
                 status_code=status.HTTP_200_OK,
                 message="Authentication successful.",
@@ -217,9 +215,9 @@ class SSORefreshTokenView(GenericAPIView):
     Refresh the user's token using the stored refresh token.
     Frontend should call this endpoint before the token expires or when receiving a 401.
     """
-    authentication_classes = [authenticate.JSONWebTokenAuthentication] 
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant] 
-    
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+
     def post(self, request):
         try:
             # Get the current (possibly expired) token from Authorization header
@@ -230,65 +228,68 @@ class SSORefreshTokenView(GenericAPIView):
                     data=None,
                     message='No authorization token provided.'
                 )
-            
+
             current_token = auth_header.split(' ')[1]
-            
+
             # Decode without verification to get user info (token might be expired)
             try:
-                decoded = jwt.decode(current_token, options={"verify_signature": False})
+                decoded = jwt.decode(current_token, options={
+                                     "verify_signature": False})
                 azure_id = decoded.get('oid')
-                email = decoded.get('preferred_username') or decoded.get('email')
+                email = decoded.get(
+                    'preferred_username') or decoded.get('email')
             except jwt.DecodeError:
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
                     message='Invalid token format.'
                 )
-            
+
             if not azure_id:
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
                     message='Could not identify user from token.'
                 )
-            
+
             # Find the user and their stored refresh token
             customer = DimAICCustomer.objects.filter(azure_id=azure_id).first()
-            accountant = DimAICAccountant.objects.filter(azure_id=azure_id).first()
-            
+            accountant = DimAICAccountant.objects.filter(
+                azure_id=azure_id).first()
+
             user_profile = customer or accountant
             user_type = 'customer' if customer else 'accountant'
-            
+
             if not user_profile:
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
                     message='User not found.'
                 )
-            
+
             stored_refresh_token = user_profile.refresher_token
-            
+
             if not stored_refresh_token:
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
                     message='No refresh token available. Please login again.'
                 )
-            
+
             # Refresh the token
             new_tokens = msal.refresh_access_token(stored_refresh_token)
-            
+
             if not new_tokens or not new_tokens.get('id_token'):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
                     message='Token refresh failed. Please login again.'
                 )
-            
+
             # Update the stored refresh token (Azure AD rotates refresh tokens)
             user_profile.refresher_token = new_tokens.get('refresh_token')
             user_profile.save()
-            
+
             # Get user info for response
             if user_type == 'customer':
                 user_name = user_profile.customer_name
@@ -296,7 +297,7 @@ class SSORefreshTokenView(GenericAPIView):
             else:
                 user_name = user_profile.username
                 customer_name = user_profile.customer.customer_name
-            
+
             return create_api_response(
                 status_code=status.HTTP_200_OK,
                 message="Token refreshed successfully.",
@@ -311,7 +312,7 @@ class SSORefreshTokenView(GenericAPIView):
                     }
                 }
             )
-            
+
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

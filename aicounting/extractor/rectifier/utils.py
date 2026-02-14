@@ -1,3 +1,11 @@
+from google import genai
+from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple, Set, Union
+import time
+import os
+import mimetypes
+import json
+from google.cloud import documentai_v1 as documentai
 import re
 from google.genai import types
 
@@ -96,39 +104,40 @@ Always output amount as a positive number; use "type" to indicate direction.
 """
 
 TRANSACTIONS_SCHEMA = types.Schema(
-    type = types.Type.OBJECT,
-    required = ["transactions"],
-    properties = {
+    type=types.Type.OBJECT,
+    required=["transactions"],
+    properties={
         "transactions": types.Schema(
-            type = types.Type.ARRAY,
-            items = types.Schema(
-                type = types.Type.OBJECT,
-                required = ["date", "description", "amount", "type", "page_number"],
-                properties = {
+            type=types.Type.ARRAY,
+            items=types.Schema(
+                type=types.Type.OBJECT,
+                required=["date", "description",
+                          "amount", "type", "page_number"],
+                properties={
                     "date": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Transaction date in MM/DD/YYYY format",
+                        type=types.Type.STRING,
+                        description="Transaction date in MM/DD/YYYY format",
                     ),
                     "page_number": types.Schema(
-                        type = types.Type.NUMBER,
-                        description = "Page number where the transaction was found",
+                        type=types.Type.NUMBER,
+                        description="Page number where the transaction was found",
                     ),
                     "description": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Transaction description or check number",
+                        type=types.Type.STRING,
+                        description="Transaction description or check number",
                     ),
                     "amount": types.Schema(
-                        type = types.Type.NUMBER,
-                        description = "Transaction amount as a positive number",
+                        type=types.Type.NUMBER,
+                        description="Transaction amount as a positive number",
                     ),
                     "type": types.Schema(
-                        type = types.Type.STRING,
-                        enum = ["debit", "credit"],
-                        description = "Transaction type indicating money flow",
+                        type=types.Type.STRING,
+                        enum=["debit", "credit"],
+                        description="Transaction type indicating money flow",
                     ),
                     "check_number": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Check number if the transaction is from a check table",
+                        type=types.Type.STRING,
+                        description="Check number if the transaction is from a check table",
                     ),
                     # "bounding_box": types.Schema(
                     #     type = types.Type.OBJECT,
@@ -260,38 +269,39 @@ OUTPUT RULES (STRICT):
 """
 
 CHECKS_SCHEMA = types.Schema(
-    type = types.Type.OBJECT,
-    required = [],
-    properties = {
+    type=types.Type.OBJECT,
+    required=[],
+    properties={
         "transactions": types.Schema(
-            type = types.Type.ARRAY,
-            items = types.Schema(
-                type = types.Type.OBJECT,
-                required = ["date", "check_number", "check_written_date", "amount", "for_memo"],
-                properties = {
+            type=types.Type.ARRAY,
+            items=types.Schema(
+                type=types.Type.OBJECT,
+                required=["date", "check_number",
+                          "check_written_date", "amount", "for_memo"],
+                properties={
                     "date": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Transaction date in MM/DD/YYYY format",
+                        type=types.Type.STRING,
+                        description="Transaction date in MM/DD/YYYY format",
                     ),
                     "check_number": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Check number as printed on the check",
+                        type=types.Type.STRING,
+                        description="Check number as printed on the check",
                     ),
                     "payee": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Name of the payee on the check",
+                        type=types.Type.STRING,
+                        description="Name of the payee on the check",
                     ),
                     "check_written_date": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Date written on the check in MM/DD/YYYY format",
+                        type=types.Type.STRING,
+                        description="Date written on the check in MM/DD/YYYY format",
                     ),
                     "amount": types.Schema(
-                        type = types.Type.NUMBER,
-                        description = "Check amount as a positive number",
+                        type=types.Type.NUMBER,
+                        description="Check amount as a positive number",
                     ),
                     "for_memo": types.Schema(
-                        type = types.Type.STRING,
-                        description = "Memo or purpose of the check",
+                        type=types.Type.STRING,
+                        description="Memo or purpose of the check",
                     )
                 },
             ),
@@ -302,18 +312,6 @@ CHECKS_SCHEMA = types.Schema(
 
 # RAW PROMPT
 
-
-from google.cloud import documentai_v1 as documentai
-import json
-import mimetypes
-import os
-import re
-import time
-from typing import Any, Dict, List, Optional, Tuple, Set, Union
-from collections import Counter
-
-from google import genai
-from google.genai import types
 
 GEMINI_PREFIX = """
 You are a financial data extraction system.
@@ -507,7 +505,6 @@ OUTPUT RULES (STRICT):
 """
 
 
-
 _DATE_RE = re.compile(
     r"(\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b)|"
     r"(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}\b)",
@@ -522,18 +519,22 @@ _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 def _has_date(s: str) -> bool:
     return bool(_DATE_RE.search(s))
 
+
 def _has_amount(s: str) -> bool:
     # Avoid treating tiny integers like "01" as amount: require decimal/comma/$/()/-`
     matches = _AMOUNT_TOKEN_RE.findall(s)
     if not matches:
         return False
     return any(
-        ('.' in m) or (',' in m) or ('$' in m) or ('(' in m) or (')' in m) or ('-' in m)
+        ('.' in m) or (',' in m) or ('$' in m) or (
+            '(' in m) or (')' in m) or ('-' in m)
         for m in matches
     )
 
+
 def _row_text(row: Dict[str, Any]) -> str:
     return (row.get("text") or " | ".join(row.get("cells", []) or [])).strip()
+
 
 def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -561,7 +562,8 @@ def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r2 = rows[i + 1]
             t2 = _row_text(r2)
             if t2 and _has_date(t2) and not _has_amount(t2):
-                merged_cells = (r2.get("cells", []) or []) + (r.get("cells", []) or [])
+                merged_cells = (r2.get("cells", []) or []) + \
+                    (r.get("cells", []) or [])
                 merged_text = (t2 + " " + t).strip()
                 stitched.append({
                     "row_index": r2.get("row_index", i + 2),
@@ -576,7 +578,8 @@ def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             r2 = rows[i + 1]
             t2 = _row_text(r2)
             if t2 and _has_amount(t2) and not _has_date(t2):
-                merged_cells = (r.get("cells", []) or []) + (r2.get("cells", []) or [])
+                merged_cells = (r.get("cells", []) or []) + \
+                    (r2.get("cells", []) or [])
                 merged_text = (t + " " + t2).strip()
                 stitched.append({
                     "row_index": r.get("row_index", i + 1),
@@ -591,15 +594,17 @@ def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     return stitched
 
+
 def _coerce_amount(v: Any) -> float:
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            s = v.strip().replace("$", "").replace(",", "")
-            if s.startswith("(") and s.endswith(")"):
-                s = "-" + s[1:-1]
-            return float(s)
-        raise ValueError(f"Invalid amount type: {type(v)}")
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip().replace("$", "").replace(",", "")
+        if s.startswith("(") and s.endswith(")"):
+            s = "-" + s[1:-1]
+        return float(s)
+    raise ValueError(f"Invalid amount type: {type(v)}")
+
 
 def _remove_thousands_commas_outside_strings(s: str) -> str:
     """
@@ -638,4 +643,3 @@ def _remove_thousands_commas_outside_strings(s: str) -> str:
         out.append(ch)
 
     return "".join(out)
-

@@ -27,12 +27,12 @@ from extractor.rectifier.utils import (
 
 from extractor.rectifier.doc_ai_helper import DocumentAIProcessor
 
+
 class GeminiRectifyHelper:
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.MODEL_NAME = "gemini-2.5-flash-lite"
 
-    
     @staticmethod
     def _gemini_response_to_text(resp) -> str:
         # google.genai responses typically expose `.text` directly.
@@ -98,7 +98,8 @@ class GeminiRectifyHelper:
                 last_err = e
                 if attempt < retries:
                     time.sleep(delay * attempt)
-        raise RuntimeError(f"Gemini call failed after {retries} attempts: {last_err}")
+        raise RuntimeError(
+            f"Gemini call failed after {retries} attempts: {last_err}")
 
 
 class TransactionRectifierV3(GeminiRectifyHelper):
@@ -106,8 +107,8 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         super().__init__()
         self.doc_ai_processor = DocumentAIProcessor()
 
-    @staticmethod 
-    def  validate_transactions_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    @staticmethod
+    def validate_transactions_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not isinstance(payload, dict):
             return []
 
@@ -229,7 +230,6 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         payload = {"pages": stitched_pages}
         payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
 
-
         # print(f"\n📤 Sending {len(stitched_pages)} pages to Gemini in one request...")
         parsed = self.call_gemini(
             payload_json,
@@ -248,7 +248,8 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         for t in validated:
             key = (
                 t["date"].strip(),
-                " ".join(t["description"].split()).lower(),  # normalize whitespace + case
+                # normalize whitespace + case
+                " ".join(t["description"].split()).lower(),
                 round(float(t["amount"]), 2),                # normalize cents
                 t["type"].strip().lower(),
             )
@@ -260,7 +261,8 @@ class TransactionRectifierV3(GeminiRectifyHelper):
 
             all_transactions.append({
                 "id": global_id,
-                "page_number": t["page_number"],   # keep it, but NOT part of dedupe
+                # keep it, but NOT part of dedupe
+                "page_number": t["page_number"],
                 "date": t["date"],
                 "description": t["description"],
                 "amount": t["amount"],
@@ -297,7 +299,7 @@ class TransactionRectifierV3(GeminiRectifyHelper):
             )
 
             # parsed = self.parse_gemini_json(raw)
-            
+
             validated = self.chk_img_validate_transactions_payload(parsed)
 
             for t in validated:
@@ -317,7 +319,7 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         return all_transactions
 
     def remove_pages_with_high_check_counts(
-        self, 
+        self,
         checks_json: Union[Dict[str, Any], List[Dict[str, Any]]],
         page_txn_json: Union[Dict[str, Any], List[Dict[str, Any]]],
         *,
@@ -358,7 +360,8 @@ class TransactionRectifierV3(GeminiRectifyHelper):
             if isinstance(page, int):
                 page_counter[page] += 1
 
-        excluded_pages: Set[int] = {p for p, c in page_counter.items() if c >= threshold}
+        excluded_pages: Set[int] = {
+            p for p, c in page_counter.items() if c >= threshold}
 
         # Filter page-based txns
         filtered = [
@@ -371,9 +374,9 @@ class TransactionRectifierV3(GeminiRectifyHelper):
     def rectify_document(self, line_items, page_bytes, mime_type="application/pdf") -> List[Dict[str, Any]]:
 
         result_json = self.doc_ai_processor.process_document_ai(
-                page_bytes=page_bytes,
-                mime_type=mime_type
-            )
+            page_bytes=page_bytes,
+            mime_type=mime_type
+        )
 
         transactions = self.extract_transactions(result_json)
 
@@ -387,19 +390,18 @@ class TransactionRectifierV3(GeminiRectifyHelper):
 
         gemini_items = filtered_page_txns.get("transactions", [])
 
-        
         if not gemini_items:
             print("No transactions extracted by Gemini, returning original data")
             return line_items, gemini_items
-        
+
         print(f"Gemini extracted {len(gemini_items)} transactions")
-        
+
         rectified_items = self._compare_and_rectify(line_items, gemini_items)
-        
+
         return rectified_items, gemini_items
 
-        return 
-    
+        return
+
     def _compare_and_rectify(
         self,
         line_items: List[Dict[str, Any]],
@@ -407,17 +409,17 @@ class TransactionRectifierV3(GeminiRectifyHelper):
     ) -> List[Dict[str, Any]]:
         """
         Compare line_items with gemini_items and rectify.
-        
+
         Logic:
         1. If lengths are same: index-by-index match description/date, update amount if different
         2. If gemini has more: find where missing items are and insert them
         """
         if not gemini_items:
             return line_items
-        
+
         len_line = len(line_items)
         len_gemini = len(gemini_items)
-        
+
         if len_line == len_gemini:
             # Same length - simple index-by-index comparison
             return self._rectify_same_length(line_items, gemini_items)
@@ -435,34 +437,36 @@ class TransactionRectifierV3(GeminiRectifyHelper):
     ) -> List[Dict[str, Any]]:
         """Rectify when both lists have same length - index by index comparison."""
         rectified = []
-        
+
         for idx, (line_item, gemini_item) in enumerate(zip(line_items, gemini_items)):
             rectified_item = line_item.copy()
             rectified_item['is_rectified'] = False
             rectified_item['was_missing'] = False
-            
+
             # Check if description and date match
             if self._items_match(line_item, gemini_item):
                 # Items match - check if amount needs update
                 line_amount = self._get_amount(line_item)
                 gemini_amount = self._get_amount(gemini_item)
-                
+
                 if line_amount is None and gemini_amount is not None:
                     # Line item has no amount, use gemini's
                     rectified_item['amount'] = gemini_amount
                     rectified_item['is_rectified'] = True
-                    print(f"Added missing amount at index {idx}: {gemini_amount}")
+                    print(
+                        f"Added missing amount at index {idx}: {gemini_amount}")
                 elif line_amount != gemini_amount and gemini_amount is not None:
                     # Amounts differ - use gemini's amount
                     rectified_item['amount'] = gemini_amount
                     rectified_item['is_rectified'] = True
-                    print(f"Updated amount at index {idx}: {line_amount} -> {gemini_amount}")
+                    print(
+                        f"Updated amount at index {idx}: {line_amount} -> {gemini_amount}")
             else:
                 # Items don't match at this index - keep original
                 print(f"Items don't match at index {idx}")
-            
+
             rectified.append(rectified_item)
-        
+
         return rectified
 
     def _rectify_gemini_has_more(
@@ -474,29 +478,29 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         rectified = []
         line_idx = 0
         gemini_idx = 0
-        
+
         while gemini_idx < len(gemini_items):
             gemini_item = gemini_items[gemini_idx]
-            
+
             if line_idx < len(line_items):
                 line_item = line_items[line_idx]
-                
+
                 if self._items_match(line_item, gemini_item):
                     # Items match - update amount if needed
                     rectified_item = line_item.copy()
                     rectified_item['is_rectified'] = False
                     rectified_item['was_missing'] = False
-                    
+
                     line_amount = self._get_amount(line_item)
                     gemini_amount = self._get_amount(gemini_item)
-                    
+
                     if line_amount is None and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
                         rectified_item['is_rectified'] = True
                     elif line_amount != gemini_amount and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
                         rectified_item['is_rectified'] = True
-                    
+
                     rectified.append(rectified_item)
                     line_idx += 1
                     gemini_idx += 1
@@ -507,20 +511,23 @@ class TransactionRectifierV3(GeminiRectifyHelper):
                         if self._items_match(line_items[lookahead], gemini_item):
                             match_found = True
                             break
-                    
-                    if match_found :
+
+                    if match_found:
                         # Gemini has an extra item - insert it as missing
                         # Skip check transactions - don't add them as missing
                         if gemini_item.get('is_check_transaction', False):
-                            print(f"Skipping extra check transaction from gemini at position {gemini_idx}")
+                            print(
+                                f"Skipping extra check transaction from gemini at position {gemini_idx}")
                             gemini_idx += 1
                             continue
-                        
-                        new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
+
+                        new_item = self._create_item_from_gemini(
+                            gemini_item, line_items[0] if line_items else {})
                         new_item['is_rectified'] = True
                         new_item['was_missing'] = True
                         rectified.append(new_item)
-                        print(f"Inserted missing item from gemini at position {len(rectified)}")
+                        print(
+                            f"Inserted missing item from gemini at position {len(rectified)}")
                         gemini_idx += 1
                     else:
                         # No match found - keep line_item and move on
@@ -534,17 +541,20 @@ class TransactionRectifierV3(GeminiRectifyHelper):
                 # No more line_items - add remaining gemini items as missing
                 # Skip check transactions - don't add them as missing
                 if gemini_item.get('is_check_transaction', False):
-                    logger.info(f"Skipping trailing check transaction from gemini at position {gemini_idx}")
+                    logger.info(
+                        f"Skipping trailing check transaction from gemini at position {gemini_idx}")
                     gemini_idx += 1
                     continue
-                
-                new_item = self._create_item_from_gemini(gemini_item, line_items[0] if line_items else {})
+
+                new_item = self._create_item_from_gemini(
+                    gemini_item, line_items[0] if line_items else {})
                 new_item['is_rectified'] = True
                 new_item['was_missing'] = True
                 rectified.append(new_item)
-                logger.info(f"Added trailing item from gemini at position {len(rectified)}")
+                logger.info(
+                    f"Added trailing item from gemini at position {len(rectified)}")
                 gemini_idx += 1
-        
+
         # Add any remaining line_items
         while line_idx < len(line_items):
             rectified_item = line_items[line_idx].copy()
@@ -552,11 +562,11 @@ class TransactionRectifierV3(GeminiRectifyHelper):
             rectified_item['was_missing'] = False
             rectified.append(rectified_item)
             line_idx += 1
-        
+
         # Reassign IDs
         for idx, item in enumerate(rectified):
             item['id'] = idx + 1
-        
+
         return rectified
 
     def _rectify_line_items_has_more(
@@ -567,31 +577,31 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         """Rectify when line_items has more - update matched items only."""
         rectified = []
         gemini_idx = 0
-        
+
         for line_item in line_items:
             rectified_item = line_item.copy()
             rectified_item['is_rectified'] = False
             rectified_item['was_missing'] = False
-            
+
             # Try to find matching gemini item
             if gemini_idx < len(gemini_items):
                 gemini_item = gemini_items[gemini_idx]
-                
+
                 if self._items_match(line_item, gemini_item):
                     line_amount = self._get_amount(line_item)
                     gemini_amount = self._get_amount(gemini_item)
-                    
+
                     if line_amount is None and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
                         rectified_item['is_rectified'] = True
                     elif line_amount != gemini_amount and gemini_amount is not None:
                         rectified_item['amount'] = gemini_amount
                         rectified_item['is_rectified'] = True
-                    
+
                     gemini_idx += 1
-            
+
             rectified.append(rectified_item)
-        
+
         return rectified
 
     def _items_match(self, line_item: Dict, gemini_item: Dict) -> bool:
@@ -599,35 +609,36 @@ class TransactionRectifierV3(GeminiRectifyHelper):
         # Compare dates
         line_date = str(line_item.get('date', '')).strip()
         gemini_date = str(gemini_item.get('date', '')).strip()
-        
+
         if line_date and gemini_date:
             if not self._dates_match(line_date, gemini_date):
                 return False
-        
+
         # Compare descriptions using fuzzy matching
-        line_desc = str(line_item.get('description', '')).strip().lower() if not line_item.get('is_check_transaction', False) else f'Check {line_item.get("check_number", "")}'
+        line_desc = str(line_item.get('description', '')).strip().lower() if not line_item.get(
+            'is_check_transaction', False) else f'Check {line_item.get("check_number", "")}'
         gemini_desc = str(gemini_item.get('description', '')).strip().lower()
-        
+
         if line_desc and gemini_desc:
             similarity = SequenceMatcher(None, line_desc, gemini_desc).ratio()
             if similarity < 0.6:
                 return False
-        
+
         return True
 
     def _dates_match(self, date1: str, date2: str) -> bool:
         """Check if two date strings represent the same date."""
         if not date1 or not date2:
             return True  # If either is missing, consider it a match
-        
+
         # Extract numeric parts
         nums1 = re.findall(r'\d+', date1)
         nums2 = re.findall(r'\d+', date2)
-        
+
         # Compare numeric parts
         if sorted(nums1) == sorted(nums2):
             return True
-        
+
         # Direct comparison after stripping
         return date1.replace('/', '').replace('-', '') == date2.replace('/', '').replace('-', '')
 
@@ -672,10 +683,8 @@ def main():
     # from extractor.rectifier.utils import DATA
 
     # raw_doc_data = DATA
-    
+
     rectifier = TransactionRectifierV3()
 
     # raw_doc_data = RAW.copy()
     rectifier.rectify_document({}, file_bytes, mime_type="application/pdf")
-
-

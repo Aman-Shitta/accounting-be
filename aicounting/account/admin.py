@@ -3,6 +3,9 @@ from django.contrib import admin
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
+from django.utils import timezone
+
+from django.core.exceptions import ValidationError
 
 from account.models import (
     DimAICAcctType,
@@ -339,7 +342,6 @@ class DimAICJETemplateAttributeAdmin(admin.ModelAdmin):
     
     def save_model(self, request, obj, form, change):
         """Custom save logic with validation"""
-        from django.core.exceptions import ValidationError
         
         # Validate fields based on template type
         if obj.je_template_id.is_object:
@@ -505,9 +507,7 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
     line_item_link.short_description = "Line Item"
     
     def accept_rectification(self, request, queryset):
-        """Accept selected rectifications and apply them to line items."""
-        from django.utils import timezone
-        
+        """Accept selected rectifications and apply them to line items."""        
         updated = 0
         for rectification in queryset.filter(review_status='pending'):
             try:
@@ -525,7 +525,6 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
     
     def reject_rectification(self, request, queryset):
         """Reject selected rectifications."""
-        from django.utils import timezone
         
         updated = queryset.filter(review_status='pending').update(
             review_status='rejected',
