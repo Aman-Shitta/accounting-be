@@ -1,44 +1,25 @@
-"""
-Serializers for the Reviewer workflow.
-
-Provides serializers for:
-  - Listing reviewer-assigned documents (compact)
-  - Detailed document view (with line-item summary & mismatch info)
-  - Review submission (approve / reject action input)
-  - Review submission response
-"""
-
 from django.db.models import Q, Sum
 
 from rest_framework import serializers
 
 from account.models import MonthlyAccountingDocument, MonthlyDocumentBankLineItem
 
-
-# ---------------------------------------------------------------------------
-# Input serializer — validates the POST body for review submission
-# ---------------------------------------------------------------------------
-
 class ReviewSubmitSerializer(serializers.Serializer):
     """Validates the reviewer's approve / reject action."""
 
-    ACTION_CHOICES = [('approve', 'Approve'), ('reject', 'Reject')]
+    ACTION_CHOICES = [('approve', 'Approve')]
 
     action = serializers.ChoiceField(
         choices=ACTION_CHOICES,
-        help_text="Must be 'approve' or 'reject'.",
+        help_text="Must be 'approve' ."
     )
     review_notes = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        default='',
-        help_text="Optional notes from the reviewer.",
+        required=True,
+        error_messages={
+            "required": "Review notes are required when submitting a review.",
+        },
     )
 
-
-# ---------------------------------------------------------------------------
-# Output serializers — shape the JSON responses
-# ---------------------------------------------------------------------------
 
 class BalanceMismatchSerializer(serializers.Serializer):
     """Read-only representation of control-total mismatch details."""

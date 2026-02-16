@@ -180,17 +180,18 @@ class ReviewerSubmitReviewView(ReviewerMixin):
             )
 
             serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    message="Invalid review submission.",
+                    errors=serializer.errors,
+                )
 
-            action = serializer.validated_data['action']
             review_notes = serializer.validated_data.get('review_notes', '')
 
             doc.review_notes = review_notes
 
-            if action == 'approve':
-                return self._handle_approve(doc, reviewer)
-            else:
-                return self._handle_reject(doc, reviewer)
+            return self._handle_approve(doc, reviewer)
 
         except Exception as e:
             logger.error(
@@ -201,7 +202,6 @@ class ReviewerSubmitReviewView(ReviewerMixin):
                 data={"error": str(e)},
             )
 
-    # -- private action handlers ------------------------------------------
 
     @staticmethod
     def _handle_approve(doc, reviewer):
@@ -215,33 +215,15 @@ class ReviewerSubmitReviewView(ReviewerMixin):
 
         logger.info(
             f"Reviewer {reviewer.system_user.username} approved document "
-            f"{doc.id} — re-queued for classification."
+            f"{doc.id} — queued for classification."
         )
 
         response_data = ReviewActionResponseSerializer(doc).data
         return create_api_response(
             status.HTTP_200_OK,
-            "Document approved. It has been re-queued for classification.",
+            "Document approved. It has been queued for classification.",
             data=response_data,
         )
-
-    @staticmethod
-    def _handle_reject(doc, reviewer):
-        """Mark as failed so the uploader can re-submit."""
-        doc.status = 'failed'
-        doc.save(update_fields=['status', 'review_notes'])
-
-        logger.info(
-            f"Reviewer {reviewer.system_user.username} rejected document {doc.id}."
-        )
-
-        response_data = ReviewActionResponseSerializer(doc).data
-        return create_api_response(
-            status.HTTP_200_OK,
-            "Document rejected. The accountant / customer can re-upload.",
-            data=response_data,
-        )
-
 
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     """List & Create line items for a processed monthly accounting document (bank_statement/credit_card)."""
