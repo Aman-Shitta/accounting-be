@@ -486,6 +486,10 @@ def process_classification_queue_task():
 
             # Run the actual classification
             service = GLClassificationService.from_document_id(document_id)
+
+            service.document.status = "classifying"
+            service.document.save(update_fields=['status'])
+            
             classified_count = service.classify_line_items()
 
             # Update document status
