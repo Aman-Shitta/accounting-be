@@ -15,6 +15,8 @@ from user.models import (
     DimAICReviewer,
 )
 
+from msal import Prompt
+
 msal = MsalConf()
 
 
@@ -22,6 +24,7 @@ class SSOLoginView(GenericAPIView):
     def get(self, request):
         auth_url = msal.MSAL_APP.get_authorization_request_url(
             msal.SCOPE,
+            prompt=Prompt.SELECT_ACCOUNT,
             redirect_uri=msal.AUTH_REDIRECT_URI
         )
 
@@ -319,3 +322,49 @@ class SSORefreshTokenView(GenericAPIView):
                 data=None,
                 message=f'Token refresh error: {str(e)}'
             )
+
+
+class WhoamiView(GenericAPIView):
+    """
+    Endpoint to return the current authenticated user's information.
+    Useful for frontend to check who is logged in and their role.
+    """
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+
+        user = request.user
+
+        if hasattr(user, 'customer_profile'):
+            profile = user.customer_profile
+            user_type = 'customer'
+            user_name = profile.customer_name
+            customer_name = user_name
+        elif hasattr(user, 'accountant_profile'):
+            profile = user.accountant_profile
+            user_type = 'accountant'
+            user_name = profile.username
+            customer_name = profile.customer.customer_name
+        elif hasattr(user, 'reviewer_profile'):
+            profile = user.reviewer_profile
+            user_type = 'reviewer'
+            user_name = profile.email
+            customer_name = None
+        else:
+            return create_api_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                data=None,
+                message='User profile not found.'
+            )
+
+        return create_api_response(
+            status_code=status.HTTP_200_OK,
+            message='Data retrieved successfully.',
+            data={
+                "user_type": user_type,
+                "email": user.email,
+                "name": user_name,
+                "customer_name": customer_name
+            }
+        )
