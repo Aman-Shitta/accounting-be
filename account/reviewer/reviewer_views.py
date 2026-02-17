@@ -64,10 +64,6 @@ class ReviewerMixin(generics.GenericAPIView):
         return qs
 
 
-# ---------------------------------------------------------------------------
-# Views
-# ---------------------------------------------------------------------------
-
 class ReviewerDocumentListView(ReviewerMixin):
     """
     GET /api/v1/account/reviewer/documents/
@@ -224,6 +220,7 @@ class ReviewerSubmitReviewView(ReviewerMixin):
             "Document approved. It has been queued for classification.",
             data=response_data,
         )
+
 
 class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
     """List & Create line items for a processed monthly accounting document (bank_statement/credit_card)."""
