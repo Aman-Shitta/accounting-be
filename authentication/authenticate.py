@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.encoding import force_str
 from django.utils.translation import gettext as _
+from auditlog.context import set_actor
 
 import jwt
 from rest_framework import exceptions
@@ -22,7 +23,6 @@ class CustomAuthenticationFailed(exceptions.AuthenticationFailed):
         self.status = status
         self.message = message
         super().__init__(detail={'status': status, 'message': message})
-
 
 class JSONWebTokenAuthentication(BaseAuthentication):
     """
@@ -84,6 +84,11 @@ class JSONWebTokenAuthentication(BaseAuthentication):
         """
         Authenticate the user based on the provided JSON Web Token (JWT).
         """
+        # If the middleware already verified this token, reuse the result
+        cached = getattr(request, '_jwt_auth_cache', None)
+        if cached is not None:
+            return cached
+
         jwt_token = self.get_jwt_token(request)
         if jwt_token is None:
             return None
@@ -206,6 +211,7 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             )
 
             logger.debug(f"Authentication successful for user: {email}")
+            set_actor(django_user)  # Set the actor for audit logging
 
             # msal_conf.refresh_access_token(django_user.customer_profile.refresher_token)
             return (django_user, jwt_token)
