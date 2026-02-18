@@ -1,33 +1,24 @@
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
+
 from django.utils.deprecation import MiddlewareMixin
 
-import jwt
-import requests
-
-JWKS_URL = f"https://login.microsoftonline.com/{settings.TENANT_ID}/discovery/v2.0/keys"
-JWKS = None
+from authentication.authenticate import JSONWebTokenAuthentication
+from rest_framework.exceptions import AuthenticationFailed
 
 
-def get_azure_jwks():
-    global JWKS
-    if JWKS is None:
-        resp = requests.get(JWKS_URL)
-        JWKS = resp.json()
-    return JWKS
 
+class JWTAuthenticationMiddleware(MiddlewareMixin):
+    """
+    Authenticates the user via JWT once and caches the result on the request.
+    DRF's JSONWebTokenAuthentication will check for this cache first,
+    avoiding a duplicate (expensive) token verification.
+    """
 
-class JWTAuthMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        token = request.META.get('HTTP_AUTHORIZATION', '').split('Bearer ')[-1]
-        if token:
-            try:
-                payload = jwt.decode(
-                    token, settings.SECRET_KEY, algorithms=['HS256'])
-                UserModel = get_user_model()
-                request.user = UserModel.objects.get(id=payload['user_id'])
-            except Exception:
-                request.user = AnonymousUser()
-        else:
-            request.user = AnonymousUser()
+        tauth = JSONWebTokenAuthentication()
+        try:
+            user, token = tauth.authenticate(request)
+            request.user = user
+            # Cache the result so DRF doesn't re-verify the same token
+            request._jwt_auth_cache = (user, token)
+        except (TypeError, AuthenticationFailed):
+            request._jwt_auth_cache = None

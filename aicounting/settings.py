@@ -59,6 +59,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'aicounting.middleware.DisableCSRFMiddleware',
 
+    'authentication.middleware.JWTAuthenticationMiddleware',
     # auditlog to track actor
     'auditlog.middleware.AuditlogMiddleware',
 ]
