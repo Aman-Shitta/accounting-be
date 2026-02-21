@@ -45,6 +45,9 @@ class DimAICClient(models.Model):
         verbose_name="Input User (Admin)",
     )
 
+    allow_review = models.BooleanField(
+        default=False, verbose_name="Allow Doucment HITL Review")
+
     created_at = models.DateTimeField(
         auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
