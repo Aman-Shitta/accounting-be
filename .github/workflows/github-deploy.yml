@@ -29,16 +29,18 @@ jobs:
       - name: Deploy to Dev Server
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.TAILSCALE_SERVER_IP }} << 'EOF'
-            source /home/aicounting/venv/bin/activate
-            cd /home/aicounting/aicounting-backend
-            git pull origin main
-            pip install -r requirements.txt
+            echo "Starting Backend Deployment..."
+            
+            # Define paths
+            BACKEND_PATH="/home/aicounting/aicounting-backend"
+            DEPLOYMENT_COMMAND_PATH="/home/aicounting/aicounting-serve"
 
-            cd /home/aicounting/aicounting-backend/aicounting
-            python3 manage.py migrate --noinput
-            python3 manage.py collectstatic --noinput
+            # Pull latest frontend code
+            cd "$BACKEND_PATH"
+            git pull
 
-            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart doc-api
-            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S systemctl restart celery
+            # Run deployment script
+            cd "$DEPLOYMENT_COMMAND_PATH"
+            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S ./deploy.sh --env=dev --server=apache --build-backend
 
           EOF
