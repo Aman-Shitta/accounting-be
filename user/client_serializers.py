@@ -74,7 +74,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'client_id', 'client_name',
             'contact_name', 'contact_email', 'contact_phone',
-            'chart_of_account', 'gl_history', 'vendor_list'
+            'chart_of_account', 'gl_history', 'vendor_list',
+            'allow_review'
         ]
         read_only_fields = ['id']
 
@@ -534,6 +535,8 @@ class ClientCreateUpdateSerializer(serializers.ModelSerializer):
                 instance.state = validated_data.get('state', instance.state)
                 instance.zip_code = validated_data.get(
                     'zip_code', instance.zip_code)
+                instance.allow_review = validated_data.get(
+                    'allow_review', instance.allow_review)
                 instance.save()
 
                 # Handle contacts update (only one contact allowed)
@@ -671,6 +674,7 @@ class ClientRetrieveSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'client_id', 'client_name',
             'contacts', 'documents', 'assigned_accountants',
+            'allow_review',
             'created_at', 'updated_at',
         ]
 
