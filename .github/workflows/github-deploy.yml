@@ -37,7 +37,7 @@ jobs:
 
             # Pull latest frontend code
             cd "$BACKEND_PATH"
-            git pull
+            echo "${{ secrets.SUDO_PASSWORD }}" | sudo -S git pull
 
             # Run deployment script
             cd "$DEPLOYMENT_COMMAND_PATH"
