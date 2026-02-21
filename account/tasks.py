@@ -272,11 +272,16 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
     """
     try:
 
-        doc = MonthlyAccountingDocument.objects.get(id=document_id)
+        doc = MonthlyAccountingDocument.objects.get(
+            id=document_id
+        ).select_related(
+            'monthly_accounting__client'
+        )
+
         client_id = str(doc.monthly_accounting.client_id)
 
         # If a reviewer already approved this document, skip validation
-        if doc.status == 'reviewed':
+        if doc.status == 'reviewed' or doc.monthly_accounting.client.allow_review == False:
             logger.info(
                 f"Document {document_id} was approved by reviewer — "
                 f"skipping control-total validation."
@@ -284,7 +289,6 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
             enqueue_classification_task.delay(document_id=document_id)
             return {
                 "status": "skipped_validation",
-                "reason": "reviewer_approved",
                 "doc_id": document_id,
                 "client_id": client_id,
             }

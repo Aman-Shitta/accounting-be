@@ -253,6 +253,9 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             if error_response:
                 return error_response
 
+            document.status = 'in_review'
+            document.save(update_fields=['status'])
+
             # Determine which type of line items to retrieve based on document type
             if document.doc_type in BANKING_DOCS:
                 # Use BankLineItem for bank statements and credit cards
