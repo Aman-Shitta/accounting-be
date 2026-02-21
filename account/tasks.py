@@ -272,16 +272,16 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
     """
     try:
 
-        doc = MonthlyAccountingDocument.objects.get(
-            id=document_id
-        ).select_related(
-            'monthly_accounting__client'
+        doc = (
+            MonthlyAccountingDocument.objects
+            .select_related('monthly_accounting__client')
+            .get(id=document_id)
         )
 
         client_id = str(doc.monthly_accounting.client_id)
 
         # If a reviewer already approved this document, skip validation
-        if doc.status == 'reviewed' or doc.monthly_accounting.client.allow_review == False:
+        if doc.status == 'reviewed' or not doc.monthly_accounting.client.allow_review:
             logger.info(
                 f"Document {document_id} was approved by reviewer — "
                 f"skipping control-total validation."
