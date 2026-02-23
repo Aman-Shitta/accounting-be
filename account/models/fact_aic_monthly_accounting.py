@@ -89,12 +89,24 @@ class FactAICMonthlyAccounting(models.Model):
         blank=True,
         verbose_name="Completed At"
     )
+
+    is_deleted = models.BooleanField(
+        default=False,
+        verbose_name="Is Deleted",
+        help_text="Soft-delete flag. When True, the record is considered deleted."
+    )
+
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Deleted At",
+        help_text="Timestamp when the record was soft-deleted."
+    )
     
     class Meta:
         db_table = 'fact_aic_monthly_accounting'
         verbose_name = "Monthly Accounting"
         verbose_name_plural = "Monthly Accounting Sessions"
-        unique_together = ('client', 'month', 'year')
         ordering = ['-created_at']
     
     def __str__(self):
@@ -110,11 +122,12 @@ class FactAICMonthlyAccounting(models.Model):
         return month_names.get(self.month, 'Unknown')
     
     def clean(self):
-        """Validate that accounting for this client/month/year doesn't already exist"""
+        """Validate that accounting for this client/month/year doesn't already exist (among non-deleted records)"""
         if FactAICMonthlyAccounting.objects.filter(
             client=self.client,
             month=self.month,
-            year=self.year
+            year=self.year,
+            is_deleted=False
         ).exclude(id=self.id).exists():
             raise ValidationError(
                 f"Accounting for {self.get_month_name()} {self.year} already exists for this client."
