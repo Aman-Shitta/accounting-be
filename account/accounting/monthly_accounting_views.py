@@ -1192,3 +1192,134 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 "An error occurred while deleting line item.",
                 data={"error": str(e)}
             )
+
+
+class MonthlyAccountingYearsListView(generics.GenericAPIView):
+    """List distinct years for which accounting records exist for a client"""
+
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+
+    def get(self, request, client_id, *args, **kwargs):
+        """
+        List distinct years that have monthly accounting records for a client.
+
+        GET /api/clients/{client_id}/accounting/monthly/years/
+        """
+        try:
+            user = request.user
+            if hasattr(user, 'customer_profile'):
+                customer = user.customer_profile
+                client = get_object_or_404(
+                    DimAICClient, id=client_id, customer=customer)
+            elif hasattr(user, 'accountant_profile'):
+                accountant = user.accountant_profile
+                client = get_object_or_404(
+                    DimAICClient,
+                    id=client_id,
+                    customer=accountant.customer,
+                    assigned_accountants=accountant
+                )
+            else:
+                return create_api_response(
+                    status.HTTP_403_FORBIDDEN,
+                    "Access denied."
+                )
+
+            years = (
+                FactAICMonthlyAccounting.objects
+                .filter(client=client, is_deleted=False)
+                .values_list('year', flat=True)
+                .distinct()
+                .order_by('-year')
+            )
+
+            return create_api_response(
+                status.HTTP_200_OK,
+                f"Years retrieved successfully for client {client.client_name}.",
+                data={
+                    'client': client.id,
+                    'client_name': client.client_name,
+                    'years': list(years)
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error listing accounting years for client {client_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while retrieving accounting years.",
+                data={"error": str(e)}
+            )
+
+
+class MonthlyAccountingDeleteView(generics.GenericAPIView):
+    """Soft-delete a monthly accounting session"""
+
+    authentication_classes = [authenticate.JSONWebTokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+
+    def delete(self, request, client_id, accounting_id, *args, **kwargs):
+        """
+        Soft-delete a monthly accounting session.
+        Sets is_deleted=True and deleted_at to the current timestamp.
+
+        DELETE /api/clients/{client_id}/accounting/monthly/{accounting_id}/soft-delete/
+        """
+        try:
+            accounting_id = int(accounting_id)
+        except ValueError:
+            return create_api_response(
+                status.HTTP_400_BAD_REQUEST,
+                "Invalid accounting ID."
+            )
+
+        try:
+            user = request.user
+            if hasattr(user, 'customer_profile'):
+                customer = user.customer_profile
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=customer,
+                    is_deleted=False
+                )
+            elif hasattr(user, 'accountant_profile'):
+                accountant = user.accountant_profile
+                monthly_accounting = get_object_or_404(
+                    FactAICMonthlyAccounting.objects.select_related('client'),
+                    id=accounting_id,
+                    client_id=client_id,
+                    client__customer=accountant.customer,
+                    client__assigned_accountants=accountant,
+                    is_deleted=False
+                )
+            else:
+                return create_api_response(
+                    status.HTTP_403_FORBIDDEN,
+                    "Access denied."
+                )
+
+            client_name = monthly_accounting.client.client_name
+            month_name = monthly_accounting.get_month_name()
+            year = monthly_accounting.year
+
+            monthly_accounting.is_deleted = True
+            monthly_accounting.deleted_at = timezone.now()
+            monthly_accounting.save(update_fields=['is_deleted', 'deleted_at'])
+
+            return create_api_response(
+                status.HTTP_200_OK,
+                f"Monthly accounting for {client_name} - {month_name} {year} has been soft-deleted successfully."
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error soft-deleting monthly accounting {accounting_id} for client {client_id}: {str(e)}")
+            return create_api_response(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An error occurred while soft-deleting monthly accounting.",
+                data={"error": str(e)}
+            )

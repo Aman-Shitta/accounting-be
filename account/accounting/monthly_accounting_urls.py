@@ -13,6 +13,8 @@ from account.accounting.monthly_accounting_views import (
     MonthlyAccountingDocumentStatusUpdateView,
     MonthlyAccountingDocumentUploadView,
     MonthlyAccountingListView,
+    MonthlyAccountingDeleteView,
+    MonthlyAccountingYearsListView,
 )
 
 # Monthly Accounting API URL patterns
@@ -23,9 +25,15 @@ monthly_accounting_url_patterns = [
     # Create new monthly accounting session
     path('create/', MonthlyAccountingCreateView.as_view(),
          name='monthly-accounting-create'),
+    # List distinct years with accounting records
+    path('records/', MonthlyAccountingYearsListView.as_view(),
+         name='monthly-accounting-years'),
     # Retrieve, update, or delete specific monthly accounting session
     path('<int:accounting_id>/', MonthlyAccountingDetailView.as_view(),
          name='monthly-accounting-detail'),
+    # Soft-delete a monthly accounting session
+    path('<int:accounting_id>/delete/', MonthlyAccountingDeleteView.as_view(),
+         name='monthly-accounting-delete'),
     # Upload a file for a specific document (requires accounting session id and document id)
     path('<int:accounting_id>/documents/<int:document_id>/upload/',
          MonthlyAccountingDocumentUploadView.as_view(), name='monthly-accounting-document-upload'),
