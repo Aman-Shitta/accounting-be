@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
@@ -47,7 +48,8 @@ class MonthlyAccountingListView(generics.GenericAPIView):
             customer = user.customer_profile
             return FactAICMonthlyAccounting.objects.filter(
                 client=client_id,
-                client__customer=customer
+                client__customer=customer,
+                is_deleted=False
             ).order_by('-created_at')
 
         elif hasattr(user, 'accountant_profile'):
@@ -55,7 +57,8 @@ class MonthlyAccountingListView(generics.GenericAPIView):
             return FactAICMonthlyAccounting.objects.filter(
                 client=client_id,
                 client__customer=accountant.customer,
-                client__assigned_accountants=accountant
+                client__assigned_accountants=accountant,
+                is_deleted=False
             ).order_by('-created_at')
 
         return FactAICMonthlyAccounting.objects.none()
@@ -94,17 +97,18 @@ class MonthlyAccountingListView(generics.GenericAPIView):
 
             queryset = self.get_queryset(client_id)
 
-            # Filter by year
+            # Filter by year (default to current year if not provided)
             year = request.query_params.get('year')
-            if year:
-                try:
-                    year = int(year)
-                    queryset = queryset.filter(year=year)
-                except ValueError:
-                    return create_api_response(
-                        status.HTTP_400_BAD_REQUEST,
-                        "Invalid year parameter."
-                    )
+            if not year:
+                year = datetime.now().year
+            try:
+                year = int(year)
+                queryset = queryset.filter(year=year)
+            except ValueError:
+                return create_api_response(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Invalid year parameter."
+                )
 
             # Filter by status
             status_filter = request.query_params.get('status')
@@ -228,11 +232,12 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
             month = serializer['month']
             year = serializer['year']
 
-            # Check if accounting for this month/year already exists
+            # Check if accounting for this month/year already exists (non-deleted only)
             if FactAICMonthlyAccounting.objects.filter(
                 client=client,
                 month=month,
-                year=year
+                year=year,
+                is_deleted=False
             ).exists():
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
@@ -301,7 +306,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                     'client', 'created_by'),
                 id=accounting_id,
                 client=client_id,
-                client__customer=customer
+                client__customer=customer,
+                is_deleted=False
             )
         elif hasattr(user, 'accountant_profile'):
             accountant = user.accountant_profile
@@ -311,7 +317,8 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 id=accounting_id,
                 client=client_id,
                 client__customer=accountant.customer,
-                client__assigned_accountants=accountant
+                client__assigned_accountants=accountant,
+                is_deleted=False
             )
         else:
             return None
@@ -603,7 +610,8 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     FactAICMonthlyAccounting.objects.select_related('client'),
                     id=accounting_id,
                     client_id=client_id,
-                    client__customer=user.customer_profile
+                    client__customer=user.customer_profile,
+                    is_deleted=False
                 )
             elif hasattr(user, 'accountant_profile'):
                 monthly_accounting = get_object_or_404(
@@ -611,7 +619,8 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                     id=accounting_id,
                     client_id=client_id,
                     client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
+                    client__assigned_accountants=user.accountant_profile,
+                    is_deleted=False
                 )
             else:
                 return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
@@ -668,6 +677,10 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 "created_at": document.created_at.isoformat(),
                 "updated_at": document.updated_at.isoformat()
             }
+
+            monthly_accounting.status = 'in_progress'
+            monthly_accounting.save(update_fields=['status'])
+
             return create_api_response(status.HTTP_200_OK, "File uploaded successfully.", data=data)
 
         except Exception as e:
@@ -706,7 +719,8 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
                 FactAICMonthlyAccounting.objects.select_related('client'),
                 id=accounting_id,
                 client_id=client_id,
-                client__customer=user.customer_profile
+                client__customer=user.customer_profile,
+                is_deleted=False
             )
         elif hasattr(user, 'accountant_profile'):
             monthly_accounting = get_object_or_404(
@@ -714,7 +728,8 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
                 id=accounting_id,
                 client_id=client_id,
                 client__customer=user.accountant_profile.customer,
-                client__assigned_accountants=user.accountant_profile
+                client__assigned_accountants=user.accountant_profile,
+                is_deleted=False
             )
         else:
             return create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
@@ -770,6 +785,17 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
                         # Don't fail the whole operation if export generation fails
                         pass
 
+        # Check if all documents for this monthly accounting are now verified
+        all_docs = MonthlyAccountingDocument.objects.filter(
+            monthly_accounting=monthly_accounting
+        )
+        all_verified = all_docs.exists() and not all_docs.exclude(status='verified').exists()
+
+        if all_verified:
+            monthly_accounting.status = 'completed'
+            monthly_accounting.completed_at = timezone.now()
+            monthly_accounting.save(update_fields=['status', 'completed_at'])
+
         return create_api_response(
             message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in BANKING_DOCS else 'Document verified successfully. Please proceed to verify the JE Template.',
             status_code=status.HTTP_200_OK
@@ -788,7 +814,8 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 FactAICMonthlyAccounting.objects.select_related('client'),
                 id=accounting_id,
                 client_id=client_id,
-                client__customer=user.customer_profile
+                client__customer=user.customer_profile,
+                is_deleted=False
             )
         elif hasattr(user, 'accountant_profile'):
             monthly_accounting = get_object_or_404(
@@ -796,7 +823,8 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 id=accounting_id,
                 client_id=client_id,
                 client__customer=user.accountant_profile.customer,
-                client__assigned_accountants=user.accountant_profile
+                client__assigned_accountants=user.accountant_profile,
+                is_deleted=False
             )
         else:
             return None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")
@@ -1025,7 +1053,8 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 FactAICMonthlyAccounting.objects.select_related('client'),
                 id=accounting_id,
                 client_id=client_id,
-                client__customer=user.customer_profile
+                client__customer=user.customer_profile,
+                is_deleted=False
             )
         elif hasattr(user, 'accountant_profile'):
             monthly_accounting = get_object_or_404(
@@ -1033,7 +1062,8 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
                 id=accounting_id,
                 client_id=client_id,
                 client__customer=user.accountant_profile.customer,
-                client__assigned_accountants=user.accountant_profile
+                client__assigned_accountants=user.accountant_profile,
+                is_deleted=False
             )
         else:
             return None, None, create_api_response(status.HTTP_403_FORBIDDEN, "Access denied.")

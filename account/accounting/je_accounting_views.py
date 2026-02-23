@@ -533,7 +533,8 @@ class JEAccountingVerifyView(generics.GenericAPIView):
                     FactAICMonthlyAccounting.objects.select_related('client'),
                     id=accounting_id,
                     client_id=client_id,
-                    client__customer=user.customer_profile
+                    client__customer=user.customer_profile,
+                    is_deleted=False
                 )
             elif hasattr(user, 'accountant_profile'):
                 monthly_accounting = get_object_or_404(
@@ -541,7 +542,8 @@ class JEAccountingVerifyView(generics.GenericAPIView):
                     id=accounting_id,
                     client_id=client_id,
                     client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
+                    client__assigned_accountants=user.accountant_profile,
+                    is_deleted=False
                 )
 
             # Get the template
@@ -705,7 +707,8 @@ class JEAttributeEditView(generics.GenericAPIView):
                     FactAICMonthlyAccounting.objects.select_related('client'),
                     id=accounting_id,
                     client_id=client_id,
-                    client__customer=user.customer_profile
+                    client__customer=user.customer_profile,
+                    is_deleted=False
                 )
             elif hasattr(user, 'accountant_profile'):
                 monthly_accounting = get_object_or_404(
@@ -713,7 +716,8 @@ class JEAttributeEditView(generics.GenericAPIView):
                     id=accounting_id,
                     client_id=client_id,
                     client__customer=user.accountant_profile.customer,
-                    client__assigned_accountants=user.accountant_profile
+                    client__assigned_accountants=user.accountant_profile,
+                    is_deleted=False
                 )
 
             # Get the template
