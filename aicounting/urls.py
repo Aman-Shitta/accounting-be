@@ -26,6 +26,7 @@ app_v1_url_patterns = [
     # path("document/", include('document.urls')),
     path("user/", include('user.urls')),
     path("account/", include('account.urls')),
+    path("dashboard/", include('dashboard.urls')),
 
 ]
 
