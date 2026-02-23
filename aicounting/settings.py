@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'user',
     'account',
     'auditlog',
+    'dashboard',
 ]
 
 MIDDLEWARE = [
