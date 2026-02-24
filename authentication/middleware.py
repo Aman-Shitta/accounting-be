@@ -5,6 +5,15 @@ from authentication.authenticate import JSONWebTokenAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
 
+# Paths that should skip JWT authentication in middleware
+EXCLUDED_PATHS = [
+    '/api/auth/login/',
+    '/api/auth/callback/',
+    '/admin/',
+    '/health/',
+    '/static/',
+]
+
 
 class JWTAuthenticationMiddleware(MiddlewareMixin):
     """
@@ -14,6 +23,14 @@ class JWTAuthenticationMiddleware(MiddlewareMixin):
     """
 
     def process_request(self, request):
+        # Skip authentication for public/excluded routes
+        if any(request.path.startswith(p) for p in EXCLUDED_PATHS):
+            return
+
+        # Skip if no Authorization header present
+        if not request.META.get('HTTP_AUTHORIZATION'):
+            return
+
         tauth = JSONWebTokenAuthentication()
         try:
             user, token = tauth.authenticate(request)

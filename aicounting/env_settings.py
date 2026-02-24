@@ -5,14 +5,13 @@ from dotenv import load_dotenv
 
 # Prefer an explicit env-file path for systemd deployments.
 # Falls back to the repo-level .env (same level as manage.py).
-ENV_FILE = os.environ.get("AICOUNTING_ENV_FILE")
+ENV_FILE = os.environ.get("AICOUNTING_ENV_FILE", ".env")
 if ENV_FILE:
     load_dotenv(dotenv_path=ENV_FILE, override=False)
 else:
     load_dotenv(dotenv_path=Path(__file__).resolve(
     ).parent.parent / ".env", override=False)
 
-# LLM
 
 # - Gemini
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL")
@@ -33,7 +32,6 @@ LANDING_AI_API_KEY = os.environ.get("LANDING_AI_API_KEY")
 LANDING_AI_ADE_MODEL = os.environ.get("LANDING_AI_ADE_MODEL")
 
 # Document AI
-
 DOCUMENT_AI_PROJECT_ID = os.environ.get('DOCUMENT_AI_PROJECT_ID')
 DOCUMENT_AI_PROCESSOR_ID = os.environ.get('DOCUMENT_AI_PROCESSOR_ID')
 DOCUMENT_AI_LOCATION = os.environ.get('DOCUMENT_AI_LOCATION')
