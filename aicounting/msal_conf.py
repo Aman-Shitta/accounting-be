@@ -3,6 +3,7 @@ import os
 import sys
 
 import jwt
+from jwt import PyJWKClient
 import msal
 import requests
 from asgiref.sync import async_to_sync
@@ -42,27 +43,27 @@ class MsalConf:
         REVIEWER: os.environ.get('REVIEWER_GROUP_ID')
     }
 
+    # Cached JWKS client — keys are fetched once and cached for 1 hour
+    _jwk_client = None
+
+    @classmethod
+    def get_jwk_client(cls):
+        """Get or create a cached PyJWKClient instance."""
+        if cls._jwk_client is None:
+            cls._jwk_client = PyJWKClient(
+                cls.JWKS_URI,
+                cache_jwk_set=True,
+                lifespan=3600  # cache for 1 hour
+            )
+        return cls._jwk_client
+
     def get_public_key(self, jwt_token):
-        public_key = ""
-        # Get Azure AD public keys for token signature verification
-        jwks_url = self.JWKS_URI
-        jwks_response = requests.get(jwks_url)
-        jwks = jwks_response.json()
-        # Find the appropriate key from the JWKS based on the token's "kid" (Key ID) claim
-        header = jwt.get_unverified_header(jwt_token)
-        kid = header['kid']
-
-        # Find the key with a matching "kid" in the JWKS
-        for key in jwks['keys']:
-            if key['kid'] == kid:
-                # Use the found key for verification
-                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
-                break
-        else:
-            # Handle the case where a matching key was not found
-            raise ValueError("Matching key not found in JWKS")
-
-        return public_key
+        """
+        Get the public key for JWT verification using cached JWKS keys.
+        Keys are cached for 1 hour via PyJWKClient to avoid HTTP calls per request.
+        """
+        signing_key = self.get_jwk_client().get_signing_key_from_jwt(jwt_token)
+        return signing_key.key
 
     def refresh_access_token(self, refresh_token):
         """

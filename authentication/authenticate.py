@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -128,51 +127,17 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             audience = [msal_conf.CLIENT_ID]
             logger.debug(f"Expected audience: {audience}")
 
-            # Try to decode with proper audience validation
-            try:
-                decoded_token = jwt.decode(
-                    jwt_token,
-                    public_key,
-                    algorithms=['RS256'],
-                    audience=audience,
-                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"
-                )
-                logger.debug("JWT successfully decoded with full validation")
-            except jwt.InvalidAudienceError as aud_error:
-                logger.warning(f"Audience validation failed: {aud_error}")
-                logger.warning(
-                    "Retrying without audience validation for debugging")
-                # Retry without audience validation for debugging
-                decoded_token = jwt.decode(
-                    jwt_token,
-                    public_key,
-                    algorithms=['RS256'],
-                    options={"verify_aud": False},
-                    issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"
-                )
-                logger.debug("JWT decoded without audience validation")
-            except jwt.InvalidIssuerError as iss_error:
-                logger.warning(f"Issuer validation failed: {iss_error}")
-                # Retry without issuer validation
-                decoded_token = jwt.decode(
-                    jwt_token,
-                    public_key,
-                    algorithms=['RS256'],
-                    options={"verify_aud": False, "verify_iss": False}
-                )
-                logger.debug("JWT decoded without issuer/audience validation")
-
+            # Decode with strict audience and issuer validation
+            # PyJWT also validates `exp` automatically, no manual check needed
+            decoded_token = jwt.decode(
+                jwt_token,
+                public_key,
+                algorithms=['RS256'],
+                audience=audience,
+                issuer=f"https://login.microsoftonline.com/{msal_conf.TENANT_ID}/v2.0"
+            )
             logger.debug(
                 f"Token successfully decoded. Claims: {list(decoded_token.keys())}")
-
-            # Check if the token has expired (JWT library already checks this, but let's be explicit)
-            current_time = datetime.now()
-            expiration_time = datetime.fromtimestamp(decoded_token["exp"])
-
-            if current_time > expiration_time:
-                logger.warning("Token has expired")
-                raise CustomAuthenticationFailed('error', _(
-                    "Expired token. Please re-authenticate."))
 
             # Get user email from ID token claims
             # ID tokens typically have these email fields
@@ -189,20 +154,20 @@ class JSONWebTokenAuthentication(BaseAuthentication):
             logger.debug(f"Processing authentication for email: {email}")
 
             azure_id = decoded_token.get("oid")
-            cust_id = DimAICCustomer.objects.filter(azure_id=azure_id).first()
 
-            if not cust_id:
-                logger.warning(f"Unauthorized customer")
-                accountant_id = DimAICAccountant.objects.filter(
-                    azure_id=azure_id)
-                if not accountant_id:
-                    logger.warning(f"Unauthorized accountant")
-                    reviewer_id = DimAICReviewer.objects.filter(
-                        azure_id=azure_id)
-                    if not reviewer_id:
-                        logger.warning(f"Unauthorized reviewer")
-                        raise CustomAuthenticationFailed('error', _(
-                            'Unauthorized User. Please contact admin.'))
+            # Single-pass role lookup — check each table, cache the result
+            user_role = None
+            if DimAICCustomer.objects.filter(azure_id=azure_id).exists():
+                user_role = 'customer'
+            elif DimAICAccountant.objects.filter(azure_id=azure_id).exists():
+                user_role = 'accountant'
+            elif DimAICReviewer.objects.filter(azure_id=azure_id).exists():
+                user_role = 'reviewer'
+
+            if not user_role:
+                logger.warning(f"Unauthorized user with azure_id: {azure_id}")
+                raise CustomAuthenticationFailed('error', _(
+                    'Unauthorized User. Please contact admin.'))
 
             UserModel = get_user_model()
             django_user, created = UserModel.objects.get_or_create(
@@ -210,10 +175,13 @@ class JSONWebTokenAuthentication(BaseAuthentication):
                 defaults={"username": email.split("@")[0]}
             )
 
-            logger.debug(f"Authentication successful for user: {email}")
+            # Cache the user role on the user object for downstream permission checks
+            # This avoids repeated DB queries in IsCustomer/IsAccountant/IsReviewer
+            django_user._cached_role = user_role
+
+            logger.debug(f"Authentication successful for user: {email} (role: {user_role})")
             set_actor(django_user)  # Set the actor for audit logging
 
-            # msal_conf.refresh_access_token(django_user.customer_profile.refresher_token)
             return (django_user, jwt_token)
 
         except jwt.InvalidSignatureError as e:

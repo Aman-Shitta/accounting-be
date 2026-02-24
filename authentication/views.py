@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
-
+import time
 import jwt
 from rest_framework import permissions, status
 from rest_framework.generics import GenericAPIView
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from aicounting.msal_conf import MsalConf
 from aicounting.response import create_api_response
@@ -20,7 +21,22 @@ from msal import Prompt
 msal = MsalConf()
 
 
+# --- Throttle classes for auth endpoints ---
+class AuthLoginThrottle(AnonRateThrottle):
+    """Limit login/callback attempts to prevent brute-force."""
+    rate = '10/min'
+
+
+class AuthRefreshThrottle(UserRateThrottle):
+    """Limit token refresh to prevent abuse."""
+    rate = '5/min'
+
+
 class SSOLoginView(GenericAPIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [AuthLoginThrottle]
+
     def get(self, request):
         auth_url = msal.MSAL_APP.get_authorization_request_url(
             msal.SCOPE,
@@ -36,6 +52,9 @@ class SSOLoginView(GenericAPIView):
 
 
 class SSOGenerateTokenView(GenericAPIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [AuthLoginThrottle]
 
     def get(self, request):
         try:
@@ -185,13 +204,22 @@ class SSOGenerateTokenView(GenericAPIView):
                 defaults={"username": email.split("@")[0]}
             )
 
+            # Extract the actual expiry timestamp from the id_token for reliable FE expiry check
+            # Azure's `expires_in` is seconds from Azure's server time, which may not match
+            # the token's `iat` + `expires_in` due to clock skew.
+            # The `exp` claim in the token is the ground truth.
+            try:
+                token_claims_decoded = jwt.decode(id_token, options={"verify_signature": False})
+                expires_at = token_claims_decoded.get('exp')  # epoch timestamp
+            except Exception:
+                # Fallback: compute from current time
+                expires_at = int(time.time()) + (result.get('expires_in') or 3600)
+
             # Return the ID token for client-side storage and future API calls
             token_response = {
                 "access_token": id_token,
-                # "access_token": result.get('access_token'),  # Optional: for accessing other APIs
-                # "refresh_token": result.get('refresh_token'),
                 "expires_in": result.get('expires_in'),
-                # "token_type": "Bearer",
+                "expires_at": expires_at,  # epoch timestamp — use this on FE for expiry checks
                 "user_info": {
                     "user_type": user_role,
                     "email": email,
@@ -220,6 +248,7 @@ class SSORefreshTokenView(GenericAPIView):
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+    throttle_classes = [AuthRefreshThrottle]
 
     def post(self, request):
         try:
@@ -301,12 +330,23 @@ class SSORefreshTokenView(GenericAPIView):
                 user_name = user_profile.username
                 customer_name = user_profile.customer.customer_name
 
+            # Extract reliable expiry from the new token's exp claim
+            try:
+                new_token_claims = jwt.decode(
+                    new_tokens.get('id_token'),
+                    options={"verify_signature": False}
+                )
+                expires_at = new_token_claims.get('exp')
+            except Exception:
+                expires_at = int(time.time()) + (new_tokens.get('expires_in') or 3600)
+
             return create_api_response(
                 status_code=status.HTTP_200_OK,
                 message="Token refreshed successfully.",
                 data={
                     "access_token": new_tokens.get('id_token'),
                     "expires_in": new_tokens.get('expires_in'),
+                    "expires_at": expires_at,  # epoch timestamp — use this on FE
                     "user_info": {
                         "user_type": user_type,
                         "email": email,
