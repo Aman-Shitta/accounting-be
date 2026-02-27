@@ -321,7 +321,11 @@ class OpenAIAssistant(OpeAIClient):
 
     def provison_client_assistant(self):
         """
-        Gathers client-specific information such as COA, Vendor Mapping, and GL History.
+        Provision client configuration: creates vector store and saves config.
+
+        Note: With the Responses API migration, we no longer create OpenAI
+        assistant objects. The vector store + model config in DimAICAssistant
+        is all that's needed — the Responses API uses these directly.
         """
         if not self.client_id:
             raise ValueError(
@@ -335,7 +339,10 @@ class OpenAIAssistant(OpeAIClient):
             # Get client documents
             client_documents = self.aic_client.documents.all()
 
-            # Check if assistant already exists
+            # Load response schema for structured output
+            self.load_response_schema()
+
+            # Check if assistant config already exists
             assistant_config, created = DimAICAssistant.objects.get_or_create(
                 client=self.aic_client,
                 defaults={
@@ -354,23 +361,14 @@ class OpenAIAssistant(OpeAIClient):
                     assistant_config.vector_store_id = vector_store_id
                     self.vector_store_id = vector_store_id
 
-            if created or not assistant_config.assistant_id:
-                self.load_response_schema()
+            # Update response schema if not set
+            if created or not assistant_config.response_schema:
                 assistant_config.response_schema = self.response_schema
-                # Create OpenAI assistant
-                assistant = self.create_assistant(
-                    name=assistant_config.assistant_name,
-                    description=f"Bookkeeping assistant for {self.aic_client.client_name}"
-                )
-                if assistant:
-                    assistant_config.assistant_id = assistant.id
-                    self.assistant_id = assistant.id
 
             assistant_config.save()
 
             # Set instance variables
             self.vector_store_id = assistant_config.vector_store_id
-            self.assistant_id = assistant_config.assistant_id
 
             return assistant_config
 
@@ -379,44 +377,6 @@ class OpenAIAssistant(OpeAIClient):
         except Exception as e:
             logger.error(f"Error gathering client information: {e}")
             raise
-
-    def create_assistant(self, name: str, description: str = None):
-        """Create OpenAI assistant with file search tools"""
-        try:
-
-            # Prepare assistant parameters
-            assistant_params = {
-                'name': name,
-                'description': description or f"Bookkeeping Assistant for {name}",
-                'model': self.model,
-                'instructions': self.assistant_instructions,
-                'tools': [{"type": "file_search"}],  # Enable file search
-                'temperature': self.temperature,
-                'top_p': self.top_p,
-            }
-
-            # Add response format if schema is available
-            if self.response_schema:
-                assistant_params['response_format'] = {
-                    "type": "json_schema",
-                    "json_schema": self.response_schema
-                }
-
-            # Add vector store if available
-            if self.vector_store_id:
-                assistant_params['tool_resources'] = {
-                    "file_search": {
-                        "vector_store_ids": [self.vector_store_id]
-                    }
-                }
-
-            # logger.error("assistant_params :: ", assistant_params)
-            assistant = self.client.beta.assistants.create(**assistant_params)
-            return assistant
-
-        except Exception as e:
-            logger.error(f"Error creating assistant: {e}")
-            return None
 
     def get_or_create_assistant_config(self):
         """Get existing assistant configuration or create new one"""
@@ -567,18 +527,8 @@ class OpenAIAssistant(OpeAIClient):
                     logger.error(
                         f"Added {len(file_streams)} new files to vector store {self.vector_store_id}")
 
-                    # Update the assistant to ensure it uses the updated vector store
-                    if self.assistant_id:
-                        assistant_update = self.client.beta.assistants.update(
-                            assistant_id=self.assistant_id,
-                            tool_resources={
-                                "file_search": {
-                                    "vector_store_ids": [self.vector_store_id]
-                                }
-                            }
-                        )
-                        logger.error(
-                            f"Updated assistant {self.assistant_id} with new files")
+                    logger.info(
+                        f"Updated vector store {self.vector_store_id} with new files")
 
                     return True
 
