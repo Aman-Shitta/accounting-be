@@ -289,12 +289,15 @@ class GLClassificationService:
         """
         Classify GL accounts for all line items in the document.
 
+        Uses the Responses API (classify_v2) for stateless, isolated
+        classification — safe for concurrent multi-client processing.
+
         Returns:
             Number of line items classified
         """
         from account.models.monthly_document_line_models import MonthlyDocumentBankLineItem
         from account.models import DimAICGLAcct
-        from extractor.banking.classify import GLClassifier
+        from extractor.banking.classify_v2 import GLClassifier
 
         # Get classification rules
         input_file_rules = (
@@ -305,13 +308,9 @@ class GLClassificationService:
         # First enrich check descriptions
         self.enrich_check_descriptions()
 
-        # Get assistant info for classification
+        # Get assistant config for classification
         client_assistant = getattr(
             self.document.monthly_accounting.client, 'assistant', None)
-        assistant_id = (
-            client_assistant.assistant_id
-            if client_assistant and client_assistant.assistant_id else None
-        )
         vector_store_ids = (
             [client_assistant.vector_store_id]
             if client_assistant and client_assistant.vector_store_id else []
@@ -319,7 +318,7 @@ class GLClassificationService:
 
         classified_count = 0
 
-        if assistant_id:
+        if vector_store_ids:
             try:
                 # Get all line items ordered by page and line number
                 line_items_qs = MonthlyDocumentBankLineItem.objects.filter(
@@ -344,11 +343,14 @@ class GLClassificationService:
                 # Build extracted data structure for all line items
                 extracted_data = self._build_extracted_data(line_items_list)
 
-                # Create classifier
+                # Create classifier with model config from assistant settings
                 classifier = GLClassifier(
-                    assistant_id=assistant_id,
                     vector_store_ids=vector_store_ids,
-                    special_rules=input_file_rules
+                    model=client_assistant.model_name if client_assistant else "gpt-4o",
+                    response_schema=client_assistant.response_schema if client_assistant else None,
+                    temperature=client_assistant.temperature if client_assistant else 1.0,
+                    top_p=client_assistant.top_p if client_assistant else 1.0,
+                    special_rules=input_file_rules,
                 )
 
                 # Classify all items at once
