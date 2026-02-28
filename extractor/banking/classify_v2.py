@@ -116,21 +116,19 @@ class GLClassifier(OpeAIClient):
                     "verbosity": "low" if self.model != "gpt-4o" else "medium"
                 }
 
-            response = self.client.responses.create(**response_params)
+            # Use streaming to ensure we capture the complete response
+            output_text = ""
+            with self.client.responses.stream(**response_params) as stream:
+                for event in stream:
+                    if event.type == "response.output_text.delta":
+                        output_text += event.delta
 
-            # Extract text from output items
-            output = []
-            for item in response.output:
-                if item.type == "message" and item.role == "assistant":
-                    for content_block in item.content:
-                        if content_block.type == "output_text":
-                            output.append(content_block.text)
-
-            return output
+            logger.info(f"[DEBUG] Streamed output length: {len(output_text)}")
+            return output_text
 
         except Exception as e:
             logger.error(f"Error calling Responses API: {e}")
-            return []
+            return ""
 
     def classify_extracted_data(self, extracted_data: dict):
         """
@@ -166,14 +164,11 @@ class GLClassifier(OpeAIClient):
                 logger.info(
                     f"[DEBUG] Page results for page {page_num}: {page_results}")
                 classified_data = []
-                if (
-                    page_results
-                    and isinstance(page_results, list)
-                    and isinstance(ast.literal_eval(page_results[0]), dict)
-                ):
-                    classified_data = ast.literal_eval(
-                        page_results[0]).get("schema")
-                    results[page_num] = classified_data
+                if page_results and isinstance(page_results, str):
+                    parsed = ast.literal_eval(page_results)
+                    if isinstance(parsed, dict):
+                        classified_data = parsed.get("schema", [])
+                        results[page_num] = classified_data
 
                 logger.info(
                     f" classified_data @ page : {page_num} :: {classified_data}")
