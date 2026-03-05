@@ -46,7 +46,7 @@ class SSOLoginView(GenericAPIView):
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="Authorization URL generated successfully.",
+            message="Please sign in to continue.",
             data={"auth_url": auth_url}
         )
 
@@ -63,7 +63,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
-                    message='No code provided in callback.'
+                    message='Authentication failed. No authorization code received.'
                 )
 
             try:
@@ -76,7 +76,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
-                    message=f'Failed to acquire token: {str(e)}'
+                    message='Authentication failed. Please try again.'
                 )
 
             # Get ID token instead of access token for user authentication
@@ -86,7 +86,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
-                    message='No ID token received from Azure AD.'
+                    message='Authentication failed. Please try again.'
                 )
             token_claims = result.get('id_token_claims', {})
             email = token_claims.get('preferred_username')
@@ -94,7 +94,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
-                    message='Email not found in token claims.'
+                    message='Authentication failed. Email address could not be verified.'
                 )
 
             user_object_id = token_claims.get('oid')
@@ -104,7 +104,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='User does not belong to any required groups.'
+                    message='Your account does not have the required permissions. Please contact your administrator.'
                 )
 
             # Check for customer or accountant groups in priority order
@@ -119,7 +119,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='Unauthorized group access. User must be a customer or accountant.'
+                    message='Your account does not have the required permissions. Please contact your administrator.'
                 )
 
             user_name = ""
@@ -133,7 +133,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
                         data=None,
-                        message='Unauthorized Customer. Please contact admin.'
+                        message='Your account is not active. Please contact your administrator.'
                     )
                 if not customer.verified:
                     customer.azure_id = user_object_id
@@ -156,7 +156,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
                         data=None,
-                        message='Unauthorized Accountant. Please contact admin.'
+                        message='Your account is not active. Please contact your administrator.'
                     )
                 if not accountant.verified:
                     accountant.azure_id = user_object_id
@@ -179,7 +179,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     return create_api_response(
                         status_code=status.HTTP_403_FORBIDDEN,
                         data=None,
-                        message='Unauthorized Reviewer. Please contact admin.'
+                        message='Your account is not active. Please contact your administrator.'
                     )
                 if not reviewer.verified:
                     reviewer.azure_id = user_object_id
@@ -196,7 +196,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_403_FORBIDDEN,
                     data=None,
-                    message='Unauthorized user type.'
+                    message='Your account type is not supported. Please contact your administrator.'
                 )
 
             get_user_model().objects.get_or_create(
@@ -230,14 +230,14 @@ class SSOGenerateTokenView(GenericAPIView):
 
             return create_api_response(
                 status_code=status.HTTP_200_OK,
-                message="Authentication successful.",
+                message="Signed in successfully.",
                 data=token_response,
             )
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data=None,
-                message=f'Internal server error: {str(e)}'
+                message='An unexpected error occurred. Please try again later.'
             )
 
 
@@ -258,7 +258,7 @@ class SSORefreshTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='No authorization token provided.'
+                    message='Please sign in to continue.'
                 )
 
             current_token = auth_header.split(' ')[1]
@@ -274,14 +274,14 @@ class SSORefreshTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='Invalid token format.'
+                    message='Your session is invalid. Please sign in again.'
                 )
 
             if not azure_id:
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='Could not identify user from token.'
+                    message='Your session is invalid. Please sign in again.'
                 )
 
             # Find the user and their stored refresh token
@@ -296,7 +296,7 @@ class SSORefreshTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='User not found.'
+                    message='Account not found. Please contact your administrator.'
                 )
 
             stored_refresh_token = user_profile.refresher_token
@@ -305,7 +305,7 @@ class SSORefreshTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='No refresh token available. Please login again.'
+                    message='Your session has expired. Please sign in again.'
                 )
 
             # Refresh the token
@@ -315,7 +315,7 @@ class SSORefreshTokenView(GenericAPIView):
                 return create_api_response(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     data=None,
-                    message='Token refresh failed. Please login again.'
+                    message='Session renewal failed. Please sign in again.'
                 )
 
             # Update the stored refresh token (Azure AD rotates refresh tokens)
@@ -342,7 +342,7 @@ class SSORefreshTokenView(GenericAPIView):
 
             return create_api_response(
                 status_code=status.HTTP_200_OK,
-                message="Token refreshed successfully.",
+                message="Session renewed successfully.",
                 data={
                     "access_token": new_tokens.get('id_token'),
                     "expires_in": new_tokens.get('expires_in'),
@@ -360,7 +360,7 @@ class SSORefreshTokenView(GenericAPIView):
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data=None,
-                message=f'Token refresh error: {str(e)}'
+                message='Unable to refresh your session. Please sign in again.'
             )
 
 
@@ -395,12 +395,12 @@ class WhoamiView(GenericAPIView):
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 data=None,
-                message='User profile not found.'
+                message='Account not found. Please contact your administrator.'
             )
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message='Data retrieved successfully.',
+            message='Profile retrieved successfully.',
             data={
                 "user_type": user_type,
                 "email": user.email,

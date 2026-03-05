@@ -51,7 +51,7 @@ class AdminLoginView(GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid credentials format",
+                message="Please provide valid login details.",
                 errors=serializer.errors
             )
 
@@ -64,14 +64,14 @@ class AdminLoginView(GenericAPIView):
         if not user:
             return create_api_response(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                message="Invalid credentials"
+                message="Incorrect email or password."
             )
 
         # Check if user is superuser
         if not user.is_superuser:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Access denied. Superuser privileges required."
+                message="You do not have permission to access this area."
             )
 
         # Generate JWT token
@@ -79,7 +79,7 @@ class AdminLoginView(GenericAPIView):
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="Login successful",
+            message="Signed in successfully.",
             data={
                 'access_token': access_token,
                 'token_type': 'Bearer',
@@ -108,7 +108,7 @@ class CustomerListView(GenericAPIView):
         if not request.user.is_superuser:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Superuser privileges required"
+                message="You do not have permission to access this area."
             )
 
         # Get all customers with their status
@@ -127,7 +127,7 @@ class CustomerListView(GenericAPIView):
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="Customers retrieved successfully",
+            message="Customers loaded.",
             data={
                 'customers': customer_data,
                 'total_count': len(customer_data),
@@ -148,7 +148,7 @@ class AdminDashboardView(GenericAPIView):
         if not request.user.is_superuser:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Superuser privileges required"
+                message="You do not have permission to access this area."
             )
 
         # Calculate statistics
@@ -184,6 +184,6 @@ class AdminDashboardView(GenericAPIView):
 
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="Dashboard data retrieved successfully",
+            message="Dashboard data loaded.",
             data=dashboard_serializer.data
         )

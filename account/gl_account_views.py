@@ -84,7 +84,7 @@ class ClientGLAccountListView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Accounts retrieved successfully.",
+                "Accounts loaded.",
                 data=serializer.data
             )
 
@@ -92,6 +92,5 @@ class ClientGLAccountListView(generics.GenericAPIView):
             logger.error(f"Unexpected error retrieving accounts: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred while retrieving accounts.",
-                data={"error": str(e)}
+                "An unexpected error occurred while retrieving accounts."
             )

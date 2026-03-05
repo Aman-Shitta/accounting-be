@@ -152,8 +152,7 @@ class MonthlyAccountingListView(generics.GenericAPIView):
                 f"Error listing monthly accounting sessions for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving monthly accounting sessions.",
-                data={"error": str(e)}
+                "An error occurred while retrieving monthly accounting sessions."
             )
 
 
@@ -226,7 +225,7 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Monthly accounting creation failed due to validation errors.",
-                    data=serializer['errors']
+                    errors=serializer['errors']
                 )
 
             month = serializer['month']
@@ -275,8 +274,7 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                 f"Validation error creating monthly accounting for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
-                "Validation error occurred while creating monthly accounting.",
-                data={"error": str(e)}
+                "Validation error occurred while creating monthly accounting."
             )
 
         except Exception as e:
@@ -284,8 +282,7 @@ class MonthlyAccountingCreateView(generics.GenericAPIView):
                 f"Error creating monthly accounting for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating monthly accounting.",
-                data={"error": str(e)}
+                "An error occurred while creating monthly accounting."
             )
 
 
@@ -453,8 +450,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 f"Error retrieving monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving monthly accounting details.",
-                data={"error": str(e)}
+                "An error occurred while retrieving monthly accounting details."
             )
 
     def patch(self, request, client_id, accounting_id, *args, **kwargs):
@@ -530,8 +526,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 f"Error updating status for accounting {accounting_id}, client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while updating status.",
-                data={"error": str(e)}
+                "An error occurred while updating status."
             )
 
     def delete(self, request, client_id, accounting_id, *args, **kwargs):
@@ -580,8 +575,7 @@ class MonthlyAccountingDetailView(generics.GenericAPIView):
                 f"Error deleting monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting monthly accounting.",
-                data={"error": str(e)}
+                "An error occurred while deleting monthly accounting."
             )
 
 
@@ -687,7 +681,7 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
             logger.error(
                 f"Error uploading file for document {document_id} in accounting {accounting_id}, client {client_id}: {str(e)}")
 
-            return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.", data={"error": str(e)})
+            return create_api_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "An error occurred while uploading the file.")
 
 
 class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
@@ -745,13 +739,13 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
 
         if document.status != 'classified':
             return create_api_response(
-                message='Status can only be changed from classified to verified.',
+                message='Status can only be updated from classified to verified.',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
         if request.data.get('status') != "verified":
             return create_api_response(
-                message='Status not provided.',
+                message='Please select a status.',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
@@ -797,7 +791,7 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
             monthly_accounting.save(update_fields=['status', 'completed_at'])
 
         return create_api_response(
-            message='Document verified successfully. Export file has been generated for bank statement/credit card templates.' if document.doc_type in BANKING_DOCS else 'Document verified successfully. Please proceed to verify the JE Template.',
+            message='Document verified successfully.' if document.doc_type in BANKING_DOCS else 'Document verified successfully. Please proceed to verify the template.',
             status_code=status.HTTP_200_OK
         )
 
@@ -921,8 +915,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 f"Error retrieving line items for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving line items.",
-                data={"error": str(e)}
+                "An error occurred while retrieving line items."
             )
 
     def post(self, request, client_id, accounting_id, document_id, *args, **kwargs):
@@ -1026,7 +1019,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Validation failed.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -1034,8 +1027,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 f"Error creating line item for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating line item.",
-                data={"error": str(e)}
+                "An error occurred while creating line item."
             )
 
 
@@ -1163,8 +1155,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             logger.error(f"Error updating line item {line_item_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while updating line item.",
-                data={"error": str(e)}
+                "An error occurred while updating line item."
             )
 
     def delete(self, request, client_id, accounting_id, document_id, line_item_id, *args, **kwargs):
@@ -1219,8 +1210,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             logger.error(f"Error deleting line item {line_item_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting line item.",
-                data={"error": str(e)}
+                "An error occurred while deleting line item."
             )
 
 
@@ -1279,8 +1269,7 @@ class MonthlyAccountingYearsListView(generics.GenericAPIView):
                 f"Error listing accounting years for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving accounting years.",
-                data={"error": str(e)}
+                "An error occurred while retrieving accounting years."
             )
 
 
@@ -1350,6 +1339,5 @@ class MonthlyAccountingDeleteView(generics.GenericAPIView):
                 f"Error soft-deleting monthly accounting {accounting_id} for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while soft-deleting monthly accounting.",
-                data={"error": str(e)}
+                "An error occurred while soft-deleting monthly accounting."
             )

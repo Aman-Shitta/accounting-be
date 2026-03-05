@@ -110,7 +110,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
 
         return create_api_response(
             data=serializer.data,
-            message="JE Template data retrieved successfully.",
+            message="Template details loaded.",
             status_code=status.HTTP_200_OK
         )
 
@@ -136,8 +136,8 @@ class JEAccountingDetailView(generics.GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid data provided.",
-                data=serializer.errors
+                message="Please correct the errors and try again.",
+                errors=serializer.errors
             )
 
         # Extract the list of values to update
@@ -152,7 +152,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         else:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="User is not authorized to perform this action."
+                message="You do not have permission to perform this action."
             )
 
         # Get the JE template snapshot with proper authorization checks
@@ -166,7 +166,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                message=f"JE Template not found or access denied: {str(e)}"
+                message="Template not found or you do not have access."
             )
 
         # Process each value entry
@@ -207,8 +207,8 @@ class JEAccountingDetailView(generics.GenericAPIView):
         if not updated_attributes:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="No attributes were updated.",
-                data={"errors": error_messages}
+                message="No changes were applied. Please review the provided values.",
+                errors={"values": error_messages}
             )
 
         # Generate export file with updated values only if this is a bank or cc document
@@ -267,8 +267,8 @@ class JEAccountingDetailView(generics.GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid data provided.",
-                data=serializer.errors
+                message="Please correct the errors and try again.",
+                errors=serializer.errors
             )
 
         # Get client and customer based on user authorization
@@ -280,7 +280,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         else:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="User is not authorized to perform this action."
+                message="You do not have permission to perform this action."
             )
 
         # Get the JE template snapshot with proper authorization checks
@@ -294,7 +294,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                message=f"JE Template not found or access denied: {str(e)}"
+                message="Template not found or you do not have access."
             )
 
         # Check if this is a non-bank/non-credit card template
@@ -303,7 +303,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         if input_file and input_file.file_type in BANKING_DOCS:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="This endpoint is only for non-bank statement and non-credit card templates."
+                message="This action is only available for non-banking templates."
             )
 
         # Check if all attached documents are verified
@@ -315,7 +315,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
         if input_files_count == 0:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Cannot update template status because no input files are attached to this template."
+                message="Cannot verify template because no documents are attached."
             )
 
         for input_file_snapshot in template.input_files.all():
@@ -332,7 +332,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
                 if doc.status != 'verified':
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        message="Cannot update template status because some attached documents are not verified."
+                        message="Cannot verify template because some attached documents are not yet verified."
                     )
 
         # All documents are verified, so update the status to verified
@@ -350,8 +350,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
             # Status was already updated but export failed - leave it in verified state
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message=f"Template Not verified. Please try again.",
-                errors={"export_error": str(e)}
+                message="Verification failed. Please try again."
             )
 
         # Return updated template data
@@ -359,7 +358,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
             template, context={'request': request})
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message=f"Template Verified.",
+            message="Template verified successfully.",
             data=serializer.data
         )
 
@@ -508,8 +507,8 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         if not serializer.is_valid():
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid data provided.",
-                data=serializer.errors
+                message="Please correct the errors and try again.",
+                errors=serializer.errors
             )
 
         # Get user and customer
@@ -522,7 +521,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         else:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Access denied."
+                message="You do not have permission to perform this action."
             )
         # Get the JE template snapshot with proper authorization checks
         try:
@@ -557,14 +556,14 @@ class JEAccountingVerifyView(generics.GenericAPIView):
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                message=f"JE Template not found or access denied: {str(e)}"
+                message="Template not found or you do not have access."
             )
 
         # Check if template is already verified
         if template.status == 'verified':
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Template is already verified."
+                message="This template has already been verified."
             )
 
         # Determine if this is a bank/credit card template
@@ -628,8 +627,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
 
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message="Template verification failed. Error generating export file.",
-                data={"error": str(e)}
+                message="Verification failed. Please try again."
             )
 
         # Return updated template data
@@ -637,7 +635,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
             template, context={'request': request})
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message="JE Template verified successfully. Export file generated.",
+            message="Template verified successfully.",
             data=response_serializer.data
         )
 
@@ -695,7 +693,7 @@ class JEAttributeEditView(generics.GenericAPIView):
         else:
             return create_api_response(
                 status_code=status.HTTP_403_FORBIDDEN,
-                message="Access denied."
+                message="You do not have permission to perform this action."
             )
 
         # Get the JE template snapshot with proper authorization checks
@@ -739,14 +737,14 @@ class JEAttributeEditView(generics.GenericAPIView):
         except Exception as e:
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
-                message=f"Template or attribute not found or access denied: {str(e)}"
+                message="Template or attribute not found or you do not have access."
             )
 
         # Check if template is already verified
         if template.status == 'verified':
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Cannot edit attributes of a verified template."
+                message="Cannot modify a verified template. Please unverify it first."
             )
 
         # Determine if this is a memo/sales document (all attributes are manual)
@@ -774,7 +772,7 @@ class JEAttributeEditView(generics.GenericAPIView):
         if is_bank or (not is_manual_debit and not is_manual_credit):
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="This attribute is not editable. Only manual attributes can be edited."
+                message="This field is read-only and cannot be edited."
             )
 
         # Validate request data
@@ -785,14 +783,14 @@ class JEAttributeEditView(generics.GenericAPIView):
         if is_manual_debit and debit_value is None:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Debit must be provided."
+                message="Please provide a debit amount."
             )
 
         # Validate that only one value is provided
         if is_manual_credit and credit_value is None:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Credit must be provided."
+                message="Please provide a credit amount."
             )
 
         if is_manual_credit:
@@ -801,7 +799,7 @@ class JEAttributeEditView(generics.GenericAPIView):
             except (ValueError, TypeError, Exception) as e:
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    message=f"Invalid credit value provided. Must be a valid amount"
+                    message="Invalid credit amount. Please enter a valid number."
                 )
         else:
             try:
@@ -809,13 +807,13 @@ class JEAttributeEditView(generics.GenericAPIView):
             except (ValueError, TypeError, Exception) as e:
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    message=f"Invalid debit value provided. Must be a valid amount"
+                    message="Invalid debit amount. Please enter a valid number."
                 )
 
         if validated_amount < 0:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid Amount. Amount cannot be negative."
+                message="Amount cannot be negative."
             )
         # attribute.monthly_document_attributes
         manual_attribute, _ = MonthlyTemplateManualAttributeItem.objects.get_or_create(
@@ -835,7 +833,7 @@ class JEAttributeEditView(generics.GenericAPIView):
         # Return success response
         return create_api_response(
             status_code=status.HTTP_200_OK,
-            message=f"Amount updated successfully to {validated_amount}.",
+            message="Amount updated successfully.",
             data={
                 "attribute_id": attribute.id,
                 "attribute_name": attribute.attribute_name or (attribute.input_file_attribute.name if attribute.input_file_attribute else "Unknown"),
