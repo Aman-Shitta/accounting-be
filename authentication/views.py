@@ -9,7 +9,7 @@ from aicounting.msal_conf import MsalConf
 from aicounting.response import create_api_response
 from authentication import authenticate
 from authentication.constants import *
-from authentication.permissions import IsCustomerOrAccountant
+from authentication.permissions import IsCustomerOrAccountant, IsCustomerOrAccountantOrReviewer
 from user.models import (
     DimAICAccountant,
     DimAICCustomer,
