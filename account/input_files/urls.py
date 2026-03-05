@@ -1,6 +1,6 @@
 from django.urls import path
 
-from account.input_files.input_file_views import (
+from account.input_files.views import (
     AttributeBulkDeleteView,
     AttributeCreateView,
     AttributeListView,

@@ -4,9 +4,14 @@ import sys
 
 from django.shortcuts import get_object_or_404
 
-from rest_framework import generics, permissions, status
+from rest_framework import (
+    generics,
+    permissions,
+    status,
+    filters,
+)
 
-from account.journal_entry.je_template_serializers import (
+from account.journal_entry.serializers import (
     AvailableAttributeSerializer,
     JEFreqListSerializer,
     JETemplateAttributeCreateSerializer,
@@ -67,6 +72,11 @@ class JETemplateListView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = JETemplateListSerializer
 
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    search_fields = ['je_name', 'je_refrence']
+    ordering_fields = ['je_name', 'attributes_count', 'created_at']
+
     def get_queryset(self, client_id):
         """Get JE Templates for a client with proper authorization checks"""
         user = self.request.user
@@ -112,6 +122,7 @@ class JETemplateListView(generics.GenericAPIView):
                 )
 
             queryset = self.get_queryset(client_id)
+            queryset = self.filter_queryset(queryset)
             serializer = self.get_serializer(queryset, many=True)
 
             return create_api_response(

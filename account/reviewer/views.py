@@ -17,7 +17,7 @@ from account.models import (
     MonthlyDocumentAttributeItem,
     MonthlyAccountingDocument,
 )
-from account.reviewer.reviewer_serializers import (
+from account.reviewer.serializers import (
     ReviewActionResponseSerializer,
     ReviewSubmitSerializer,
     ReviewerDocumentDetailSerializer,

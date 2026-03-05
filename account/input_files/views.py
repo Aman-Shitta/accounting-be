@@ -6,9 +6,9 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.views import APIView
+from rest_framework import filters
 
-from account.input_files.input_file_serializers import (
+from account.input_files.serializers import (
     AttributeCreateSerializer,
     InputFileAttributeSerializer,
     InputFileBasicCreateSerializer,
@@ -71,9 +71,16 @@ class InputFileListView(generics.GenericAPIView):
     - Customer can view input files for their own clients
     - Accountant can view input files for clients they are assigned to
     """
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = InputFileListSerializer
+    
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    search_fields = ['name']
+    ordering_fields = ['file_type', 'name', 'created_at']
+
 
     def get_queryset(self, client_id):
         """Get input files for a client with proper authorization checks"""
@@ -125,6 +132,7 @@ class InputFileListView(generics.GenericAPIView):
                 )
 
             queryset = self.get_queryset(client_id)
+            queryset = self.filter_queryset(queryset)
             serializer = self.get_serializer(queryset, many=True)
 
             return create_api_response(

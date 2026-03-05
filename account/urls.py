@@ -1,13 +1,13 @@
 from django.urls import path, include
 
 from account.accounting.monthly_accounting_urls import monthly_accounting_url_patterns
-from account.gl_account_views import ClientGLAccountListView
-from account.input_files.if_urls import (
+from account.views import ClientGLAccountListView
+from account.input_files.urls import (
     input_file_patterns,
 )
-from account.journal_entry.je_template_views import JEFreqListView
-from account.journal_entry.je_urls import je_template_patterns
-from account.reviewer.reviewer_urls import reviewer_url_patterns
+from account.journal_entry.views import JEFreqListView
+from account.journal_entry.urls import je_template_patterns
+from account.reviewer.urls import reviewer_url_patterns
 
 urlpatterns = [
     # Account URLS

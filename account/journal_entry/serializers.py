@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
-from account.input_files.input_file_serializers import InputFileAttributeSerializer
+from account.input_files.serializers import InputFileAttributeSerializer
 from account.models import (
     DimAICGLAcct,
     DimAICJEFreq,

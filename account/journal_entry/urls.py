@@ -1,7 +1,6 @@
 from django.urls import include, path
 
-from account.gl_account_views import ClientGLAccountListView
-from account.journal_entry.je_template_views import (
+from account.journal_entry.views import (
     AvailableAttributesView,
     JEFreqListView,
     JETemplateAttributeConfigView,
