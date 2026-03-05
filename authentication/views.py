@@ -247,7 +247,7 @@ class SSORefreshTokenView(GenericAPIView):
     Frontend should call this endpoint before the token expires or when receiving a 401.
     """
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
-    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
+    permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountantOrReviewer]
     throttle_classes = [AuthRefreshThrottle]
 
     def post(self, request):
