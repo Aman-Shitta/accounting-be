@@ -20,13 +20,13 @@ ClientUpdateViewMessages = {
 }
 
 ClientRetrieveViewMessages = {
-    "success": "Client information retrieved successfully.",
+    "success": "Client details loaded.",
     "not_found": "Client not found.",
     "error": "Failed to retrieve client information.",
 }
 
 ClientListViewMessages = {
-    "success": "Client list retrieved successfully.",
+    "success": "Clients loaded.",
     "error": "Failed to retrieve client list.",
 }
 
@@ -47,7 +47,7 @@ AccountantInviteViewMessages = {
 }
 
 AccountantListViewMessages = {
-    "success": "Accountant list retrieved successfully.",
+    "success": "Accountants loaded.",
     "error": "Failed to retrieve accountant list.",
 }
 

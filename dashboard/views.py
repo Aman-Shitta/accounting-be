@@ -68,7 +68,7 @@ class CustomerDashboardView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Customer dashboard data retrieved successfully.",
+                "Customer dashboard data loaded.",
                 data=data,
             )
 
@@ -77,7 +77,6 @@ class CustomerDashboardView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while fetching dashboard data.",
-                data={"error": str(e)},
             )
 
 
@@ -129,7 +128,7 @@ class AccountantDashboardView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Accountant dashboard data retrieved successfully.",
+                "Accountant dashboard data loaded.",
                 data=data,
             )
 
@@ -138,7 +137,6 @@ class AccountantDashboardView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while fetching dashboard data.",
-                data={"error": str(e)},
             )
 
 
@@ -187,7 +185,7 @@ class ReviewerDashboardView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Reviewer dashboard data retrieved successfully.",
+                "Reviewer dashboard data loaded.",
                 data=data,
             )
 
@@ -196,5 +194,4 @@ class ReviewerDashboardView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while fetching dashboard data.",
-                data={"error": str(e)},
             )

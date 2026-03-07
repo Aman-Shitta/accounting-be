@@ -1,6 +1,6 @@
 from django.urls import path
 
-from account.reviewer.reviewer_views import (
+from account.reviewer.views import (
     MonthlyAccountingDocumentLineItemDetailView,
     MonthlyAccountingDocumentLineItemListCreateView,
     ReviewerDocumentDetailView,

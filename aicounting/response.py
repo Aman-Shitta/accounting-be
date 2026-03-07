@@ -75,8 +75,15 @@ def format_serializer_errors(errors):
             else:
                 formatted_errors[field] = [str(error_list)]
     elif isinstance(errors, list):
-        # Handle non-field errors
-        formatted_errors["non_field_errors"] = [str(error) for error in errors]
+        # Handle list serializer errors (many=True) — index each object's errors
+        has_dicts = any(isinstance(item, dict) for item in errors)
+        if has_dicts:
+            for idx, item in enumerate(errors):
+                if isinstance(item, dict) and item:
+                    formatted_errors[str(idx)] = format_serializer_errors(item)
+        else:
+            # Handle non-field errors
+            formatted_errors["non_field_errors"] = [str(error) for error in errors]
     else:
         formatted_errors["non_field_errors"] = [str(errors)]
 

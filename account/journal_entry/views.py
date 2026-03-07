@@ -4,9 +4,14 @@ import sys
 
 from django.shortcuts import get_object_or_404
 
-from rest_framework import generics, permissions, status
+from rest_framework import (
+    generics,
+    permissions,
+    status,
+    filters,
+)
 
-from account.journal_entry.je_template_serializers import (
+from account.journal_entry.serializers import (
     AvailableAttributeSerializer,
     JEFreqListSerializer,
     JETemplateAttributeCreateSerializer,
@@ -48,7 +53,7 @@ class JEFreqListView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "JE frequencies retrieved successfully",
+                "Frequencies loaded.",
                 data=serializer.data
             )
 
@@ -56,8 +61,7 @@ class JEFreqListView(generics.GenericAPIView):
             logger.error(f"Error retrieving JE frequencies: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving JE frequencies.",
-                data={"error": str(e)}
+                "An error occurred while retrieving JE frequencies."
             )
 
 
@@ -67,6 +71,11 @@ class JETemplateListView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = JETemplateListSerializer
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    search_fields = ['je_name', 'je_refrence']
+    ordering_fields = ['je_name', 'attributes_count', 'created_at']
 
     def get_queryset(self, client_id):
         """Get JE Templates for a client with proper authorization checks"""
@@ -109,15 +118,16 @@ class JETemplateListView(generics.GenericAPIView):
             else:
                 return create_api_response(
                     status.HTTP_403_FORBIDDEN,
-                    "Access denied."
+                    "You do not have permission to perform this action."
                 )
 
             queryset = self.get_queryset(client_id)
+            queryset = self.filter_queryset(queryset)
             serializer = self.get_serializer(queryset, many=True)
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"JE Templates retrieved successfully for client {client.client_name}.",
+                f"Templates loaded for {client.client_name}.",
                 data={
                     'client': client.id,
                     'client_name': client.client_name,
@@ -131,8 +141,7 @@ class JETemplateListView(generics.GenericAPIView):
                 f"Error retrieving JE Templates for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving JE Templates.",
-                data={"error": str(e)}
+                "An error occurred while retrieving JE Templates."
             )
 
 
@@ -163,7 +172,7 @@ class JETemplateCreateView(generics.GenericAPIView):
             else:
                 return create_api_response(
                     status.HTTP_403_FORBIDDEN,
-                    "Access denied."
+                    "You do not have permission to perform this action."
                 )
             request.data['input_files'] = request.data.get('input_files') or []
             serializer = self.get_serializer(
@@ -182,14 +191,14 @@ class JETemplateCreateView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_201_CREATED,
-                    "JE Template created successfully.",
+                    "Template created successfully.",
                     data=detail_serializer.data
                 )
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "JE Template creation failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -197,8 +206,7 @@ class JETemplateCreateView(generics.GenericAPIView):
                 f"Error creating JE Template for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating the JE Template.",
-                data={"error": str(e)}
+                "An error occurred while creating the JE Template."
             )
 
 
@@ -239,7 +247,7 @@ class JETemplateDetailView(generics.GenericAPIView):
             if not je_template:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "JE Template not found or access denied."
+                    "Template not found or you do not have access."
                 )
 
             serializer = JETemplateDetailSerializer(
@@ -249,7 +257,7 @@ class JETemplateDetailView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "JE Template retrieved successfully.",
+                "Template details loaded.",
                 data=serializer.data
             )
 
@@ -258,8 +266,7 @@ class JETemplateDetailView(generics.GenericAPIView):
                 f"Error retrieving JE Template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving the JE Template.",
-                data={"error": str(e)}
+                "An error occurred while retrieving the JE Template."
             )
 
     def put(self, request, client_id, template_id, *args, **kwargs):
@@ -269,7 +276,7 @@ class JETemplateDetailView(generics.GenericAPIView):
             if not je_template:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "JE Template not found or access denied."
+                    "Template not found or you do not have access."
                 )
 
             serializer = JETemplateUpdateSerializer(
@@ -290,22 +297,21 @@ class JETemplateDetailView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_200_OK,
-                    "JE Template updated successfully.",
+                    "Template updated successfully.",
                     data=detail_serializer.data
                 )
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "JE Template update failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
             logger.error(f"Error updating JE Template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while updating the JE Template.",
-                data={"error": str(e)}
+                "An error occurred while updating the JE Template."
             )
 
     def delete(self, request, client_id, template_id, *args, **kwargs):
@@ -315,7 +321,7 @@ class JETemplateDetailView(generics.GenericAPIView):
             if not je_template:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "JE Template not found or access denied."
+                    "Template not found or you do not have access."
                 )
 
             template_name = je_template.je_name
@@ -323,15 +329,14 @@ class JETemplateDetailView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"JE Template '{template_name}' deleted successfully."
+                f"Template '{template_name}' deleted successfully."
             )
 
         except Exception as e:
             logger.error(f"Error deleting JE Template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting the JE Template.",
-                data={"error": str(e)}
+                "An error occurred while deleting the JE Template."
             )
 
 
@@ -362,7 +367,7 @@ class AvailableAttributesView(generics.GenericAPIView):
             else:
                 return create_api_response(
                     status.HTTP_403_FORBIDDEN,
-                    "Access denied."
+                    "You do not have permission to perform this action."
                 )
 
             # Get available attributes excluding bank_statement and credit_card
@@ -378,7 +383,7 @@ class AvailableAttributesView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Available attributes retrieved successfully for client {client.client_name}.",
+                f"Available attributes loaded for {client.client_name}.",
                 data={
                     'client': client.id,
                     'client_name': client.client_name,
@@ -392,8 +397,7 @@ class AvailableAttributesView(generics.GenericAPIView):
                 f"Error retrieving available attributes for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving available attributes.",
-                data={"error": str(e)}
+                "An error occurred while retrieving available attributes."
             )
 
 
@@ -434,7 +438,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             if not je_template:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "JE Template not found or access denied."
+                    "Template not found or you do not have access."
                 )
 
             configured_attributes = je_template.template_attributes.all().select_related(
@@ -450,7 +454,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Configured attributes retrieved successfully for template {je_template.je_name}.",
+                f"Template attributes loaded for {je_template.je_name}.",
                 data={
                     'template_id': je_template.id,
                     'template_name': je_template.je_name,
@@ -465,8 +469,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 f"Error retrieving configured attributes for template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving configured attributes.",
-                data={"error": str(e)}
+                "An error occurred while retrieving configured attributes."
             )
 
     def post(self, request, client_id, template_id, *args, **kwargs):
@@ -517,7 +520,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             if not je_template:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "JE Template not found or access denied."
+                    "Template not found or you do not have access."
                 )
 
             # Additional validation for bank_statement and credit_card templates
@@ -555,7 +558,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Attribute configuration failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -566,8 +569,7 @@ class JETemplateAttributeConfigView(generics.GenericAPIView):
                 f"Error configuring attributes for template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while configuring attributes.",
-                errors={"attributes": str(e)}
+                "An error occurred while configuring attributes."
             )
 
 
@@ -611,7 +613,7 @@ class JETemplateAttributeDetailView(generics.GenericAPIView):
             if not template_attribute:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Template attribute not found or access denied."
+                    "Attribute not found or you do not have access."
                 )
 
             # Additional validation for bank_statement and credit_card templates
@@ -645,6 +647,5 @@ class JETemplateAttributeDetailView(generics.GenericAPIView):
                 f"Error removing attribute {attr_id} from template {template_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while removing the attribute.",
-                data={"error": str(e)}
+                "An error occurred while removing the attribute."
             )

@@ -3,6 +3,7 @@ from django.conf import settings
 from django.db import transaction
 
 from rest_framework import generics, permissions, status
+from rest_framework.filters import SearchFilter, OrderingFilter
 
 from user.models import DimAICClient
 from .client_serializers import (
@@ -100,6 +101,11 @@ class ClientListView(generics.GenericAPIView):
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = ClientRetrieveSerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+
+    search_fields = ['client_name', 'client_id']
+    ordering_fields = ['created_at', 'client_name']
+    
 
     def get_queryset(self):
         customer = getattr(self.request.user, 'customer_profile', None)
@@ -107,7 +113,6 @@ class ClientListView(generics.GenericAPIView):
         if customer:
             return DimAICClient.objects.filter(customer=customer)
         elif accountant:
-            # Adjust this to your accountant-client relationship
             return DimAICClient.objects.filter(assigned_accountants=accountant)
         return DimAICClient.objects.none()
 
@@ -116,8 +121,10 @@ class ClientListView(generics.GenericAPIView):
         Override get method to handle custom response structure
         """
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        queryset = self.filter_queryset(queryset)
 
+        serializer = self.get_serializer(queryset, many=True)
+        
         return create_api_response(
             status_code=status.HTTP_200_OK,
             message=ClientListViewMessages["success"],
@@ -251,7 +258,7 @@ class ContactCreateView(generics.GenericAPIView):
                 if not customer:
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        message="User account not properly configured."
+                        message="Your account setup is incomplete. Please contact your administrator."
                     )
 
                 try:
@@ -269,7 +276,7 @@ class ContactCreateView(generics.GenericAPIView):
                     logger.error(f"Client {client_id} already has contacts.")
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        message="Client already has contacts assigned.",
+                        message="This client already has contacts. Please update the existing contacts instead.",
                         errors={"contacts": [
                             "This client already has contacts. Please update existing contacts instead."]}
                     )
@@ -315,7 +322,7 @@ class DocumentUploadView(generics.GenericAPIView):
                 if not customer:
                     return create_api_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        message="User account not properly configured."
+                        message="Your account setup is incomplete. Please contact your administrator."
                     )
 
                 try:
@@ -455,7 +462,7 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
                     "Failed to append accountants due to validation errors.",
-                    data=serializer.errors
+                    errors=serializer.errors
                 )
 
             updated_client = serializer.save()
@@ -482,8 +489,7 @@ class ClientAssignAccountantsView(generics.GenericAPIView):
                 f"Unexpected error during accountant append: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred while appending accountants.",
-                data={"error": str(e)}
+                "An unexpected error occurred while appending accountants."
             )
 
 
@@ -545,8 +551,7 @@ class ClientAssignedAccountantsView(generics.GenericAPIView):
                 f"Unexpected error retrieving assigned accountants: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred while retrieving assigned accountants.",
-                data={"error": str(e)}
+                "An unexpected error occurred while retrieving assigned accountants."
             )
 
 
@@ -634,8 +639,7 @@ class ClientUnassignAccountantsView(generics.GenericAPIView):
                 f"Unexpected error during accountant unassignment: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An unexpected error occurred during accountant unassignment.",
-                data={"error": str(e)}
+                "An unexpected error occurred during accountant unassignment."
             )
 
     def post(self, request, *args, **kwargs):

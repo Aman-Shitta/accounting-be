@@ -56,7 +56,7 @@ class AzureInviteView(GenericAPIView):
         if user_type not in [CUSTOMER, REVIEWER]:
             return create_api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message="Invalid user type for invitation."
+                message="Please select a valid user type for the invitation."
             )
 
         if user_type == CUSTOMER:

@@ -17,7 +17,7 @@ from account.models import (
     MonthlyDocumentAttributeItem,
     MonthlyAccountingDocument,
 )
-from account.reviewer.reviewer_serializers import (
+from account.reviewer.serializers import (
     ReviewActionResponseSerializer,
     ReviewSubmitSerializer,
     ReviewerDocumentDetailSerializer,
@@ -98,7 +98,6 @@ class ReviewerDocumentListView(ReviewerMixin):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while listing reviewer documents.",
-                data={"error": str(e)},
             )
 
 
@@ -135,7 +134,7 @@ class ReviewerDocumentDetailView(ReviewerMixin):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Document details retrieved successfully.",
+                "Document details loaded.",
                 data=serializer.data,
             )
 
@@ -145,7 +144,6 @@ class ReviewerDocumentDetailView(ReviewerMixin):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while retrieving document details.",
-                data={"error": str(e)},
             )
 
 
@@ -179,7 +177,7 @@ class ReviewerSubmitReviewView(ReviewerMixin):
             if not serializer.is_valid():
                 return create_api_response(
                     status.HTTP_400_BAD_REQUEST,
-                    message="Invalid review submission.",
+                    message="Please correct the errors in your review and try again.",
                     errors=serializer.errors,
                 )
 
@@ -195,7 +193,6 @@ class ReviewerSubmitReviewView(ReviewerMixin):
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "An error occurred while submitting the review.",
-                data={"error": str(e)},
             )
 
 
@@ -217,7 +214,7 @@ class ReviewerSubmitReviewView(ReviewerMixin):
         response_data = ReviewActionResponseSerializer(doc).data
         return create_api_response(
             status.HTTP_200_OK,
-            "Document approved. It has been queued for classification.",
+            "Document approved and sent for processing.",
             data=response_data,
         )
 
@@ -319,7 +316,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Line items retrieved successfully.",
+                "Line items loaded.",
                 data=response_data
             )
         except Exception as e:
@@ -327,8 +324,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 f"Error retrieving line items for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving line items.",
-                data={"error": str(e)}
+                "An error occurred while retrieving line items."
             )
 
     def post(self, request, document_id, *args, **kwargs):
@@ -359,14 +355,14 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_201_CREATED,
-                    "Line item created successfully.",
+                    "Line item added successfully.",
                     data=output_serializer.data
                 )
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
-                "Validation failed.",
-                data=serializer.errors
+                "Please correct the errors and try again.",
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -374,8 +370,7 @@ class MonthlyAccountingDocumentLineItemListCreateView(generics.GenericAPIView):
                 f"Error creating line item for document {document_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating line item.",
-                data={"error": str(e)}
+                "An error occurred while creating line item."
             )
 
 
@@ -438,7 +433,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
-                "Validation failed.",
+                "Please correct the errors and try again.",
                 errors=serializer.errors
             )
 
@@ -446,8 +441,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             logger.error(f"Error updating line item {line_item_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while updating line item.",
-                data={"error": str(e)}
+                "An error occurred while updating line item."
             )
 
     def delete(self, request, document_id, line_item_id, *args, **kwargs):
@@ -486,7 +480,7 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_200_OK,
-                    f"Line item deleted successfully. Renumbered {updated_count} subsequent lines."
+                    f"Line item deleted successfully."
                 )
             else:
                 # For attribute items, just delete
@@ -502,6 +496,5 @@ class MonthlyAccountingDocumentLineItemDetailView(generics.GenericAPIView):
             logger.error(f"Error deleting line item {line_item_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting line item.",
-                data={"error": str(e)}
+                "An error occurred while deleting line item."
             )

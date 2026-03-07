@@ -6,9 +6,9 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.views import APIView
+from rest_framework import filters
 
-from account.input_files.input_file_serializers import (
+from account.input_files.serializers import (
     AttributeCreateSerializer,
     InputFileAttributeSerializer,
     InputFileBasicCreateSerializer,
@@ -48,7 +48,7 @@ class InputFileTypesListView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Input file types retrieved successfully",
+                "File types loaded.",
                 data={
                     'file_types': file_types,
                     'total_count': len(file_types)
@@ -59,8 +59,7 @@ class InputFileTypesListView(generics.GenericAPIView):
             logger.error(f"Error retrieving input file types: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving input file types.",
-                data={"error": str(e)}
+                "An error occurred while retrieving input file types."
             )
 
 
@@ -72,9 +71,16 @@ class InputFileListView(generics.GenericAPIView):
     - Customer can view input files for their own clients
     - Accountant can view input files for clients they are assigned to
     """
+
     authentication_classes = [authenticate.JSONWebTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsCustomerOrAccountant]
     serializer_class = InputFileListSerializer
+    
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+
+    search_fields = ['name']
+    ordering_fields = ['file_type', 'name', 'created_at']
+
 
     def get_queryset(self, client_id):
         """Get input files for a client with proper authorization checks"""
@@ -122,15 +128,16 @@ class InputFileListView(generics.GenericAPIView):
             else:
                 return create_api_response(
                     status.HTTP_403_FORBIDDEN,
-                    "Access denied."
+                    "You do not have permission to perform this action."
                 )
 
             queryset = self.get_queryset(client_id)
+            queryset = self.filter_queryset(queryset)
             serializer = self.get_serializer(queryset, many=True)
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Input files retrieved successfully for client {client.client_name}.",
+                f"Files loaded for {client.client_name}.",
                 data={
                     'client_id': client.id,
                     'client_name': client.client_name,
@@ -144,8 +151,7 @@ class InputFileListView(generics.GenericAPIView):
                 f"Error retrieving input files for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving input files.",
-                data={"error": str(e)}
+                "An error occurred while retrieving input files."
             )
 
 
@@ -181,7 +187,7 @@ class InputFileCreateView(generics.GenericAPIView):
             else:
                 return create_api_response(
                     status.HTTP_403_FORBIDDEN,
-                    "Access denied."
+                    "You do not have permission to perform this action."
                 )
 
             serializer = self.get_serializer(
@@ -200,14 +206,14 @@ class InputFileCreateView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_201_CREATED,
-                    "Input file created successfully.",
+                    "File created successfully.",
                     data=detail_serializer.data
                 )
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Input file creation failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -215,8 +221,7 @@ class InputFileCreateView(generics.GenericAPIView):
                 f"Error creating input file for client {client_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating the input file.",
-                data={"error": str(e)}
+                "An error occurred while creating the input file."
             )
 
 
@@ -262,7 +267,7 @@ class InputFileDetailView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             serializer = InputFileDetailSerializer(
@@ -272,7 +277,7 @@ class InputFileDetailView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                "Input file retrieved successfully.",
+                "File details loaded.",
                 data=serializer.data
             )
 
@@ -280,8 +285,7 @@ class InputFileDetailView(generics.GenericAPIView):
             logger.error(f"Error retrieving input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving the input file.",
-                data={"error": str(e)}
+                "An error occurred while retrieving the input file."
             )
 
     def put(self, request, client_id, file_id, *args, **kwargs):
@@ -291,7 +295,7 @@ class InputFileDetailView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             serializer = InputFileBasicUpdateSerializer(
@@ -312,22 +316,21 @@ class InputFileDetailView(generics.GenericAPIView):
 
                 return create_api_response(
                     status.HTTP_200_OK,
-                    "Input file updated successfully.",
+                    "File updated successfully.",
                     data=detail_serializer.data
                 )
 
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Input file update failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
             logger.error(f"Error updating input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while updating the input file.",
-                data={"error": str(e)}
+                "An error occurred while updating the input file."
             )
 
     def delete(self, request, client_id, file_id, *args, **kwargs):
@@ -337,22 +340,21 @@ class InputFileDetailView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             input_file.delete()
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Input file deleted successfully."
+                "File deleted successfully."
             )
 
         except Exception as e:
             logger.error(f"Error deleting input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting the input file.",
-                data={"error": str(e)}
+                "An error occurred while deleting the input file."
             )
 
 
@@ -398,7 +400,7 @@ class AttributeCreateView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             # Check if file type allows custom attributes
@@ -433,7 +435,7 @@ class AttributeCreateView(generics.GenericAPIView):
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
                 "Attribute creation failed due to validation errors.",
-                data=serializer.errors
+                errors=serializer.errors
             )
 
         except Exception as e:
@@ -441,8 +443,7 @@ class AttributeCreateView(generics.GenericAPIView):
                 f"Error creating attribute for input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while creating the attribute.",
-                data={"error": str(e)}
+                "An error occurred while creating the attribute."
             )
 
 
@@ -489,7 +490,7 @@ class AttributeListView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             attributes = input_file.attributes.all().order_by('created_at')
@@ -497,7 +498,7 @@ class AttributeListView(generics.GenericAPIView):
 
             return create_api_response(
                 status.HTTP_200_OK,
-                f"Attributes retrieved successfully for input file {input_file.name}.",
+                f"Attributes loaded for {input_file.name}.",
                 data={
                     'input_file_id': input_file.id,
                     'input_file_name': input_file.name,
@@ -512,8 +513,7 @@ class AttributeListView(generics.GenericAPIView):
                 f"Error retrieving attributes for input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while retrieving attributes.",
-                data={"error": str(e)}
+                "An error occurred while retrieving attributes."
             )
 
 
@@ -558,7 +558,7 @@ class AttributeBulkDeleteView(generics.GenericAPIView):
             if not input_file:
                 return create_api_response(
                     status.HTTP_404_NOT_FOUND,
-                    "Input file not found or access denied."
+                    "File not found or you do not have access."
                 )
 
             attribute_ids = request.data.get('attribute_ids', [])
@@ -615,6 +615,5 @@ class AttributeBulkDeleteView(generics.GenericAPIView):
                 f"Error deleting attributes for input file {file_id}: {str(e)}")
             return create_api_response(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "An error occurred while deleting attributes.",
-                data={"error": str(e)}
+                "An error occurred while deleting attributes."
             )
