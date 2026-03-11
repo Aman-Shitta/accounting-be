@@ -48,7 +48,7 @@ class JETemplateDataSerializer(serializers.ModelSerializer):
         attributes_data = []
 
         attribute_snapshot_count = instance.attribute_snapshots.count()
-        first_attribute_name = instance.attribute_snapshots.first().name
+        first_attribute_name = instance.attribute_snapshots.first().original_attribute.input_file_attribute.name
         # Determine if this is a single-attribute template
         if (attribute_snapshot_count == 1 and first_attribute_name == '*'):
             attributes_data = self._handle_single_attribute_template(
