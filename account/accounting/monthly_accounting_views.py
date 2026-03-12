@@ -30,6 +30,8 @@ from account.accounting.monthly_document_line_item_serializers import (
     MonthlyDocumentLineItemSerializer,
 )
 
+from account.accounting.je_accounting_views import JEAccountingVerifyView
+
 from aicounting.constants import BANKING_DOCS
 logger = logging.getLogger(__name__)
 
@@ -768,7 +770,6 @@ class MonthlyAccountingDocumentStatusUpdateView(generics.GenericAPIView):
 
                     # Generate export file for the template
                     try:
-                        from account.accounting.monthly_accounting_views import JEAccountingVerifyView
                         JEAccountingVerifyView.generate_export_file(
                             template_snapshot)
                         logger.error(
