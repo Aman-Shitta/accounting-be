@@ -59,7 +59,8 @@ class AzureStoragePathConstants:
     # Process Artifact Stages (formerly debug_files)
     ARTIFACT_RAW = "01_raw_input"
     ARTIFACT_OCR = "02_ocr_output"
-    ARTIFACT_LANDING_AI = "03_landing_ai"
+    ARTIFACT_EXTRACTOR_AI = "03_extractor_ai"
+    # ARTIFACT_EXTRACTOR_AI = "03_landing_ai"
     ARTIFACT_GEMINI_AI = "04_gemini_ai"
     ARTIFACT_DOCUMENT_AI = "05_document_ai"
     ARTIFACT_RECTIFICATION = "06_rectification"
@@ -253,8 +254,8 @@ class AzureBlobPathBuilder:
     def artifact_ocr_path(self, doc_id: str, filename: str, **kwargs) -> str:
         return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_OCR, filename, **kwargs)
 
-    def artifact_landing_ai_path(self, doc_id: str, filename: str, **kwargs) -> str:
-        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_LANDING_AI, filename, **kwargs)
+    def ARTIFACT_EXTRACTOR_AI_path(self, doc_id: str, filename: str, **kwargs) -> str:
+        return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_EXTRACTOR_AI, filename, **kwargs)
 
     def artifact_gemini_ai_path(self, doc_id: str, filename: str, **kwargs) -> str:
         return self._get_artifact_path(doc_id, AzureStoragePathConstants.ARTIFACT_GEMINI_AI, filename, **kwargs)
@@ -288,7 +289,7 @@ class AzureBlobPathBuilder:
 
     def debug_extracted_data_path(self, doc_id: str, filename: str = "extracted_data.json", **kwargs) -> str:
         # Defaulting to Landing AI for 'extracted'
-        return self.artifact_landing_ai_path(doc_id, filename, **kwargs)
+        return self.ARTIFACT_EXTRACTOR_AI_path(doc_id, filename, **kwargs)
 
     def debug_rectified_data_path(self, doc_id: str, filename: str = "rectified_data.json", **kwargs) -> str:
         return self.artifact_rectification_path(doc_id, filename, **kwargs)

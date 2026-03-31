@@ -64,7 +64,8 @@ class JEAccountingDetailView(generics.GenericAPIView):
 
         # Get template attributes
         template_attributes = JETemplateDataSerializer(
-            template_snapshot).data['attributes']
+            template_snapshot
+        ).data['attributes']
 
         # Generate CSV file
         filename = "je_template.csv"
@@ -461,7 +462,8 @@ class JEAccountingVerifyView(generics.GenericAPIView):
 
         # Get template attributes
         template_attributes = JETemplateDataSerializer(
-            template_snapshot).data['attributes']
+            template_snapshot
+        ).data['attributes']
 
         # Generate CSV file
         filename = f"je_template_{template_snapshot.id}.csv"

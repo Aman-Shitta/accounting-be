@@ -31,7 +31,6 @@ class StatementTransaction(BaseModel):
                           description="Amount of the transaction or check in positive value.")
     y_coord: float = Field(...,
                            description="top left location coordinate of the amount.")
-    # grounding: AmountGrounding = Field(..., description="Bounding box coordinates of the amount on the page.")
     local_id: int = Field(..., description="Numerical unique identifier indicating the order as listed on the page. Reset the counter to 1 at the beginning of each page.")
     type: str = Field(..., description="Indicates whether the transaction is a debit or credit. Use 'debit' or 'credit'.")
 

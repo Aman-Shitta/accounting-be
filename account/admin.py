@@ -3,7 +3,6 @@ from django.contrib import admin
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
-from django.utils import timezone
 
 from django.core.exceptions import ValidationError
 
@@ -30,10 +29,35 @@ from account.models import (
     FactAICInputFileAttributeSnapshot,
     FactAICJETemplateHeaderSnapshot,
     FactAICJETemplateAttributeSnapshot,
+    ClassificationQueue,
 )
 
 
-# admin.site.register(MonthlyDocumentLineItemAmountRectification)
+@admin.register(ClassificationQueue)
+class ClassificationQueueAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'document', 'client_id', 'status', 'priority',
+        'retry_count', 'max_retries', 'created_at', 'started_at', 'completed_at'
+    )
+    list_filter = ('status', 'client_id', 'created_at')
+    search_fields = ('client_id', 'error_message')
+    readonly_fields = ('id', 'created_at', 'updated_at', 'started_at', 'completed_at')
+    ordering = ('-priority', 'created_at')
+
+    fieldsets = (
+        ('Queue Item', {
+            'fields': ('id', 'document', 'client_id', 'status', 'priority')
+        }),
+        ('Retry Info', {
+            'fields': ('retry_count', 'max_retries', 'error_message'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'started_at', 'completed_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
 
 @admin.register(DimAICAcctType)
 class DimAICAcctTypeAdmin(admin.ModelAdmin):
@@ -407,13 +431,27 @@ class MonthlyDocumentBankLineItemInline(admin.TabularInline):
     """Inline for transaction line items."""
     model = MonthlyDocumentBankLineItem
     extra = 0
-    readonly_fields = ('page_number', 'line_number', 'date', 'description', 'formatted_amount', 
-                      'transaction_type', 'gl_account', 'offset_gl_account', 'created_at')
-    fields = ('page_number', 'line_number', 'date', 'description', 'formatted_amount', 
-             'transaction_type', 'gl_account', 'offset_gl_account')
+    readonly_fields = (
+        'page_number', 'line_number', 'date', 'description', 'formatted_amount',
+        'transaction_type', 'debit_amount', 'credit_amount',
+        'gl_account', 'offset_gl_account', 'modified_gl',
+        'is_rectified', 'was_missing', 'was_compared',
+        'is_check_transaction', 'check_number', 'created_at',
+    )
+    fields = (
+        'page_number', 'line_number', 'date', 'description', 'formatted_amount',
+        'transaction_type', 'debit_amount', 'credit_amount',
+        'gl_account', 'offset_gl_account', 'modified_gl',
+        'is_rectified', 'was_missing', 'was_compared',
+        'is_check_transaction', 'check_number',
+    )
     can_delete = False
     classes = ['collapse']
-    
+    show_change_link = True
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('gl_account', 'offset_gl_account')
+
     def has_add_permission(self, request, obj=None):
         return False
 
@@ -426,115 +464,14 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
     fields = ('page_number', 'amount', 'payee', 'check_number', 'memo', 'related_line_item')
     can_delete = False
     classes = ['collapse']
-    
+    show_change_link = True
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('related_line_item')
+
     def has_add_permission(self, request, obj=None):
         return False
 
-
-#############################################
-# Line Item Rectifications
-#############################################
-# @admin.register(MonthlyDocumentLineItemAmountRectification)
-# class MonthlyDocumentLineItemAmountRectificationAdmin(admin.ModelAdmin):
-    """Admin for AI-verified rectifications of line item amounts."""
-    list_display = (
-        'id', 
-        'line_item_link', 
-        'needs_correction', 
-        'corrected_field',
-        'rectified_confidence',
-        'review_status',
-        'created_at'
-    )
-    list_filter = (
-        'needs_correction', 
-        'review_status', 
-        'corrected_field',
-        'created_at'
-    )
-    search_fields = (
-        'line_item__document__id',
-        'line_item__description',
-        'rectification_reasoning'
-    )
-    readonly_fields = (
-        'line_item',
-        'rectified_confidence',
-        'needs_correction',
-        'rectification_reasoning',
-        'corrected_field',
-        'created_at',
-        'updated_at'
-    )
-    
-    fieldsets = (
-        ('Line Item', {
-            'fields': ('line_item',)
-        }),
-        ('Rectification Details', {
-            'fields': (
-                'needs_correction',
-                'corrected_field',
-                'rectified_confidence',
-                'rectification_reasoning'
-            )
-        }),
-        ('Review Status', {
-            'fields': (
-                'review_status',
-                'reviewed_by',
-                'reviewed_at'
-            )
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        })
-    )
-    
-    actions = ['accept_rectification', 'reject_rectification']
-    
-    def line_item_link(self, obj):
-        """Create a link to the related line item."""
-        if obj.line_item:
-            url = f'/admin/account/monthlydocumentbanklineitem/{obj.line_item.id}/change/'
-            return format_html(
-                '<a href="{}">{}</a>', 
-                url, 
-                f"Line Item {obj.line_item.id}"
-            )
-        return "-"
-    line_item_link.short_description = "Line Item"
-    
-    def accept_rectification(self, request, queryset):
-        """Accept selected rectifications and apply them to line items."""        
-        updated = 0
-        for rectification in queryset.filter(review_status='pending'):
-            try:
-                rectification.apply_rectification()
-                rectification.reviewed_by = request.user
-                rectification.reviewed_at = timezone.now()
-                rectification.save()
-                updated += 1
-            except Exception as e:
-                messages.error(request, f"Failed to accept rectification {rectification.id}: {e}")
-        
-        if updated:
-            messages.success(request, f"Successfully accepted {updated} rectification(s)")
-    accept_rectification.short_description = "Accept selected rectifications"
-    
-    def reject_rectification(self, request, queryset):
-        """Reject selected rectifications."""
-        
-        updated = queryset.filter(review_status='pending').update(
-            review_status='rejected',
-            reviewed_by=request.user,
-            reviewed_at=timezone.now()
-        )
-        
-        if updated:
-            messages.success(request, f"Successfully rejected {updated} rectification(s)")
-    reject_rectification.short_description = "Reject selected rectifications"
 
 
 #############################################
@@ -542,11 +479,11 @@ class MonthlyDocumentBankCheckItemInline(admin.TabularInline):
 #############################################
 @admin.register(MonthlyAccountingDocument)
 class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
-    list_display = ("id", "monthly_accounting", "doc_type", "status", "file_link", "created_at")
+    list_display = ("id", "monthly_accounting", "doc_type", "status", "uploaded_by", "assigned_reviewer", "file_link", "created_at")
     list_filter = ("status", "doc_type", "created_at")
     search_fields = ("id", "monthly_accounting__client__client_name")
-    readonly_fields = ("id", "monthly_accounting", "input_file_snapshot", "created_at", "updated_at", "file_link")
-    
+    readonly_fields = ("id", "monthly_accounting", "input_file_snapshot", "uploaded_by", "created_at", "updated_at", "file_link")
+
     inlines = [
         # MonthlyDocumentBankKeyItemInline,
         MonthlyDocumentBankLineItemInline,
@@ -560,10 +497,20 @@ class MonthlyAccountingDocumentAdmin(admin.ModelAdmin):
     file_link.short_description = "File"
 
     fieldsets = (
-        (None, {"fields": ("id", "monthly_accounting", "input_file_snapshot", "doc_type", "status", "file", "file_link")}),
+        (None, {"fields": ("id", "monthly_accounting", "input_file_snapshot", "doc_type", "status", "file", "file_link", "uploaded_by")}),
+        ("Review", {
+            "fields": ("assigned_reviewer", "review_notes", "balance_mismatch_details"),
+            "classes": ("collapse",),
+        }),
         ("Processing Results", {"fields": ("control_item", "markdown_metadata"), "classes": ("collapse",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'monthly_accounting__client', 'input_file_snapshot',
+            'uploaded_by', 'assigned_reviewer',
+        )
 
 #############################################
 # Monthly Accounting Sessions
@@ -758,31 +705,46 @@ class MonthlyDocumentBankKeyItemAdmin(admin.ModelAdmin):
 @admin.register(MonthlyDocumentBankLineItem)
 class MonthlyDocumentBankLineItemAdmin(admin.ModelAdmin):
     """Admin for monthly document line items."""
-    list_display = ('id', 'document', 'page_number', 'line_number', 'date', 'description_short', 
-                   'formatted_amount', 'transaction_type', 'gl_account', 'created_at')
-    list_filter = ('transaction_type', 'page_number', 'is_check_transaction', 'created_at')
+    list_display = (
+        'id', 'document', 'page_number', 'line_number', 'date', 'description_short',
+        'formatted_amount', 'transaction_type', 'gl_account', 'modified_gl',
+        'is_rectified', 'was_missing', 'created_at',
+    )
+    list_filter = (
+        'transaction_type', 'is_check_transaction',
+        'is_rectified', 'was_missing', 'was_compared', 'modified_gl',
+        'created_at',
+    )
     search_fields = ('document__id', 'description', 'check_number')
     readonly_fields = ('document', 'created_at', 'updated_at')
-    
+
     fieldsets = (
         ('Transaction Details', {
-            'fields': ('document', 'page_number', 'line_number', 'date', 'description', 
-                      'amount', 'transaction_type', 'debit_amount', 'credit_amount')
+            'fields': ('document', 'page_number', 'line_number', 'date', 'description',
+                       'amount', 'transaction_type', 'debit_amount', 'credit_amount')
         }),
         ('Check Information', {
             'fields': ('is_check_transaction', 'check_number'),
             'classes': ('collapse',)
         }),
         ('GL Classification', {
-            'fields': ('gl_account', 'offset_gl_account'),
+            'fields': ('gl_account', 'offset_gl_account', 'modified_gl'),
             'description': 'GL accounts assigned through classification pipeline'
+        }),
+        ('Rectification', {
+            'fields': ('is_rectified', 'was_missing', 'was_compared', 'rectified_confidence', 'rectification_reasoning'),
+            'classes': ('collapse',)
+        }),
+        ('Extraction Quality', {
+            'fields': ('amount_confidence', 'extraction_metadata'),
+            'classes': ('collapse',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
-    
+
     def description_short(self, obj):
         return obj.description[:50] + "..." if len(obj.description) > 50 else obj.description
     description_short.short_description = 'Description'

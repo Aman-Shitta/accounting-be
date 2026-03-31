@@ -53,17 +53,18 @@ GROUP BY mad.status
 
 CUSTOMER_RECENT_MONTHLY_ACCOUNTINGS = """
 SELECT
-fma.id,
-c.client_name,
-fma.month,
-fma.year,
-fma.status,
-fma.created_at
+    fma.id,
+    c.id AS client_id,
+    c.client_name,
+    ELT(fma.month, 'January','February','March','April','May','June','July','August','September','October','November','December') AS month,
+    fma.year,
+    fma.status,
+    fma.created_at
 FROM fact_aic_monthly_accounting fma
 JOIN client c ON fma.client_id = c.id
 WHERE c.customer_id = %s
 ORDER BY fma.created_at DESC
-LIMIT 5
+LIMIT 10
 """
 
 
@@ -115,20 +116,22 @@ GROUP BY fma.status
 
 ACCOUNTANT_RECENT_DOCUMENTS = """
 SELECT
-mad.id AS document_id,
-c.client_name,
-mad.doc_type,
-mad.status,
-mad.created_at,
-fma.month,
-fma.year
+    mad.id AS document_id,
+    c.id AS client_id,
+    fma.id AS monthly_accounting_id,
+    c.client_name,
+    mad.doc_type,
+    mad.status,
+    mad.created_at,
+    ELT(fma.month, 'January','February','March','April','May','June','July','August','September','October','November','December') AS month,
+    fma.year
 FROM monthly_accounting_document mad
 JOIN fact_aic_monthly_accounting fma ON mad.monthly_accounting_id = fma.id
 JOIN client c ON fma.client_id = c.id
 JOIN client_assigned_accountants caa ON fma.client_id = caa.dimaicclient_id
 WHERE caa.dimaicaccountant_id = %s
 ORDER BY mad.created_at DESC
-LIMIT 5
+LIMIT 10
 """
 
 
@@ -173,17 +176,19 @@ GROUP BY status
 
 REVIEWER_RECENT_ASSIGNED_DOCUMENTS = """
 SELECT
-mad.id AS document_id,
-c.client_name,
-mad.doc_type,
-mad.status,
-mad.updated_at,
-fma.month,
-fma.year
+    mad.id AS document_id,
+    c.id AS client_id,
+    fma.id AS monthly_accounting_id,
+    c.client_name,
+    mad.doc_type,
+    mad.status,
+    mad.updated_at,
+    ELT(fma.month, 'January','February','March','April','May','June','July','August','September','October','November','December') AS month,
+    fma.year
 FROM monthly_accounting_document mad
 JOIN fact_aic_monthly_accounting fma ON mad.monthly_accounting_id = fma.id
 JOIN client c ON fma.client_id = c.id
 WHERE mad.assigned_reviewer_id = %s
 ORDER BY mad.updated_at DESC
-LIMIT 5
+LIMIT 10
 """

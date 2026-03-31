@@ -323,7 +323,7 @@ class DocumentDebugStorage:
 
     def save_extracted_data(self, extracted_data: Dict, filename: str = "extracted_data.json") -> Optional[str]:
         if self._path_builder:
-            path = self._path_builder.artifact_landing_ai_path(
+            path = self._path_builder.ARTIFACT_EXTRACTOR_AI_path(
                 self.doc_id, filename)
         else:
             path = f"debug_files/{self.doc_id}/03_landing_ai/{filename}"
