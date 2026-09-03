@@ -9,6 +9,9 @@ from django.contrib.auth import get_user_model
 # Local imports
 from user.models import DimAICAccountant, DimAICAssistant, DimAICClient, DimAICCustomer, DimAICReviewer
 from user.utils import OpenAIAssistant
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_user_for_customer(request_user, customer_name, email, street='', city='', state_abrevation='', zip_code=None):

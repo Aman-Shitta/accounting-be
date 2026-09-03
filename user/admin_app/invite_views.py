@@ -71,7 +71,7 @@ class AzureInviteView(GenericAPIView):
                 zip_code=zip_code
             )
             message_body = """Hi there,
-                Welcome to Syftr! You now have full access to our document processing suite, designed to streamline your financial workflows."""
+                Welcome to AI powered accounting! You now have full access to our document processing suite, designed to streamline your financial workflows."""
 
         elif user_type == REVIEWER:
             # For reviewer, we don't need to create a customer record, just check if reviewer already exists

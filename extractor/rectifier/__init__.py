@@ -9,7 +9,6 @@ Rectifiers:
 - DocumentRectifierV1: V1 rectifier that extracts independently and compares/merges
 """
 
-from .rectify import DocumentRectifier
-from .rectify_v1 import DocumentRectifierV1, get_rectifier_v1
+from .rectify import get_rectifier
 
-__all__ = ['DocumentRectifier', 'DocumentRectifierV1', 'get_rectifier_v1']
+__all__ = ['get_rectifier']

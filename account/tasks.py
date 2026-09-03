@@ -4,6 +4,7 @@ import sys
 import time
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Optional
 
 from celery import shared_task, chain
 from django.conf import settings
@@ -13,238 +14,113 @@ from django.db.models import Sum, Q
 
 from aicounting.file_upload_helper import DocumentDebugStorage
 from account.models import (
+    ClassificationQueue,
     MonthlyAccountingDocument,
-    MonthlyDocumentBankLineItem
+    MonthlyDocumentBankLineItem,
+    MonthlyDocumentBankKeyItem,
+    MonthlyDocumentBankCheckItem,
 )
 from agentic_doc.config import ParseConfig
 from agentic_doc.parse import parse
-from extractor.config_factory import DocumentConfig
-from extractor.processor import MonthlyAccountingDocumentProcessor
+from extractor.classification.service import GLClassificationService
+from extractor.constants import DocumentType
+from extractor.pipeline_registry import get_pipeline_class
 from extractor.utils import split_pdf_to_pages
 from user.models import DimAICReviewer
-
-from account.models import ClassificationQueue
-from extractor.services import GLClassificationService
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def preprocess_document_markdown(doc_id: str):
-    """
-    Pre-process document by generating markdown for all pages and storing in Azure.
-    This runs before actual extraction to prepare markdown files.
 
-    Args:
-        doc_id: MonthlyAccountingDocument ID
-    """
+def _clear_existing_extraction(doc: MonthlyAccountingDocument) -> None:
+    """Remove prior extracted data so the pipeline can re-run cleanly."""
+    MonthlyDocumentBankKeyItem.objects.filter(document=doc).delete()
+    MonthlyDocumentBankLineItem.objects.filter(document=doc).delete()
+    MonthlyDocumentBankCheckItem.objects.filter(document=doc).delete()
 
-    doc = None
-    try:
-        doc = MonthlyAccountingDocument.objects.get(id=doc_id)
 
-        # Only pre-process bank statements and credit cards
-        if doc.doc_type not in BANKING_DOCS:
-            logger.error(
-                f"Document type {doc.doc_type} doesn't require markdown pre-processing")
-            doc.status = 'uploaded'
-            doc.save()
-            return {"status": "skipped", "reason": "Document type doesn't require markdown"}
-
-        logger.info(f"Starting markdown pre-processing for document {doc.id}")
-        doc.status = 'pre_processing'
-        doc.save()
-
-        # Get file from Azure storage
-        file_path = doc.file.name if doc.file else None
-        if not file_path or not default_storage.exists(file_path):
-            logger.error(f"File does not exist in Azure storage: {file_path}")
-            doc.status = 'failed'
-            doc.save()
-            return {"status": "failed", "error": "File not found"}
-
-        with default_storage.open(file_path, 'rb') as azure_file:
-            file_bytes = azure_file.read()
-
-        # Split PDF into pages
-        page_bytes_list = split_pdf_to_pages(file_bytes)
-        logger.info(f"Split PDF into {len(page_bytes_list)} pages")
-
-        # Initialize Landing AI parser
-        landing_ai_key = settings.LANDING_AI_API_KEY
-        landing_ai_config = ParseConfig(
-            api_key=landing_ai_key,
-        )
-
-        # Prepare storage paths
-        doc_folder = f"monthly_accounting/{doc.monthly_accounting.client_id}/{doc.monthly_accounting.id}/documents/{doc.id}"
-        markdown_folder = f"{doc_folder}/markdown"
-
-        # Generate markdown for each page
-        markdown_pages = []
-        for i, page_bytes in enumerate(page_bytes_list):
-            page_num = i + 1
-            try:
-                logger.info(
-                    f"Generating markdown for page {page_num}/{len(page_bytes_list)}")
-
-                # Parse page with Landing AI
-                result = parse(
-                    documents=page_bytes,
-                    config=landing_ai_config
-                )
-                page_markdown = result[0].markdown
-
-                # Save markdown to Azure
-                markdown_filename = f"page_{page_num}.md"
-                markdown_path = f"{markdown_folder}/{markdown_filename}"
-
-                markdown_content = ContentFile(page_markdown.encode("utf-8"))
-                saved_path = default_storage.save(
-                    markdown_path, markdown_content)
-
-                markdown_url = default_storage.url(
-                    saved_path, expire_minutes=10)
-
-                markdown_pages.append({
-                    "page_number": page_num,
-                    "path": saved_path,
-                    "url": markdown_url,
-                    "size": len(page_markdown)
-                })
-
-                logger.info(
-                    f"Saved markdown for page {page_num} to {saved_path}")
-
-            except Exception as e:
-                logger.error(f"Failed to process page {page_num}: {str(e)}")
-                markdown_pages.append({
-                    "page_number": page_num,
-                    "path": None,
-                    "url": None,
-                    "error": str(e)
-                })
-
-        # Save metadata
-        markdown_metadata = {
-            "total_pages": len(page_bytes_list),
-            "processed_pages": len([p for p in markdown_pages if p.get("path")]),
-            "markdown_folder": markdown_folder,
-            "pages": markdown_pages,
-            "generated_at": datetime.now().isoformat(),
-            "sas_expiry_hours": 24
-        }
-
-        doc.markdown_metadata = markdown_metadata
-        doc.status = 'pre_processed'
-        doc.save()
-
-        logger.info(f"Markdown pre-processing complete for document {doc.id}")
-        return {
-            "status": "success",
-            "total_pages": len(page_bytes_list),
-            "processed_pages": markdown_metadata["processed_pages"]
-        }
-
-    except Exception as e:
-        logger.error(
-            f"Error in markdown pre-processing for document {doc_id}: {str(e)}")
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
-
-        if doc:
-            doc.status = 'failed'
-            doc.save()
-
-        return {
-            "status": "error",
-        }
+def _fail(
+    doc: Optional[MonthlyAccountingDocument], error: str
+) -> dict[str, Any]:
+    """Mark doc failed (if present) and return a uniform error payload."""
+    if doc:
+        doc.status = "failed"
+        doc.save(update_fields=["status"])
+    return {"status": "error", "error": error}
 
 
 @shared_task
-def process_uploaded_document(
-    doc_id: str,
-    config_params: dict
-):
+def process_document_task(doc_id: str) -> dict[str, Any]:
     """
-    Process a document uploaded to Azure Blob Storage using the new MonthlyAccountingDocumentProcessor.
+    Single Celery entry point for document extraction.
 
-    This task handles extraction only. For bank statements and credit cards,
-    use process_and_classify_document() to chain extraction with classification.
-
-    Args:
-        doc_id: MonthlyAccountingDocument ID (UUID string)
-        config_params: Configuration dict for the document processor
-
-    Returns:
-        dict: Processing result with status and stats
+    Fetches the document + file, resolves the pipeline by doc_type, runs
+    it, and updates document status. Returns a result dict that can be
+    chained into ``validate_control_totals_task``.
     """
-    doc = None
+    doc: Optional[MonthlyAccountingDocument] = (
+        MonthlyAccountingDocument.objects.filter(id=doc_id).first()
+    )
+    if not doc:
+        logger.error(f"Document does not exist: {doc_id}")
+        return {"status": "error", "error": "Document not found"}
+
+    file_path = doc.file.name if doc.file else None
+    if not file_path or not default_storage.exists(file_path):
+        logger.error(f"File does not exist in Azure storage: {file_path}")
+        return _fail(doc, "File not found")
+
     try:
-        # Convert dict to DocumentConfig, then to legacy Configuration for processor
-        if isinstance(config_params, dict):
-            doc_config = DocumentConfig.from_dict(config_params)
-        else:
-            doc_config = config_params
-
-        # Convert to legacy Configuration (contains prompt-building logic)
-        config = doc_config.to_configuration()
-
-        doc = MonthlyAccountingDocument.objects.filter(id=doc_id).first()
-        if not doc:
-            logger.error(f"Document does not exist: {doc_id} invalid id")
-            return {"status": "error", "error": "Document not found"}
-
-        # Check if file exists
-        file_path = doc.file.name if doc.file else None
-
-        if not file_path or not default_storage.exists(file_path):
-            logger.error(f"File does not exist in Azure storage: {file_path}")
-            doc.status = "failed"
-            doc.save()
-            return {"status": "error", "error": "File not found"}
-
-        # Get file content from Azure storage
-        with default_storage.open(file_path, 'rb') as azure_file:
+        with default_storage.open(file_path, "rb") as azure_file:
             file_bytes = azure_file.read()
 
-        # Use the MonthlyAccountingDocumentProcessor
-        processor = MonthlyAccountingDocumentProcessor(doc, config)
-        processor.set_doc_processor(doc.doc_type)
+        _clear_existing_extraction(doc)
+
+        pipeline_cls = get_pipeline_class(doc.doc_type)
+        pipeline = pipeline_cls(doc)
+
+        try:
+            debug_storage = DocumentDebugStorage(doc)
+            pipeline.set_debug_storage(debug_storage)
+        except Exception as e:
+            logger.warning(f"Failed to initialize debug storage: {e}")
+            debug_storage = None
 
         start_time = time.time()
-        special_rules = doc.input_file_snapshot.description if doc.input_file_snapshot else ""
-        result = processor.start_process(
-            file_bytes, md=True, special_rules=special_rules)
-
+        result = pipeline.process_document(file_bytes)
         processing_time = time.time() - start_time
-        logger.info(f"Document processing time: {processing_time} seconds")
-        processor.__release_resources__()
-
-        # Save processing output
-        debug_storage = DocumentDebugStorage(doc)
-        debug_storage.save_final_output(result, "processing_result.json")
-
         logger.info(
-            f"Document {doc.id} processed successfully: {result.get('processing_stats', {})}")
+            f"Document {doc.id} processing time: {processing_time:.2f}s"
+        )
+
+        if result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error during processing")
+            logger.error(
+                f"Pipeline processing failed for document {doc_id}: {error_msg}"
+            )
+            return _fail(doc, error_msg)
+
+        doc.status = "extracted"
+        doc.save(update_fields=["status"])
+
+        if debug_storage:
+            debug_storage.save_final_output(result, "processing_result.json")
+
+        stats = result.get("processing_stats", {})
+        logger.info(f"Document {doc.id} processed successfully: {stats}")
 
         return {
             "status": "success",
             "doc_id": str(doc.id),
             "processing_time": processing_time,
-            "stats": result.get('processing_stats', {})
+            "stats": stats,
         }
 
     except Exception as e:
-        if doc:
-            doc.status = "failed"
-            doc.save()
-            logger.error(f"Error processing document {doc.id}: {str(e)}")
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
-        return {"status": "error", "error": str(e)}
+        logger.error(
+            f"Error processing document {doc.id}: {e}", exc_info=True
+        )
+        return _fail(doc, str(e))
 
 
 @shared_task
@@ -260,7 +136,7 @@ def validate_control_totals_task(_previous_result=None, document_id: str = None)
       • Mismatch detected
           → assigns a reviewer via round-robin, sets status to 'pending_review'
 
-    Can be used standalone or chained after process_uploaded_document.
+    Can be used standalone or chained after process_document_task.
     The _previous_result parameter allows this to be used in a Celery chain.
 
     Args:
@@ -528,12 +404,14 @@ def process_classification_queue_task():
             # Mark as failed (will retry if retries remaining)
             queue_item.mark_failed(error_msg)
 
+            will_retry = queue_item.status == ClassificationQueue.Status.PENDING
+
             results.append({
                 "queue_id": str(queue_item.id),
                 "doc_id": document_id,
                 "status": "failed",
                 "error": error_msg,
-                "will_retry": queue_item.status == ClassificationQueue.Status.PENDING
+                "will_retry": will_retry
             })
 
     return {
@@ -541,23 +419,3 @@ def process_classification_queue_task():
         "processed_count": len(results),
         "results": results
     }
-
-
-def process_and_classify_document(doc_id: str, config_params: dict):
-    """
-    Convenience function to process a document through the full pipeline.
-
-    Creates a Celery chain: extraction → control-total validation → classification
-
-    Args:
-        doc_id: MonthlyAccountingDocument ID
-        config_params: Configuration dict
-
-    Returns:
-        Celery AsyncResult for the chain
-    """
-    task_chain = chain(
-        process_uploaded_document.s(doc_id, config_params),
-        validate_control_totals_task.s(document_id=doc_id)
-    )
-    return task_chain.apply_async()

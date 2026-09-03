@@ -9,20 +9,19 @@ Google Gemini AI across all extraction pipelines. It handles:
 - Common utility methods for working with Gemini
 """
 
-import base64
-import json
 import logging
 import os
 import re
 import sys
 import time
-import unicodedata
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from django.conf import settings
 
 from google import genai
 from google.genai import types
+
+from extractor.utils import JSONHelper
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +124,40 @@ class GeminiService:
             config["system_instruction"] = system_instruction
 
         return config
+
+    # Named config presets for common pipeline tasks
+
+    def config_for_classification(self, **overrides) -> types.GenerateContentConfigDict:
+        """Config preset for page classification (low temp, minimal output)."""
+        cfg = self.get_default_config(
+            temperature=0.1, top_p=0.2, top_k=15, max_output_tokens=500,
+        )
+        cfg.update(overrides)
+        return cfg
+
+    def config_for_extraction(self, **overrides) -> types.GenerateContentConfigDict:
+        """Config preset for transaction/data extraction."""
+        cfg = self.get_default_config(
+            temperature=0.2, top_p=0.9, top_k=25, max_output_tokens=6000,
+        )
+        cfg.update(overrides)
+        return cfg
+
+    def config_for_check_extraction(self, **overrides) -> types.GenerateContentConfigDict:
+        """Config preset for check image extraction."""
+        cfg = self.get_default_config(
+            temperature=0.1, top_p=0.8, top_k=15, max_output_tokens=4000,
+        )
+        cfg.update(overrides)
+        return cfg
+
+    def config_for_summary(self, **overrides) -> types.GenerateContentConfigDict:
+        """Config preset for summary/control totals extraction."""
+        cfg = self.get_default_config(
+            temperature=0.2, top_p=0.85, top_k=20, max_output_tokens=1000,
+        )
+        cfg.update(overrides)
+        return cfg
 
     def generate_content_stream(
         self,
@@ -249,10 +282,12 @@ class GeminiService:
         Returns:
             Collected response text
         """
-        raw = ""
+        parts = []
         for resp in stream_response:
-            raw += resp.text
-        return raw
+            text = getattr(resp, "text", None)
+            if text:
+                parts.append(text)
+        return "".join(parts)
 
     def generate_content_stream_to_text(
         self,
@@ -550,174 +585,6 @@ class GeminiMixin:
             max_output_tokens=max_output_tokens,
             model=model,
         )
-
-
-class JSONHelper:
-    """
-    Helper class for JSON parsing and cleaning of LLM outputs.
-
-    This class provides robust JSON handling for potentially malformed
-    responses from language models.
-    """
-
-    @staticmethod
-    def clean(raw: str) -> str:
-        """
-        Clean raw LLM output for JSON parsing.
-
-        Args:
-            raw: Raw string from LLM
-
-        Returns:
-            Cleaned string ready for JSON parsing
-        """
-        try:
-            # Remove markdown code blocks
-            raw = re.sub(r'^```(?:json)?', '', raw)
-            raw = raw.strip('` \n')
-
-            # Normalize line endings
-            raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
-
-            # Escape single quotes
-            raw = raw.replace('\'', '\\\'')
-
-            # Replace Python None with JSON null
-            raw = raw.replace("None", "null")
-
-            # Remove control characters except newline/tab
-            raw = ''.join(
-                c for c in raw
-                if unicodedata.category(c)[0] != 'C' or c in '\n\t'
-            )
-
-            # Convert single quotes to double quotes (not escaped ones)
-            raw = re.sub(r"(?<!\\)'", '"', raw)
-
-            # Remove trailing commas
-            raw = re.sub(r',(\s*[}\]])', r'\1', raw)
-
-            # Find first brace and start there
-            first_brace = raw.find('{')
-            if first_brace > 0:
-                raw = raw[first_brace:]
-
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(
-                f"[{fname}:{exc_tb.tb_lineno}] Error cleaning JSON: {e}")
-
-        return raw
-
-    @staticmethod
-    def extract_first_json(raw: str) -> str:
-        """
-        Extract the first complete JSON object from a string.
-
-        Args:
-            raw: String potentially containing JSON
-
-        Returns:
-            Extracted JSON string or original if not found
-        """
-        try:
-            match = re.search(r'(\{[\s\S]*\})', raw)
-            if match:
-                return match.group(1)
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(
-                f"[{fname}:{exc_tb.tb_lineno}] Error extracting JSON: {e}")
-
-        return raw
-
-    @staticmethod
-    def repair(raw: str) -> str:
-        """
-        Repair malformed JSON using json_repair library.
-
-        Args:
-            raw: Potentially malformed JSON string
-
-        Returns:
-            Repaired JSON string
-        """
-        from json_repair import repair_json
-        try:
-            return repair_json(raw)
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(
-                f"[{fname}:{exc_tb.tb_lineno}] JSON repair failed: {e}")
-            return raw
-
-    @staticmethod
-    def parse_json(raw: str, default: Optional[Dict] = None) -> Dict:
-        """
-        Parse JSON string with multiple fallback strategies.
-
-        Args:
-            raw: Raw string to parse
-            default: Default value if all parsing fails
-
-        Returns:
-            Parsed JSON dict or default value
-        """
-        if default is None:
-            default = {}
-
-        # Try repair first (most robust)
-        try:
-            repaired = JSONHelper.repair(raw)
-            return json.loads(repaired)
-        except json.JSONDecodeError:
-            pass
-
-        # Try cleaning
-        try:
-            cleaned = JSONHelper.clean(raw)
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            pass
-
-        # Try extraction
-        try:
-            extracted = JSONHelper.extract_first_json(raw)
-            return json.loads(extracted)
-        except json.JSONDecodeError:
-            pass
-
-        logger.error(f"All JSON parsing strategies failed for: {raw[:500]}...")
-        return default
-
-    @staticmethod
-    def validate_and_repair(
-        raw: str,
-        expected_keys: Optional[Dict[str, Any]] = None
-    ) -> Dict:
-        """
-        Parse JSON and ensure expected keys exist.
-
-        Args:
-            raw: Raw JSON string
-            expected_keys: Dict of expected keys with default values
-
-        Returns:
-            Parsed and validated JSON dict
-        """
-        parsed = JSONHelper.parse_json(raw, default=expected_keys or {})
-
-        if expected_keys:
-            for key, default_value in expected_keys.items():
-                if key not in parsed:
-                    logger.warning(
-                        f"Missing expected key '{key}', using default")
-                    parsed[key] = default_value
-
-        return parsed
 
 
 # Convenience aliases for backward compatibility

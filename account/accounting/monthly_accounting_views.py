@@ -17,10 +17,15 @@ from account.models import (
     MonthlyDocumentAttributeItem,
 )
 
+from celery import chain
+from django.core.files.storage import default_storage
+
 from aicounting.response import create_api_response
 from authentication import authenticate
 from authentication.permissions import IsCustomerOrAccountant, IsCustomerOrAccountantOrReviewer
-from extractor.services import DocumentProcessingService, UnsupportedDocTypeError
+from account.tasks import process_document_task, validate_control_totals_task
+from extractor.constants import DocumentType
+from extractor.pipeline_registry import UnsupportedDocTypeError
 from user.models import DimAICClient
 
 from account.accounting.monthly_document_line_item_serializers import (
@@ -651,17 +656,47 @@ class MonthlyAccountingDocumentUploadView(generics.GenericAPIView):
                 f"Starting processing for document {document.id} of type {document.doc_type}.")
 
             try:
-                service = DocumentProcessingService(document)
-                task_id = service.start_processing()
+                file_path = document.file.name if document.file else None
+                if not file_path or not default_storage.exists(file_path):
+                    raise FileNotFoundError(f"File not found in storage: {file_path}")
+
+                doc_type = document.doc_type
+                if doc_type in DocumentType.transactional_types():
+                    task_chain = chain(
+                        process_document_task.s(str(document.id)),
+                        validate_control_totals_task.s(document_id=str(document.id)),
+                    )
+                elif doc_type in DocumentType.attribute_types():
+                    task_chain = chain(process_document_task.s(str(document.id)))
+                else:
+                    raise UnsupportedDocTypeError(f"Unsupported document type: {doc_type}")
+
+                task_id = task_chain.apply_async().id
                 logger.info(
                     f"Started processing task {task_id} for document {document.id}")
 
                 document.status = "extracting"
-                document.save()
-
             except UnsupportedDocTypeError as e:
                 logger.warning(
-                    f"Document type {document.doc_type} does not require processing: {e}")
+                    f"Document type {document.doc_type} does not support processing: {e}"
+                )
+                document.status = "failed"
+                document.file.delete(save=False)  # Remove the uploaded file since we can't process it
+                return create_api_response(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    message="File uploaded is not supported for processing."
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error starting processing for document {document.id}: {str(e)}"
+                )
+                document.status = "failed"
+
+                return create_api_response(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    message="File uploaded but an error occurred while starting processing."
+                )
+            document.save()
 
             data = {
                 "doc_id": str(document.id),

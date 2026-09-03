@@ -165,6 +165,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
                 customer=customer.id
             )
         except Exception as e:
+            logger.error(f"Error fetching template: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message="Template not found or you do not have access."
@@ -201,6 +202,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
                     error_messages.append(
                         f"Attribute {attribute_id} is not a manual entry and cannot be updated.")
             except Exception as e:
+                logger.error(f"Error updating attribute {attribute_id}: {str(e)}", exc_info=True)
                 error_messages.append(
                     f"Error updating attribute {attribute_id}: {str(e)}")
 
@@ -293,6 +295,7 @@ class JEAccountingDetailView(generics.GenericAPIView):
                 customer=customer.id
             )
         except Exception as e:
+            logger.error(f"Error fetching template snapshot: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message="Template not found or you do not have access."
@@ -556,6 +559,7 @@ class JEAccountingVerifyView(generics.GenericAPIView):
                 customer=customer.id
             )
         except Exception as e:
+            logger.error(f"Error fetching template snapshot for verification: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message="Template not found or you do not have access."
@@ -737,6 +741,7 @@ class JEAttributeEditView(generics.GenericAPIView):
             )
 
         except Exception as e:
+            logger.error(f"Error fetching template attribute snapshot: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_404_NOT_FOUND,
                 message="Template or attribute not found or you do not have access."

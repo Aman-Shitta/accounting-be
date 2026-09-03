@@ -47,7 +47,7 @@
           },
           "local_id": {
             "title": "Unique Identifier",
-            "description": "Numerical unique identifier indicating the order as listed on the page.  Reset the counter to 1 at the beginning of each page. When  new page starts the y_coord will reset.",
+            "description": "Numerical unique identifier indicating the order as listed on the page.  Reset the counter to 1 at the beginning of each page. When  new page starts the value will reset.",
             "type": "number"
           },
           "type": {

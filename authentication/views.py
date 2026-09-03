@@ -1,5 +1,8 @@
 from django.contrib.auth import get_user_model
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 import jwt
 from rest_framework import permissions, status
 from rest_framework.generics import GenericAPIView
@@ -73,6 +76,7 @@ class SSOGenerateTokenView(GenericAPIView):
                     redirect_uri=msal.AUTH_REDIRECT_URI
                 )
             except Exception as e:
+                logger.error(f"SSO Token generation error: {str(e)}", exc_info=True)
                 return create_api_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     data=None,
@@ -234,6 +238,7 @@ class SSOGenerateTokenView(GenericAPIView):
                 data=token_response,
             )
         except Exception as e:
+            logger.error(f"Unexpected error in SSO login: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data=None,
@@ -357,6 +362,7 @@ class SSORefreshTokenView(GenericAPIView):
             )
 
         except Exception as e:
+            logger.error(f"Unexpected error in SSO refresh: {str(e)}", exc_info=True)
             return create_api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data=None,

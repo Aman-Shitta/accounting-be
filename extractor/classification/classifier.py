@@ -24,8 +24,8 @@ class GLClassifier(OpeAIClient):
         model="gpt-4o",
         instructions=None,
         response_schema=None,
-        temperature=1.0,
-        top_p=1.0,
+        temperature=0.1,
+        top_p=0.9,
         special_rules="",
     ):
         super().__init__(model=model)
@@ -72,6 +72,9 @@ class GLClassifier(OpeAIClient):
 
         return "\n".join(lines)
 
+    # Reasoning models that don't support temperature/top_p
+    REASONING_MODEL_PREFIXES = ("o1", "o3", "o3-mini", "o4-mini")
+
     def send_to_responses(self, payload: str) -> list:
         """
         Send a classification request using the Responses API.
@@ -95,9 +98,12 @@ class GLClassifier(OpeAIClient):
                     "type": "file_search",
                     "vector_store_ids": self.vector_store_ids
                 }],
-                "temperature": self.temperature,
-                "top_p": self.top_p,
             }
+
+            # Reasoning models don't support temperature/top_p
+            if not self.model.startswith(self.REASONING_MODEL_PREFIXES):
+                response_params["temperature"] = self.temperature
+                response_params["top_p"] = self.top_p
 
             schema = self.response_schema.get("schema") if self.response_schema else None
             name = self.response_schema.get("name") if self.response_schema else None
@@ -145,6 +151,7 @@ class GLClassifier(OpeAIClient):
             return {}
 
         results = {}
+        MAX_RETRIES = 3
 
         for page_num, page_data in extracted_data.items():
             try:
@@ -154,24 +161,50 @@ class GLClassifier(OpeAIClient):
                         f"[DEBUG] No line items found for page {page_num}")
                     continue
 
+                expected_count = len(line_items)
                 payload = self.format_line_items(line_items)
 
                 logger.info(
                     f"[DEBUG] Payload for page {page_num}:\n{payload}")
 
-                page_results = self.send_to_responses(payload)
+                best_classified = []
+
+                for attempt in range(1, MAX_RETRIES + 1):
+                    page_results = self.send_to_responses(payload)
+
+                    logger.info(
+                        f"[DEBUG] Page results for page {page_num} "
+                        f"(attempt {attempt}): {page_results}")
+
+                    classified_data = []
+                    if page_results and isinstance(page_results, str):
+                        parsed = ast.literal_eval(page_results)
+                        if isinstance(parsed, dict):
+                            classified_data = parsed.get("schema", [])
+
+                    # Keep the attempt with the most classified items
+                    if len(classified_data) > len(best_classified):
+                        best_classified = classified_data
+
+                    if len(classified_data) == expected_count:
+                        logger.info(
+                            f"Page {page_num}: count matched on attempt "
+                            f"{attempt} ({len(classified_data)}/{expected_count})")
+                        break
+
+                    logger.warning(
+                        f"Page {page_num}: count mismatch on attempt {attempt} "
+                        f"— got {len(classified_data)}, expected {expected_count}")
+                else:
+                    logger.warning(
+                        f"Page {page_num}: using best attempt after "
+                        f"{MAX_RETRIES} tries ({len(best_classified)}/{expected_count})")
+
+                if best_classified:
+                    results[page_num] = best_classified
 
                 logger.info(
-                    f"[DEBUG] Page results for page {page_num}: {page_results}")
-                classified_data = []
-                if page_results and isinstance(page_results, str):
-                    parsed = ast.literal_eval(page_results)
-                    if isinstance(parsed, dict):
-                        classified_data = parsed.get("schema", [])
-                        results[page_num] = classified_data
-
-                logger.info(
-                    f" classified_data @ page : {page_num} :: {classified_data}")
+                    f" classified_data @ page : {page_num} :: {best_classified}")
 
             except Exception as e:
                 logger.error(

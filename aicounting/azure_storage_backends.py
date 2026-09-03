@@ -59,7 +59,7 @@ class AzureMediaStorage(Storage):
             content_data = content
 
         blob_client.upload_blob(content_data, overwrite=True)
-        logger.error(f"Successfully uploaded file to Azure: {normalized_name}")
+        logger.info(f"Successfully uploaded file to Azure: {normalized_name}")
         return normalized_name
 
     def _open(self, name, mode='rb'):
@@ -79,7 +79,7 @@ class AzureMediaStorage(Storage):
         blob_client = self._get_blob_client(normalized_name)
         try:
             blob_client.delete_blob()
-            logger.error(
+            logger.info(
                 f"Successfully deleted file from Azure: {normalized_name}")
         except Exception as e:
             logger.error(

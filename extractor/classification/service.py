@@ -1,224 +1,21 @@
 """
-Document Processing Service
+GL classification service.
 
-Facade service that orchestrates the document processing flow.
-This moves business logic out of views and provides a clean API
-for document processing operations.
+Runs after extraction succeeds (optionally after control-total validation)
+to classify each line item against the client's chart of accounts via the
+Responses API + vector stores.
 """
 
 import logging
-from typing import Any, Dict, Optional
-
-from django.core.files.storage import default_storage
-
-from celery import chain
 
 from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
-from extractor.config_factory import DocumentConfig, DocumentConfigFactory, DocumentType
 
 logger = logging.getLogger(__name__)
 
 
-class DocumentProcessingError(Exception):
-    """Base exception for document processing errors."""
+class DocumentNotFoundError(Exception):
+    """Raised when a document ID cannot be found."""
     pass
-
-
-class DocumentNotFoundError(DocumentProcessingError):
-    """Raised when document cannot be found."""
-    pass
-
-
-class FileNotFoundError(DocumentProcessingError):
-    """Raised when document file is not in storage."""
-    pass
-
-
-class UnsupportedDocTypeError(DocumentProcessingError):
-    """Raised when document type is not supported."""
-    pass
-
-
-class DocumentProcessingService:
-    """
-    Service facade for document processing operations.
-
-    This service:
-    1. Creates appropriate configurations for document types
-    2. Dispatches processing tasks to Celery
-    3. Handles status management
-    4. Provides a clean interface for views/APIs
-
-    Usage:
-        service = DocumentProcessingService(document)
-        service.start_processing()  # Async via Celery
-
-        # Or for sync processing (testing):
-        result = service.process_sync()
-    """
-
-    def __init__(self, document: MonthlyAccountingDocument):
-        """
-        Initialize the service with a document.
-
-        Args:
-            document: MonthlyAccountingDocument to process
-        """
-        self.document = document
-        self._config: Optional[DocumentConfig] = None
-
-    @property
-    def config(self) -> DocumentConfig:
-        """Get or create the configuration for this document."""
-        if self._config is None:
-            self._config = DocumentConfigFactory.create_config(self.document)
-        return self._config
-
-    @classmethod
-    def from_document_id(cls, document_id: str) -> "DocumentProcessingService":
-        """
-        Create service instance from document ID.
-
-        Args:
-            document_id: UUID string of the document
-
-        Returns:
-            DocumentProcessingService instance
-
-        Raises:
-            DocumentNotFoundError: If document not found
-        """
-        try:
-            document = MonthlyAccountingDocument.objects.get(id=document_id)
-            return cls(document)
-        except MonthlyAccountingDocument.DoesNotExist:
-            raise DocumentNotFoundError(f"Document not found: {document_id}")
-
-    def validate_for_processing(self) -> None:
-        """
-        Validate document is ready for processing.
-
-        Raises:
-            FileNotFoundError: If file not in storage
-            UnsupportedDocTypeError: If doc type not supported
-        """
-        # Check file exists
-        file_path = self.document.file.name if self.document.file else None
-        if not file_path or not default_storage.exists(file_path):
-            raise FileNotFoundError(f"File not found in storage: {file_path}")
-
-        # Check doc type is supported
-        valid_types = [e.value for e in DocumentType]
-        if self.document.doc_type not in valid_types:
-            raise UnsupportedDocTypeError(
-                f"Unsupported document type: {self.document.doc_type}"
-            )
-
-    def start_processing(self) -> str:
-        """
-        Start processing with GL classification chain.
-
-        For bank statements and credit cards, this chains the 
-        extraction task with the classification task.
-
-        Returns:
-            Celery task/chain ID
-        """
-        self.validate_for_processing()
-
-        from account.tasks import (
-            process_uploaded_document,
-            validate_control_totals_task,
-        )
-
-        doc_id = str(self.document.id)
-        config_dict = self.config.to_dict()
-
-        if self.document.doc_type in DocumentType.transactional_types():
-            # Chain extraction → validation (→ classification if validation passes)
-            task_chain = chain(
-                process_uploaded_document.s(doc_id, config_dict),
-                validate_control_totals_task.s(document_id=doc_id)
-            )
-            result = task_chain.apply_async()
-            logger.info(
-                f"Started processing chain for document {doc_id}: "
-                f"extraction → validation → classification"
-            )
-        else:
-            # Just extraction for other types
-            result = process_uploaded_document.delay(doc_id, config_dict)
-            logger.info(f"Started processing for document {doc_id}")
-
-        return result.id
-
-    def get_file_bytes(self) -> bytes:
-        """
-        Get document file content from storage.
-
-        Returns:
-            File content as bytes
-
-        Raises:
-            FileNotFoundError: If file not accessible
-        """
-        file_path = self.document.file.name if self.document.file else None
-        if not file_path or not default_storage.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        with default_storage.open(file_path, 'rb') as f:
-            return f.read()
-
-    # def process_sync(self) -> Dict[str, Any]:
-    #     """
-    #     Process document synchronously (for testing/debugging).
-
-    #     Returns:
-    #         Processing result dict
-    #     """
-    #     from extractor.processor import MonthlyAccountingDocumentProcessor
-    #     from extractor.prompter import Configuration
-
-    #     self.validate_for_processing()
-
-    #     # Convert our config to the legacy Configuration class
-    #     config = Configuration(**self.config.to_dict())
-
-    #     processor = MonthlyAccountingDocumentProcessor(self.document, config)
-    #     processor.set_doc_processor(self.document.doc_type)
-
-    #     try:
-    #         file_bytes = self.get_file_bytes()
-    #         special_rules = (
-    #             self.document.input_file_snapshot.description
-    #             if self.document.input_file_snapshot else ""
-    #         )
-    #         result = processor.start_process(file_bytes, md=True, special_rules=special_rules)
-    #         return result
-    #     finally:
-    #         processor.__release_resources__()
-
-    def update_status(self, status: str) -> None:
-        """
-        Update document status.
-
-        Args:
-            status: New status value
-        """
-        self.document.status = status
-        self.document.save(update_fields=['status'])
-        logger.debug(f"Document {self.document.id} status → {status}")
-
-    @staticmethod
-    def get_supported_doc_types() -> Dict[str, str]:
-        """Get dict of supported document types and descriptions."""
-        return {
-            DocumentType.BANK_STATEMENT.value: "Bank statement with transactions",
-            DocumentType.CREDIT_CARD.value: "Credit card statement with transactions",
-            DocumentType.SALES.value: "Sales document with key-value attributes",
-            DocumentType.PAYROLL.value: "Payroll document with key-value attributes",
-            DocumentType.MISC.value: "Miscellaneous document with key-value attributes",
-        }
 
 
 class GLClassificationService:
@@ -247,8 +44,6 @@ class GLClassificationService:
         Returns:
             Number of descriptions enriched
         """
-        from account.models.monthly_document_line_models import MonthlyDocumentBankCheckItem
-
         enriched_count = 0
 
         check_items = self.document.check_items.filter(
@@ -259,7 +54,6 @@ class GLClassificationService:
             line_item = check_item.related_line_item
             description_parts = [line_item.description or ""]
 
-            # Add payee info
             if check_item.payee and check_item.payee.strip():
                 raw_payee = check_item.payee.strip()
                 if raw_payee.lower() != "null":
@@ -267,7 +61,6 @@ class GLClassificationService:
                     if payee_info not in description_parts[0]:
                         description_parts.append(payee_info)
 
-            # Add memo info
             if check_item.memo and check_item.memo.strip():
                 raw_memo = check_item.memo.strip()
                 if raw_memo.lower() != "null":
@@ -275,7 +68,6 @@ class GLClassificationService:
                     if memo_info not in description_parts[0]:
                         description_parts.append(memo_info)
 
-            # Update if enriched
             if len(description_parts) > 1:
                 line_item.description = " | ".join(description_parts)
                 line_item.save(update_fields=['description'])
@@ -297,18 +89,15 @@ class GLClassificationService:
         """
         from account.models.monthly_document_line_models import MonthlyDocumentBankLineItem
         from account.models import DimAICGLAcct
-        from extractor.banking.classify_v2 import GLClassifier
+        from extractor.classification.classifier import GLClassifier
 
-        # Get classification rules
         input_file_rules = (
             self.document.input_file_snapshot.description
             if self.document.input_file_snapshot else ""
         )
 
-        # First enrich check descriptions
         self.enrich_check_descriptions()
 
-        # Get assistant config for classification
         client_assistant = getattr(
             self.document.monthly_accounting.client, 'assistant', None)
         vector_store_ids = (
@@ -320,16 +109,13 @@ class GLClassificationService:
 
         if vector_store_ids:
             try:
-                # Get all line items ordered by page and line number
                 line_items_qs = MonthlyDocumentBankLineItem.objects.filter(
                     document=self.document
                 ).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
 
-                # Apply default offset GL
                 default_offset_gl = self._get_default_offset_gl()
                 line_items_qs.update(offset_gl_account=default_offset_gl)
 
-                # Re-fetch after update
                 line_items_list = list(line_items_qs)
 
                 if not line_items_list:
@@ -340,30 +126,23 @@ class GLClassificationService:
                 logger.info(
                     f"Processing {len(line_items_list)} line items for classification")
 
-                # Build extracted data structure for all line items
                 extracted_data = self._build_extracted_data(line_items_list)
 
-                # Create classifier with model config from assistant settings
                 classifier = GLClassifier(
                     vector_store_ids=vector_store_ids,
                     model=client_assistant.model_name if client_assistant else "gpt-4o",
                     response_schema=client_assistant.response_schema if client_assistant else None,
-                    temperature=client_assistant.temperature if client_assistant else 1.0,
-                    top_p=client_assistant.top_p if client_assistant else 1.0,
                     special_rules=input_file_rules,
                 )
 
-                # Classify all items at once
                 classified_pages = classifier.classify_extracted_data(
                     extracted_data)
 
-                # Build lookup dict for line items
                 line_items_by_page = {}
                 for li in line_items_list:
                     line_items_by_page.setdefault(li.page_number, {})[
                         li.line_number] = li
 
-                # Apply classifications
                 updated_items = []
                 for page_num, page_data in (classified_pages or {}).items():
                     iterable = page_data.values() if isinstance(page_data, dict) else page_data
@@ -390,7 +169,6 @@ class GLClassificationService:
                             logger.warning(
                                 f"Skipping classification item: {e}")
 
-                # Bulk update
                 if updated_items:
                     MonthlyDocumentBankLineItem.objects.bulk_update(
                         updated_items, ['gl_account']
@@ -409,9 +187,6 @@ class GLClassificationService:
         """
         Build extracted data structure for a batch of line items.
 
-        Args:
-            line_items: List of MonthlyDocumentBankLineItem objects
-
         Returns:
             Dict structured as {page_number: {"line_items": {line_number: {...}}}}
         """
@@ -422,7 +197,6 @@ class GLClassificationService:
                 li.page_number, {"line_items": {}})
             txn_type = li.transaction_type
 
-            # Derive debit/credit raw fields for compatibility
             debit_amount = None
             credit_amount = None
             if txn_type == 'debit':

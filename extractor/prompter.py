@@ -1,10 +1,27 @@
 import logging
 from typing import Dict, List, Union
 
+from extractor.constants import DocumentType
+
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_TRANSACTION_LINE_ITEMS = [
+    "date: The date of the transaction.",
+    "description: A description of the transaction.",
+    "debit amount: The debit amount of the transaction.",
+    "credit amount: The credit amount of the transaction.",
+]
+
+
 class Configuration:
+    """
+    Extraction configuration used by Gemini pipelines for prompt building.
+
+    Only Gemini pipelines use ``prepare_prompt``. Claude and LandingAI
+    pipelines use their own prompt/schema mechanisms and don't need this.
+    """
+
     def __init__(
         self,
         doc_type: str,
@@ -14,95 +31,128 @@ class Configuration:
         extract_line_items: bool = True,
         excluded_fields: List[str] = None,
         line_items: List = [],
-        base_prompt: str = None,
     ):
-        self.doc_type = doc_type
-        self.extract_key_items = extract_key_items
-        self.key_items_formatted = key_items_formatted
-        self.key_items = key_items
-        self.extract_line_items = extract_line_items
-        self.line_items = line_items
-        self.excluded_fields = excluded_fields or []
-        self.base_prompt = base_prompt or self._get_default_base_prompt()
+        self.doc_type: str = doc_type
+        self.extract_key_items: bool = extract_key_items
+        self.key_items_formatted: Union[List, Dict] = key_items_formatted
+        self.key_items: List = key_items
+        self.extract_line_items: bool = extract_line_items
+        self.line_items: List = line_items
+        self.excluded_fields: List[str] = excluded_fields or []
 
-    def _get_default_base_prompt(self) -> str:
+    @classmethod
+    def from_document(cls, document) -> "Configuration":
+        """
+        Build a Configuration from a MonthlyAccountingDocument.
 
-        if self.doc_type in ["bank_statement", "credit_card"]:
-            return """
-            You are an expert financial document parsing agent.
+        Transactional types use the default line-item schema; attribute
+        types read key items from the document's input_file_snapshot.
+        """
+        doc_type = document.doc_type
 
-            If the page is NOT `transaction_table`, do not extract any data.
+        if doc_type in DocumentType.transactional_types():
+            return cls(
+                doc_type=doc_type,
+                extract_line_items=True,
+                line_items=list(DEFAULT_TRANSACTION_LINE_ITEMS),
+            )
 
-            Your task is to extract **only the transactional account activity** i.e, the list of day-to-day transactions that reflect money being credited or debited from the account. This information might be presented in tabular format. Accurately extract even if the format is varied or inconsistent across pages.
+        if doc_type in DocumentType.attribute_types():
+            key_items: List[str] = []
+            key_items_formatted: List[str] = []
+            if document.input_file_snapshot:
+                attributes = document.input_file_snapshot.attribute_snapshots.all()
+                key_items = [attr.name for attr in attributes]
+                key_items_formatted = [
+                    f"{attr.name}: {attr.comments}" if attr.comments else attr.name
+                    for attr in attributes
+                ]
+            return cls(
+                doc_type=doc_type,
+                extract_key_items=True,
+                key_items=key_items,
+                key_items_formatted=key_items_formatted,
+            )
 
-            **INCLUDE only these types of entries (per row or record):**
-            - **Date** (of transaction)
-            - **Description** (narration or merchant/payee info)
-            - **Debit** amount (money withdrawn or spent)
-            - **Credit** amount (money received)
+        raise ValueError(f"Unsupported document type: {doc_type}")
 
-            **Additional Instructions:**
-            - Do not attempt to OCR scanned cheque or deposit images.
-            - Identify the cheque table items as transactional activity (i.e cheque number, date, amount) and extract them where cheque number will become  Description..
-            - If transactional rows appear in paragraph or sentence form, still extract them into structured entries.
-            - Use consistent formatting across all extracted transactions.
+def banking_base_prompt(doc_type: str) -> str:
+    if doc_type in ["bank_statement", "credit_card"]:
+        return """
+        You are an expert financial document parsing agent.
 
-            {formatting}
+        If the page is NOT `transaction_table`, do not extract any data.
+
+        Your task is to extract **only the transactional account activity** i.e, the list of day-to-day transactions that reflect money being credited or debited from the account. This information might be presented in tabular format. Accurately extract even if the format is varied or inconsistent across pages.
+
+        **INCLUDE only these types of entries (per row or record):**
+        - **Date** (of transaction)
+        - **Description** (narration or merchant/payee info)
+        - **Debit** amount (money withdrawn or spent)
+        - **Credit** amount (money received)
+
+        **Additional Instructions:**
+        - Do not attempt to OCR scanned cheque or deposit images.
+        - Identify the cheque table items as transactional activity (i.e cheque number, date, amount) and extract them where cheque number will become  Description..
+        - If transactional rows appear in paragraph or sentence form, still extract them into structured entries.
+        - Use consistent formatting across all extracted transactions.
+
+        {formatting}
+
+        **Data Cleaning Rules:**
+        - Normalize all dates to MM/DD/YYYY format (e.g., "30 Sep 2024" → "09/30/2024")
+        - Remove currency symbols and commas from amounts (e.g., "₹1,234.56" → "1234.56")
+        - If a field is not found, return `null` or leave it as an empty string.
+        - The amounts for currency should be absolute e.g (-123 -> 123, +123 -> 123)
+
+        Focus strictly on daily account activity that reflects money movement.
+        Skip everything else that is not a transactional statement.
+        """
+    elif doc_type in ['sales', 'payroll', 'misc']:
+        return """
+            You are an expert financial document parsing agent specialized in sales document analysis.
+
+            Your task is to extract structured **attribute data** from sales documents.  
+            Each attribute corresponds to a specific financial or metadata field with detailed extraction instructions.  
+            For every configured attribute, you must extract its **name** and **value** (as a float if numeric, else string).  
+
+            **Attribute-Specific Instructions:**  
+                    {attribute_instructions}
+
+            **Document-Level Instructions:**
+            - Extract **all attributes** explicitly defined in the Attribute-Specific Instructions above.
+            - Return an entry for every configured attribute, even if its value is not found.
+            - Do not extract text or data beyond the listed attributes.
+            - If attribute values appear under synonyms, alternative headers, or alternate wording, map them back to the specified attribute name.
+            - Ensure consistent formatting for extracted attributes across all documents.
+            - If an attribute value is missing or not found, set its value to `null` (do not omit the key).
 
             **Data Cleaning Rules:**
-            - Normalize all dates to MM/DD/YYYY format (e.g., "30 Sep 2024" → "09/30/2024")
-            - Remove currency symbols and commas from amounts (e.g., "₹1,234.56" → "1234.56")
-            - If a field is not found, return `null` or leave it as an empty string.
-            - The amounts for currency should be absolute e.g (-123 -> 123, +123 -> 123)
+            - Normalize all numeric values to float format (remove any ₹, $, commas, plus/minus signs).
+            - Always return the absolute value for numeric amounts (e.g., "-123.45" → 123.45, "+123.45" → 123.45).
+            - If value is missing, set it to null.
+            - Dates (if attributes require them) must be in MM/DD/YYYY format.
 
-            Focus strictly on daily account activity that reflects money movement.
-            Skip everything else that is not a transactional statement.
-            """
-        elif self.doc_type in ['sales', 'payroll', 'misc']:
-            return """
-                You are an expert financial document parsing agent specialized in sales document analysis.
+            **Output Format (MANDATORY):**
+            Return a single, valid JSON object in the following structure: 
+                    {formatting}
+        """
 
-                Your task is to extract structured **attribute data** from sales documents.  
-                Each attribute corresponds to a specific financial or metadata field with detailed extraction instructions.  
-                For every configured attribute, you must extract its **name** and **value** (as a float if numeric, else string).  
-
-                **Attribute-Specific Instructions:**  
-                        {attribute_instructions}
-
-                **Document-Level Instructions:**
-                - Extract **all attributes** explicitly defined in the Attribute-Specific Instructions above.
-                - Return an entry for every configured attribute, even if its value is not found.
-                - Do not extract text or data beyond the listed attributes.
-                - If attribute values appear under synonyms, alternative headers, or alternate wording, map them back to the specified attribute name.
-                - Ensure consistent formatting for extracted attributes across all documents.
-                - If an attribute value is missing or not found, set its value to `null` (do not omit the key).
-
-                **Data Cleaning Rules:**
-                - Normalize all numeric values to float format (remove any ₹, $, commas, plus/minus signs).
-                - Always return the absolute value for numeric amounts (e.g., "-123.45" → 123.45, "+123.45" → 123.45).
-                - If value is missing, set it to null.
-                - Dates (if attributes require them) must be in MM/DD/YYYY format.
-
-                **Output Format (MANDATORY):**
-                Return a single, valid JSON object in the following structure: 
-                        {formatting}
-            """
-
-        else:
-            return """
-            You are an expert data extraction specialist. 
-            Your job is to extract key information exclusively from sales documents.
-            Do not extract any bank statement information or unrelated data.
-            Focus on capturing sales transaction details, amounts, dates, and any additional sales related info.
-            You should output a JSON object.
-            """
+    else:
+        return """
+        You are an expert data extraction specialist. 
+        Your job is to extract key information exclusively from sales documents.
+        Do not extract any bank statement information or unrelated data.
+        Focus on capturing sales transaction details, amounts, dates, and any additional sales related info.
+        You should output a JSON object.
+        """
 
 
 def prepare_prompt(config: Configuration) -> str:
     """
-    Generates a refined prompt based on the given configuration and document type.
+    Generates a refined prompt based on the given configuration and document type for Gemini pipelines.
     """
-    prompt = config.base_prompt
+    prompt = banking_base_prompt(config.doc_type)
 
     if config.doc_type in ["bank_statement", "credit_card"]:
         # Handle bank statement and credit card documents
@@ -112,7 +162,7 @@ def prepare_prompt(config: Configuration) -> str:
         return _prepare_sales_prompt(config, prompt)
     else:
         # Fallback for other document types
-        return _prepare_generic_prompt(config, prompt)
+        return attribute_extraction_prompt(config, prompt)
 
 
 def _prepare_bank_statement_prompt(config: Configuration, prompt: str) -> str:
@@ -171,7 +221,7 @@ def _prepare_bank_statement_prompt(config: Configuration, prompt: str) -> str:
     """
 
     prompt = prompt.format(formatting=formatting)
-    logger.error("Bank Statement Prompt formed:", prompt)
+    logger.debug("Bank Statement Prompt formed: %s", prompt)
     return prompt
 
 
@@ -244,11 +294,11 @@ def _prepare_sales_prompt(config: Configuration, prompt: str) -> str:
     )
     # Remove leading spaces for cleaner formatting
     prompt = prompt.replace("    ", "")
-    logger.error("Sales Prompt formed:", prompt)
+    logger.debug("Sales Prompt formed: %s", prompt)
     return prompt
 
 
-def _prepare_generic_prompt(config: Configuration, prompt: str) -> str:
+def attribute_extraction_prompt(config: Configuration, prompt: str) -> str:
     """
     Prepare prompt for generic document types (fallback).
     """
@@ -264,7 +314,7 @@ def _prepare_generic_prompt(config: Configuration, prompt: str) -> str:
         prompt = prompt.format(
             formatting="Return data as a structured JSON object.")
 
-    logger.error("Generic Prompt formed:", prompt)
+    logger.debug("Generic Prompt formed: %s", prompt)
     return prompt
 
 

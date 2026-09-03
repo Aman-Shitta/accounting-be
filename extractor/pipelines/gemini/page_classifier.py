@@ -5,7 +5,8 @@ import json
 
 from google.genai import types
 
-from extractor.gemini_service import GeminiService, JSONHelper
+from extractor.gemini_service import GeminiService
+from extractor.utils import JSONHelper
 
 
 import logging

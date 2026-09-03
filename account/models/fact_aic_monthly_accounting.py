@@ -191,7 +191,7 @@ class FactAICMonthlyAccounting(models.Model):
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
+            logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
 
     
     def _create_input_file_snapshot(self, input_file):
@@ -330,7 +330,7 @@ class FactAICMonthlyAccounting(models.Model):
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
+                logger.error(f"{exc_type} in {fname}:{exc_tb.tb_lineno}")
                 template_snapshot = None
         
         return template_snapshot

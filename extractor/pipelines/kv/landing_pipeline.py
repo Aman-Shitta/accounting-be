@@ -19,16 +19,17 @@ from landingai_ade import LandingAIADE
 from landingai_ade.lib import pydantic_to_json_schema
 
 from extractor.base import BaseDocumentProcessor
-from extractor.prompter import Configuration
 from account.models import (
     MonthlyAccountingDocument
 )
-from extractor.utils import split_pdf_to_pages
+from extractor.utils import split_pdf_to_pages, generate_temp_pdf, clean_temp_file
 
 logger = logging.getLogger(__name__)
 
 
-# --- Pydantic Models for Sales Document Extraction Schemas ---
+"""
+Pydantic Models for Sales Document Extraction Schemas
+"""
 
 class KeyItem(BaseModel):
     """Represents a key-value pair extracted from a sales document."""
@@ -103,8 +104,8 @@ class DocumentProcessor(BaseDocumentProcessor):
     for the document's input file, including any helper text/comments that guide extraction.
     """
 
-    def __init__(self, config: Configuration, doc: MonthlyAccountingDocument):
-        super().__init__(config, doc)
+    def __init__(self, doc: MonthlyAccountingDocument):
+        super().__init__(doc)
         self.page_data = []
         self.pages_data = {}
         # Track already extracted attributes to avoid duplicates
@@ -217,17 +218,11 @@ class DocumentProcessor(BaseDocumentProcessor):
 
     def __generate_temp_file__(self, bytes_data):
         """Generate a temporary file from bytes for LandingAI processing."""
-        temp_pdf = tempfile.NamedTemporaryFile(suffix=".pdf", delete=True)
-        temp_pdf.write(bytes_data)
-        temp_pdf.flush()
-        return temp_pdf
+        return generate_temp_pdf(bytes_data)
 
     def __clean_temp_file__(self, temp_pdf):
         """Clean up temporary file."""
-        try:
-            temp_pdf.close()
-        except Exception:
-            pass
+        clean_temp_file(temp_pdf)
 
     def parse_pdf(self, pdf_path: str):
         """Parse PDF using LandingAI to extract markdown content."""
@@ -237,19 +232,18 @@ class DocumentProcessor(BaseDocumentProcessor):
         )
         return parse_response
 
-    def process_document(self, file_bytes: bytes, mime_type: str = None, md: bool = False, special_rules="") -> Dict[str, any]:
+    def process_document(self, file_bytes: bytes, **kwargs) -> Dict[str, Any]:
         """
         Process the sales document by extracting key-value attributes from each page.
-
-        Args:
-            file_bytes: The PDF document bytes
-            mime_type: MIME type of the document
-            md: Whether to use markdown processing (not used in LandingAI pipeline)
-
-        Returns:
-            Dictionary containing processing status and statistics
         """
+        from extractor.persistence.attribute_saver import AttributeSaver
+
+        mime_type = kwargs.get('mime_type', 'application/pdf')
+        md = kwargs.get('md', False)
+        special_rules = kwargs.get('special_rules', "")
+
         page_bytes_list = split_pdf_to_pages(file_bytes)
+        saver = AttributeSaver(self.document)
 
         for i, page_bytes in enumerate(page_bytes_list):
             page_num = i + 1
@@ -328,7 +322,7 @@ class DocumentProcessor(BaseDocumentProcessor):
         self._save_doc_metadata()
 
         # Process and save extracted data
-        processing_stats = self._save_extracted_data()
+        processing_stats = saver.save_attributes(self.page_data)
 
         return {
             "status": "success",
@@ -339,21 +333,12 @@ class DocumentProcessor(BaseDocumentProcessor):
     def _convert_extraction_to_key_items(self, extracted_data: Dict) -> List[Dict[str, str]]:
         """
         Convert extracted data to a unified key_items format.
-
-        Handles both:
-        1. Dynamic schema output: {'property_number': '12345', 'total_amount': '500.00'}
-        2. Fallback KeyItemList output: {'key_items': [{'key': 'x', 'value': 'y'}]}
-
-        Returns:
-            List of {'key': str, 'value': str} dicts
         """
         key_items = []
 
-        # Check if it's the fallback KeyItemList format
         if 'key_items' in extracted_data:
             return extracted_data.get('key_items', [])
 
-        # Dynamic schema format - each field is a key with its value
         for key, value in extracted_data.items():
             if value is not None and str(value).strip() and str(value).strip().lower() != 'null':
                 key_items.append({
@@ -367,113 +352,3 @@ class DocumentProcessor(BaseDocumentProcessor):
         """Save document-level metadata including markdown content."""
         self.document.markdown_metadata = self.pages_data
         self.document.save()
-
-    def _parse_amount(self, amount_str: str) -> Optional[Decimal]:
-        """
-        Parse amount string to Decimal.
-        """
-        if not amount_str or str(amount_str).strip() in ['', 'null', 'none', '-']:
-            return None
-
-        amount_str = re.sub(r'[^\d\.]', '', str(amount_str))
-
-        try:
-            # Clean the amount string
-            clean_amount = str(amount_str).replace(',', '').replace(
-                '$', '').replace('(', '-').replace(')', '').strip()
-
-            # Handle parentheses for negative amounts
-            if clean_amount.startswith('-'):
-                clean_amount = clean_amount[1:]
-                return -Decimal(clean_amount)
-
-            return Decimal(clean_amount)
-
-        except (InvalidOperation, ValueError, TypeError) as e:
-            logger.error(f"Failed to parse amount '{amount_str}': {e}")
-
-        return amount_str
-
-    def _save_extracted_data(self) -> Dict[str, int]:
-        """
-        Save extracted data to database models.
-
-        Returns:
-            Dict with processing statistics
-        """
-        stats = {
-            "key_items": 0,
-            "skipped_extracted_attributes": 0,
-            "duplicate_attributes_skipped": 0,
-        }
-
-        from account.models import MonthlyDocumentAttributeItem, FactAICInputFileAttributeSnapshot
-
-        # Get configured attributes for this document
-        configured_attribute_instances = {
-            obj.name.lower().replace(" ", "_"): obj
-            for obj in FactAICInputFileAttributeSnapshot.objects.only(
-                'id', 'name', 'type', 'gl_account', 'offset_gl_account'
-            ).filter(input_file_snapshot=self.document.input_file_snapshot)
-        }
-
-        with transaction.atomic():
-            for page_result in self.page_data:
-                page_number = page_result.get("page_number", 1)
-                extracted_attributes_data = page_result.get("key_items", [])
-
-                for extracted_attribute in extracted_attributes_data:
-                    # Handle both dict format (from LandingAI) and Pydantic model format
-                    if isinstance(extracted_attribute, dict):
-                        extracted_key_name = extracted_attribute.get(
-                            "key", "").lower().replace(" ", "_")
-                        extracted_value = extracted_attribute.get("value", "")
-                    else:
-                        extracted_key_name = getattr(
-                            extracted_attribute, 'key', "").lower().replace(" ", "_")
-                        extracted_value = getattr(
-                            extracted_attribute, 'value', "")
-
-                    # Skip if this attribute was already extracted from a previous page
-                    if extracted_key_name in self.extracted_attributes:
-                        stats["duplicate_attributes_skipped"] += 1
-                        continue
-
-                    # Find matching configured attribute
-                    attribute_instance = configured_attribute_instances.get(
-                        extracted_key_name)
-
-                    extracted_value = self._parse_amount(extracted_value)
-                    if attribute_instance and extracted_value:
-                        MonthlyDocumentAttributeItem.objects.create(
-                            document=self.document,
-                            attribute=attribute_instance,
-                            page_number=page_number,
-                            value=extracted_value,
-                            transaction_type=attribute_instance.type,
-                            gl_account=attribute_instance.gl_account,
-                            offset_gl_account=attribute_instance.offset_gl_account,
-                        )
-
-                        # Mark this attribute as extracted to avoid duplicates
-                        self.extracted_attributes.add(extracted_key_name)
-                        stats["key_items"] += 1
-
-            # Create empty entries for configured attributes that weren't found
-            for attr_name, attr_obj in configured_attribute_instances.items():
-                if attr_name not in self.extracted_attributes:
-                    logger.info(
-                        f"Saving empty attribute for missing: {attr_name}")
-                    MonthlyDocumentAttributeItem.objects.create(
-                        document=self.document,
-                        attribute=attr_obj,
-                        page_number=1,
-                        value="",
-                        transaction_type=attr_obj.type,
-                        gl_account=attr_obj.gl_account,
-                        offset_gl_account=attr_obj.offset_gl_account,
-                    )
-                    stats["skipped_extracted_attributes"] += 1
-
-        logger.info(f"Saved extracted data: {stats}")
-        return stats

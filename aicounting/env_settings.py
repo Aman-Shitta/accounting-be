@@ -35,3 +35,10 @@ LANDING_AI_ADE_MODEL = os.environ.get("LANDING_AI_ADE_MODEL")
 DOCUMENT_AI_PROJECT_ID = os.environ.get('DOCUMENT_AI_PROJECT_ID')
 DOCUMENT_AI_PROCESSOR_ID = os.environ.get('DOCUMENT_AI_PROCESSOR_ID')
 DOCUMENT_AI_LOCATION = os.environ.get('DOCUMENT_AI_LOCATION')
+
+# Anthropic (Claude)
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+
+# Datalabs
+DATALABS_PIPELINE_ID = os.environ.get("DATALABS_PIPELINE_ID")

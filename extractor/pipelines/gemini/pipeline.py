@@ -16,12 +16,12 @@ from django.conf import settings
 from typing import List, Dict, Optional
 from agentic_doc.parse import parse
 from agentic_doc.config import ParseConfig
-# Local imports
 from extractor.prompter import (
     Configuration,
+    prepare_prompt,
 )
-from extractor.base import JSONCleaner
-from extractor.base import BaseDocumentProcessor
+from extractor.base import GeminiDocumentProcessor
+from extractor.utils import JSONHelper, split_pdf_to_pages, detect_check_transaction
 
 from account.models import (
     MonthlyDocumentBankCheckItem,
@@ -29,7 +29,6 @@ from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyAccountingDocument
 )
-from extractor.utils import split_pdf_to_pages
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -139,7 +138,7 @@ class PageClassifier:
             "temperature": 0.1,
             "top_p": 0.2,
             "top_k": 15,  # Reduced from 20 to 15 for more focused, cost-effective classification
-            "system_instruction": [self.prompt],
+            "system_instruction": [classification_prompt],
             "max_output_tokens": 500,  # Classification needs minimal output
         }
 
@@ -156,13 +155,7 @@ class PageClassifier:
                 f"[DEBUG] Classification raw response: {raw[:200]}...")
 
             try:
-                clean_json_str = JSONCleaner.updated_json_repair(raw)
-                try:
-                    parsed = json.loads(clean_json_str)
-                except Exception:
-                    fallback_json = JSONCleaner.extract_first_json(
-                        clean_json_str)
-                    parsed = json.loads(fallback_json)
+                parsed = JSONHelper.parse_json(raw, default={"page_types": ["other"]})
 
                 page_types = parsed.get("page_types", ["other"])
                 confidence = parsed.get("confidence", 0.5)
@@ -249,22 +242,7 @@ class TransactionExtractor:
             return {"line_items": []}
 
         # Validate and repair JSON with expected structure
-        try:
-            clean_json_str = JSONCleaner.updated_json_repair(raw)
-            try:
-                parsed_data = json.loads(clean_json_str)
-            except json.JSONDecodeError:
-                # Try fallback extraction
-                fallback_json = JSONCleaner.extract_first_json(clean_json_str)
-                parsed_data = json.loads(fallback_json)
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(
-                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Transaction extraction failed: {e}")
-            logger.error(
-                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output (first 1000 chars): {raw[:1000]}")
-            parsed_data = {"line_items": []}
+        parsed_data = JSONHelper.parse_json(raw, default={"line_items": []})
 
         # Ensure line_items exists
         if "line_items" not in parsed_data:
@@ -272,17 +250,7 @@ class TransactionExtractor:
 
         # Post-process: detect check transactions
         for item in parsed_data.get("line_items", []):
-            desc = item.get("description", "").lower()
-            if "check" in desc or "cheque" in desc:
-                item["is_check_transaction"] = True
-                match = re.search(r"check\s*#?\s*(\d+)", desc)
-                if match:
-                    item["check_number"] = match.group(1)
-                else:
-                    item["check_number"] = ""
-            else:
-                item["is_check_transaction"] = False
-                item["check_number"] = ""
+            item.update(detect_check_transaction(item.get("description", "")))
 
         return parsed_data
 
@@ -352,17 +320,7 @@ class CheckImageExtractor:
                 f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check Stream error: {ce}")
             return {}
 
-        try:
-            clean_json_str = JSONCleaner.updated_json_repair(raw)
-            parsed_data = json.loads(clean_json_str)
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            logger.error(
-                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Check image extraction failed: {e}")
-            logger.error(
-                f"[ERROR][{fname}:{exc_tb.tb_lineno}] Raw output: {raw}")
-            parsed_data = {"checks": []}
+        parsed_data = JSONHelper.parse_json(raw, default={"checks": []})
         return parsed_data
 
 
@@ -444,7 +402,7 @@ class BankStatementSummarizer:
             for resp in stream_response:
                 raw += resp.text
 
-            clean_json_str = self._clean_json_string(raw)
+            clean_json_str = JSONHelper.clean(raw)
 
             try:
                 summary = json.loads(clean_json_str)
@@ -464,25 +422,14 @@ class BankStatementSummarizer:
                 f"[ERROR][Line {exc_tb.tb_lineno}] Error while generating summary: {e}")
             return {}
 
-    def _clean_json_string(self, raw: str) -> str:
-        """
-        Cleans and prepares LLM output for safe JSON decoding.
-        """
-        raw = re.sub(r'^```(?:json)?', '', raw)
-        raw = raw.strip('` \n')
-        raw = raw.replace('\r\n', '\\n').replace('\r', '\\n')
-        raw = raw.replace("None", "null")
-
-        # Remove control characters except newline/tab
-        raw = ''.join(c for c in raw if unicodedata.category(c)
-                      [0] != 'C' or c in '\n\t')
-        return raw
 
 
-class DocumentProcessor(BaseDocumentProcessor):
+class ExtractorPipeline(GeminiDocumentProcessor):
 
-    def __init__(self, config: Configuration, doc: MonthlyAccountingDocument):
-        super().__init__(config, doc)
+    def __init__(self, doc: MonthlyAccountingDocument):
+        super().__init__(doc)
+        config = Configuration.from_document(doc)
+        self.prompt = prepare_prompt(config)
         self.page_data = []
         self.control_totals = {}
 
@@ -513,44 +460,12 @@ class DocumentProcessor(BaseDocumentProcessor):
 
         Args:
             raw_json: Raw JSON string from LLM
-            expected_structure: Expected keys in the response
+            expected_structure: Expected keys with default values
 
         Returns:
             Parsed and validated JSON dict
         """
-        try:
-            clean_json_str = JSONCleaner.updated_json_repair(raw_json)
-            parsed_data = json.loads(clean_json_str)
-
-            # Validate expected structure
-            for key in expected_structure.keys():
-                if key not in parsed_data:
-                    logger.error(
-                        f"Missing key '{key}' in LLM response, adding default value")
-                    parsed_data[key] = expected_structure[key]
-
-            return parsed_data
-
-        except Exception as e:
-            logger.error(f"Failed to parse JSON: {e}")
-            logger.error(f"Raw JSON (first 500 chars): {raw_json[:500]}")
-
-            # Try to extract partial JSON using fallback
-            try:
-                fallback_json = JSONCleaner.extract_first_json(raw_json)
-                parsed_data = json.loads(fallback_json)
-
-                # Fill in missing keys
-                for key in expected_structure.keys():
-                    if key not in parsed_data:
-                        parsed_data[key] = expected_structure[key]
-
-                return parsed_data
-            except:
-                # Return default structure if all parsing fails
-                logger.error(
-                    "All JSON parsing attempts failed, returning default structure")
-                return expected_structure
+        return JSONHelper.validate_and_repair(raw_json, expected_keys=expected_structure)
 
     def process_document(self, file_bytes: bytes, **kwargs):
 

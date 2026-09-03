@@ -184,6 +184,10 @@ STORAGES = {
 
 CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']
 
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = ['http://*', 'https://*']
+CORS_ALLOW_CREDENTIALS = True
 
 # Update MEDIA settings - MEDIA_URL will be handled by the storage backend
 # For Azure storage, URLs are generated dynamically with SAS tokens
@@ -208,12 +212,13 @@ CELERY_RESULT_BACKEND = os.environ.get(
 CELERY_BEAT_SCHEDULE = {
     'process-classification-queue': {
         'task': 'account.tasks.process_classification_queue_task',
-        'schedule': 30.0,  # Run every 30 seconds
+        'schedule': 60.0,  # Run every 60 seconds
     },
 }
+
+# Local imports
+from .env_settings import *
 
 # Logging
 # from .app_logging import LOGGING
 
-# Local imports
-from .env_settings import *

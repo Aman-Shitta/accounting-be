@@ -1,12 +1,5 @@
-from google import genai
-from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple, Set, Union
-import time
-import os
-import mimetypes
-import json
-from google.cloud import documentai_v1 as documentai
 import re
+
 from google.genai import types
 
 TRANSACTIONS_ROWS_JSON_PROMPT_BB = """
@@ -59,12 +52,6 @@ Return ONLY valid JSON in this exact format:
       "amount": <number>,
       "type": "debit" | "credit",
       "check_number": "<string> (only if from check table)",
-      "bounding_box": {
-        "left":<number>,
-        "top":<number>,
-        "right":<number>,
-        "bottom":<number>
-      }
     }
   ]
 }
@@ -100,7 +87,7 @@ Always output amount as a positive number; use "type" to indicate direction.
 - Return ONLY valid JSON (no markdown, no code fences), in this schema:
 
 
-{"transactions":[{"page_number":1,"date":"01/15/2026","description":"POS PURCHASE - STORE","amount":23.45,"type":"debit", "bounding_box": {"left":0.21,"top":0.34,"right":0.24,"bottom":0.32}}]}
+{"transactions":[{"page_number":1,"date":"01/15/2026","description":"POS PURCHASE - STORE","amount":23.45,"type":"debit"}]}
 """
 
 TRANSACTIONS_SCHEMA = types.Schema(
@@ -139,25 +126,6 @@ TRANSACTIONS_SCHEMA = types.Schema(
                         type=types.Type.STRING,
                         description="Check number if the transaction is from a check table",
                     ),
-                    # "bounding_box": types.Schema(
-                    #     type = types.Type.OBJECT,
-                    #     description = "Bounding box coordinates of the transaction row on the page",
-                    #     required = ["left", "top", "right", "bottom"],
-                    #     properties = {
-                    #         "left": types.Schema(
-                    #             type = types.Type.NUMBER,
-                    #         ),
-                    #         "top": types.Schema(
-                    #             type = types.Type.NUMBER,
-                    #         ),
-                    #         "right": types.Schema(
-                    #             type = types.Type.NUMBER,
-                    #         ),
-                    #         "bottom": types.Schema(
-                    #             type = types.Type.NUMBER,
-                    #         ),
-                    #     },
-                    # ),
                 },
             ),
         ),
@@ -396,9 +364,9 @@ Always output amount as a positive number; use "type" to indicate direction.
 
 """
 
-# =========================
-# GEMINI CHECK IMAGE EXTRACTION
-# =========================
+"""
+Gemini Check Image Extraction
+"""
 
 GEMINI_CHK_IMG_PREFIX = """
 You are a financial data extraction system.
@@ -505,141 +473,3 @@ OUTPUT RULES (STRICT):
 """
 
 
-_DATE_RE = re.compile(
-    r"(\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b)|"
-    r"(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}\b)",
-    re.IGNORECASE,
-)
-
-_AMOUNT_TOKEN_RE = re.compile(r"\(?-?\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?\)?")
-
-_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
-
-
-def _has_date(s: str) -> bool:
-    return bool(_DATE_RE.search(s))
-
-
-def _has_amount(s: str) -> bool:
-    # Avoid treating tiny integers like "01" as amount: require decimal/comma/$/()/-`
-    matches = _AMOUNT_TOKEN_RE.findall(s)
-    if not matches:
-        return False
-    return any(
-        ('.' in m) or (',' in m) or ('$' in m) or (
-            '(' in m) or (')' in m) or ('-' in m)
-        for m in matches
-    )
-
-
-def _row_text(row: Dict[str, Any]) -> str:
-    return (row.get("text") or " | ".join(row.get("cells", []) or [])).strip()
-
-
-def stitch_split_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Merge split transactions where date/description and amount end up on different rows.
-
-    Handles two minimal patterns:
-      A) date/no-amount  -> next row amount/no-date
-      B) amount/no-date  -> next row date/no-amount   (row-order inversion)
-    """
-    stitched: List[Dict[str, Any]] = []
-    i = 0
-
-    while i < len(rows):
-        r = rows[i]
-        t = _row_text(r)
-        if not t:
-            i += 1
-            continue
-
-        has_d = _has_date(t)
-        has_a = _has_amount(t)
-
-        # (B) amount-only followed by date-only: attach amount into the date row
-        if has_a and not has_d and i + 1 < len(rows):
-            r2 = rows[i + 1]
-            t2 = _row_text(r2)
-            if t2 and _has_date(t2) and not _has_amount(t2):
-                merged_cells = (r2.get("cells", []) or []) + \
-                    (r.get("cells", []) or [])
-                merged_text = (t2 + " " + t).strip()
-                stitched.append({
-                    "row_index": r2.get("row_index", i + 2),
-                    "cells": merged_cells,
-                    "text": merged_text,
-                })
-                i += 2
-                continue
-
-        # (A) date-only followed by amount-only: attach amount into the date row
-        if has_d and not has_a and i + 1 < len(rows):
-            r2 = rows[i + 1]
-            t2 = _row_text(r2)
-            if t2 and _has_amount(t2) and not _has_date(t2):
-                merged_cells = (r.get("cells", []) or []) + \
-                    (r2.get("cells", []) or [])
-                merged_text = (t + " " + t2).strip()
-                stitched.append({
-                    "row_index": r.get("row_index", i + 1),
-                    "cells": merged_cells,
-                    "text": merged_text,
-                })
-                i += 2
-                continue
-
-        stitched.append(r)
-        i += 1
-
-    return stitched
-
-
-def _coerce_amount(v: Any) -> float:
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, str):
-        s = v.strip().replace("$", "").replace(",", "")
-        if s.startswith("(") and s.endswith(")"):
-            s = "-" + s[1:-1]
-        return float(s)
-    raise ValueError(f"Invalid amount type: {type(v)}")
-
-
-def _remove_thousands_commas_outside_strings(s: str) -> str:
-    """
-    Remove commas used as thousands separators in JSON numbers, e.g. 1,612.83 -> 1612.83.
-    Only removes commas that are between digits and occur outside of string literals.
-    """
-    out = []
-    in_string = False
-    escape = False
-
-    for i, ch in enumerate(s):
-        if in_string:
-            out.append(ch)
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-            continue
-
-        # not in string
-        if ch == '"':
-            in_string = True
-            out.append(ch)
-            continue
-
-        # remove comma if it's between digits (thousands separator)
-        if ch == ",":
-            prev_ch = s[i - 1] if i > 0 else ""
-            next_ch = s[i + 1] if i + 1 < len(s) else ""
-            if prev_ch.isdigit() and next_ch.isdigit():
-                # skip this comma
-                continue
-
-        out.append(ch)
-
-    return "".join(out)

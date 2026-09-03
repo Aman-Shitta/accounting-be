@@ -242,24 +242,6 @@ def get_file_size_display(size_bytes):
     return f"{size_bytes:.2f}{size_names[i]}"
 
 
-ALLOWED_DOCUMENT_EXTENSIONS = [
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv']
-ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff']
-ALLOWED_BANK_STATEMENT_EXTENSIONS = ['pdf', 'csv', 'xls', 'xlsx', 'txt']
-
-
-def validate_document_file(filename):
-    return is_allowed_file_type(filename, ALLOWED_DOCUMENT_EXTENSIONS)
-
-
-def validate_image_file(filename):
-    return is_allowed_file_type(filename, ALLOWED_IMAGE_EXTENSIONS)
-
-
-def validate_bank_statement_file(filename):
-    return is_allowed_file_type(filename, ALLOWED_BANK_STATEMENT_EXTENSIONS)
-
-
 # =============================================================================
 # DEBUG / ARTIFACT STORAGE
 # =============================================================================

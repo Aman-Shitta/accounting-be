@@ -23,7 +23,8 @@ from django.db.models import Prefetch
 
 from google.genai import types
 
-from extractor.gemini_service import GeminiMixin, JSONHelper
+from extractor.gemini_service import GeminiMixin
+from extractor.utils import JSONHelper
 
 from user.models import DimAICClient, DimAICAssistant, DimAICClientDocument
 from account.models import MonthlyDocumentBankLineItem, MonthlyAccountingDocument
