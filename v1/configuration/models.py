@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from storage.uploads import upload_to_input_files_folder
-from v1.common.models import TimeStampedModel
+from v1.common.models import TimeStampedModel, UUIDPrimaryKeyModel
 from v1.common.querysets import tenant_manager
 from v1.ledger.models import LedgerAccount
 from v1.tenancy.models import Client
@@ -311,7 +311,7 @@ class JournalTemplateLine(TimeStampedModel):
             )
 
 
-class ConfigVersion(models.Model):
+class ConfigVersion(UUIDPrimaryKeyModel):
     """
     An immutable snapshot of a client's configuration, as one JSONB document.
 

@@ -15,6 +15,9 @@ from v1.tests.conftest import api_client_for
 
 pytestmark = pytest.mark.django_db
 
+# A well-formed UUID that belongs to nothing.
+MISSING_ID = "01920000-0000-7000-8000-000000000000"
+
 
 # ---- the envelope -----------------------------------------------------------
 
@@ -32,11 +35,22 @@ def test_every_response_carries_the_envelope(two_firms):
 def test_errors_carry_the_envelope_too(two_firms):
     api = api_client_for(two_firms["a"]["owner"])
 
-    response = api.get("/api/v1/clients/999999/")
+    response = api.get(f"/api/v1/clients/{MISSING_ID}/")
 
     assert response.status_code == 404
     assert response.data["status"] == "error"
     assert "message" in response.data
+
+
+def test_a_malformed_id_does_not_reach_a_view(two_firms):
+    """
+    Primary keys are UUIDs, so `<uuid:pk>` rejects anything else at the router.
+    The 404 is Django's, before DRF, and carries no envelope — which is fine:
+    a client sending a non-UUID id has a bug, not a permissions problem.
+    """
+    response = api_client_for(two_firms["a"]["owner"]).get("/api/v1/clients/999999/")
+
+    assert response.status_code == 404
 
 
 def test_a_server_error_never_returns_a_traceback(two_firms, monkeypatch):

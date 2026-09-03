@@ -1,18 +1,19 @@
 """
 The reviewer queue.
 
-A document lands here when its control totals do not balance and the client
-has ``allow_review`` set. Reviewers are scoped to their firm: the round-robin
-that assigns work only considers reviewers at the firm that owns the document.
+A document lands here when its control totals do not balance and the client has
+``allow_review`` set. Reviewers are scoped to their firm: the round-robin that
+assigns work only considers reviewers at the firm that owns the document.
 """
 
-from rest_framework import serializers, viewsets
-from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
+from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from v1.common.envelope import EnvelopeMixin
+from v1.common.pagination import paginate
 from v1.common.permissions import IsReviewer
+from v1.common.views import BaseAPIView
 from v1.periods.models import PeriodDocument
 from v1.periods.serializers import PeriodDocumentSerializer
 from v1.tenancy.models import FirmMembership
@@ -23,62 +24,77 @@ class SubmitReviewSerializer(serializers.Serializer):
     approved = serializers.BooleanField(default=True)
 
 
-class ReviewQueueViewSet(EnvelopeMixin, viewsets.ReadOnlyModelViewSet):
-    """Documents assigned to the calling reviewer."""
+class ReviewerView(BaseAPIView):
+    """Base for the queue: everything here is reviewer-only."""
 
     permission_classes = [IsAuthenticated, IsReviewer]
-    serializer_class = PeriodDocumentSerializer
 
-    def get_queryset(self):
+    def assigned_documents(self):
         # Assignment is already firm-scoped, so filtering by the caller's own
         # reviewer memberships cannot reach another firm's documents.
         memberships = FirmMembership.objects.filter(
             user=self.request.user, role=FirmMembership.Role.REVIEWER, is_active=True
         )
-        return (
-            PeriodDocument.objects.filter(
-                assigned_reviewer__in=memberships,
-                status__in=[
-                    PeriodDocument.Status.PENDING_REVIEW,
-                    PeriodDocument.Status.IN_REVIEW,
-                ],
-            )
-            .select_related("period__client", "document_source")
-            .order_by("updated_at")
+        return PeriodDocument.objects.filter(
+            assigned_reviewer__in=memberships
+        ).select_related("period__client", "document_source")
+
+
+class ReviewQueueView(ReviewerView):
+    def get(self, request):
+        documents = self.assigned_documents().filter(
+            status__in=[
+                PeriodDocument.Status.PENDING_REVIEW,
+                PeriodDocument.Status.IN_REVIEW,
+            ]
+        ).order_by("updated_at")
+
+        page, meta = paginate(documents, request)
+        return Response(
+            {**meta, "results": PeriodDocumentSerializer(page, many=True).data}
         )
 
-    @action(detail=True, methods=["post"], url_path="claim")
-    def claim(self, request, pk=None):
-        """Take a document out of the queue and start working on it."""
-        document = self.get_object()
+
+class ReviewDocumentView(ReviewerView):
+    def get(self, request, pk):
+        document = get_object_or_404(self.assigned_documents(), pk=pk)
+        return Response(PeriodDocumentSerializer(document).data)
+
+
+class ReviewClaimView(ReviewerView):
+    """Take a document out of the queue and start working on it."""
+
+    def post(self, request, pk):
+        document = get_object_or_404(self.assigned_documents(), pk=pk)
         document.status = PeriodDocument.Status.IN_REVIEW
         document.save(update_fields=["status", "updated_at"])
-        return Response(self.get_serializer(document).data)
+        return Response(PeriodDocumentSerializer(document).data)
 
-    @action(detail=True, methods=["post"], url_path="submit")
-    def submit(self, request, pk=None):
-        """
-        Finish a review.
 
-        Approving sends the document on to classification; the pipeline skips
-        control-total validation for anything already reviewed.
-        """
+class ReviewSubmitView(ReviewerView):
+    """
+    Finish a review.
+
+    Approving sends the document on to classification; the pipeline skips
+    control-total validation for anything already reviewed.
+    """
+
+    def post(self, request, pk):
         from v1.periods.tasks import enqueue_classification_task
 
-        document = self.get_object()
+        document = get_object_or_404(self.assigned_documents(), pk=pk)
 
         serializer = SubmitReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        approved = serializer.validated_data["approved"]
         document.review_notes = serializer.validated_data["notes"]
         document.status = (
-            PeriodDocument.Status.REVIEWED
-            if serializer.validated_data["approved"]
-            else PeriodDocument.Status.FAILED
+            PeriodDocument.Status.REVIEWED if approved else PeriodDocument.Status.FAILED
         )
         document.save(update_fields=["review_notes", "status", "updated_at"])
 
-        if serializer.validated_data["approved"]:
-            enqueue_classification_task.delay(document_id=document.id)
+        if approved:
+            enqueue_classification_task.delay(document_id=str(document.id))
 
-        return Response(self.get_serializer(document).data)
+        return Response(PeriodDocumentSerializer(document).data)

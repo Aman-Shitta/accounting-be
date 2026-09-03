@@ -1,76 +1,173 @@
 """
 The /api/v1/ surface.
 
-Nesting reflects ownership: configuration hangs off a client, extracted data
-hangs off a period document. Every list is scoped to the caller's visible
-clients by the ViewSet base, not by each view.
+Every route is written out. No routers: the URL map is the API's index, and a
+reader should be able to see the whole contract here without inferring what a
+router generated.
+
+Primary keys are UUIDv7, so detail routes match ``<uuid:pk>``.
 """
 
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
 
 from v1.configuration.views import (
-    ConfigVersionViewSet,
-    DocumentSourceViewSet,
-    JournalTemplateViewSet,
+    ConfigCheckView,
+    ConfigCurrentView,
+    ConfigPublishView,
+    ConfigVersionDetailView,
+    ConfigVersionListView,
+    DocumentSourceDetailView,
+    DocumentSourceFieldsView,
+    DocumentSourceListView,
+    JournalTemplateDetailView,
+    JournalTemplateLinesView,
+    JournalTemplateListView,
 )
 from v1.dashboard.views import DashboardView
-from v1.ledger.views import LedgerAccountViewSet
+from v1.ledger.views import LedgerAccountDetailView, LedgerAccountListView
 from v1.periods.views import (
-    AccountingPeriodViewSet,
-    PeriodCheckDetailViewSet,
-    PeriodDocumentViewSet,
-    PeriodFieldValueViewSet,
-    PeriodTransactionViewSet,
+    CheckDetailDetailView,
+    CheckDetailListView,
+    FieldValueDetailView,
+    FieldValueListView,
+    PeriodDetailView,
+    PeriodDocumentConfigView,
+    PeriodDocumentDetailView,
+    PeriodDocumentListView,
+    PeriodDocumentUploadView,
+    PeriodDocumentVerifyView,
+    PeriodListView,
+    PeriodYearsView,
+    TransactionDetailView,
+    TransactionListView,
 )
 from v1.tenancy.views import (
-    ClientAssignmentViewSet,
-    ClientContactViewSet,
-    ClientReferenceDocumentViewSet,
-    ClientViewSet,
-    FirmMemberViewSet,
+    ClientAssignmentDetailView,
+    ClientAssignmentListView,
+    ClientContactDetailView,
+    ClientContactListView,
+    ClientDetailView,
+    ClientListView,
+    ClientReferenceDocumentDetailView,
+    ClientReferenceDocumentListView,
+    FirmMemberDetailView,
+    FirmMemberListView,
     FirmView,
 )
 
-# Top level
-root = DefaultRouter()
-root.register("clients", ClientViewSet, basename="client")
+# Everything owned by one client.
+client_patterns = [
+    path("contacts/", ClientContactListView.as_view(), name="contacts"),
+    path("contacts/<uuid:pk>/", ClientContactDetailView.as_view(), name="contact"),
 
-# Firm members
-firm = DefaultRouter()
-firm.register("members", FirmMemberViewSet, basename="firm-member")
+    path(
+        "reference-documents/",
+        ClientReferenceDocumentListView.as_view(),
+        name="reference-documents",
+    ),
+    path(
+        "reference-documents/<uuid:pk>/",
+        ClientReferenceDocumentDetailView.as_view(),
+        name="reference-document",
+    ),
 
-# Everything owned by one client
-client_scoped = DefaultRouter()
-client_scoped.register("contacts", ClientContactViewSet, basename="client-contact")
-client_scoped.register(
-    "reference-documents", ClientReferenceDocumentViewSet, basename="client-reference-document"
-)
-client_scoped.register("assignments", ClientAssignmentViewSet, basename="client-assignment")
-client_scoped.register("ledger-accounts", LedgerAccountViewSet, basename="ledger-account")
-client_scoped.register("document-sources", DocumentSourceViewSet, basename="document-source")
-client_scoped.register("journal-templates", JournalTemplateViewSet, basename="journal-template")
-client_scoped.register("config", ConfigVersionViewSet, basename="config-version")
-client_scoped.register("periods", AccountingPeriodViewSet, basename="accounting-period")
+    path("assignments/", ClientAssignmentListView.as_view(), name="assignments"),
+    path(
+        "assignments/<uuid:pk>/",
+        ClientAssignmentDetailView.as_view(),
+        name="assignment",
+    ),
 
-# Documents within a period
-period_scoped = DefaultRouter()
-period_scoped.register("documents", PeriodDocumentViewSet, basename="period-document")
+    path("ledger-accounts/", LedgerAccountListView.as_view(), name="ledger-accounts"),
+    path(
+        "ledger-accounts/<uuid:pk>/",
+        LedgerAccountDetailView.as_view(),
+        name="ledger-account",
+    ),
 
-# Rows extracted from one document
-document_scoped = DefaultRouter()
-document_scoped.register("transactions", PeriodTransactionViewSet, basename="period-transaction")
-document_scoped.register("check-details", PeriodCheckDetailViewSet, basename="period-check-detail")
-document_scoped.register("field-values", PeriodFieldValueViewSet, basename="period-field-value")
+    path("document-sources/", DocumentSourceListView.as_view(), name="document-sources"),
+    path(
+        "document-sources/<uuid:pk>/",
+        DocumentSourceDetailView.as_view(),
+        name="document-source",
+    ),
+    path(
+        "document-sources/<uuid:pk>/fields/",
+        DocumentSourceFieldsView.as_view(),
+        name="document-source-fields",
+    ),
+
+    path(
+        "journal-templates/", JournalTemplateListView.as_view(), name="journal-templates"
+    ),
+    path(
+        "journal-templates/<uuid:pk>/",
+        JournalTemplateDetailView.as_view(),
+        name="journal-template",
+    ),
+    path(
+        "journal-templates/<uuid:pk>/lines/",
+        JournalTemplateLinesView.as_view(),
+        name="journal-template-lines",
+    ),
+
+    # Ordered before the <uuid:pk> route so the words are not read as ids.
+    path("config/publish/", ConfigPublishView.as_view(), name="config-publish"),
+    path("config/current/", ConfigCurrentView.as_view(), name="config-current"),
+    path("config/check/", ConfigCheckView.as_view(), name="config-check"),
+    path("config/", ConfigVersionListView.as_view(), name="config-versions"),
+    path("config/<uuid:pk>/", ConfigVersionDetailView.as_view(), name="config-version"),
+
+    path("periods/years/", PeriodYearsView.as_view(), name="period-years"),
+    path("periods/", PeriodListView.as_view(), name="periods"),
+    path("periods/<uuid:pk>/", PeriodDetailView.as_view(), name="period"),
+]
+
+# Documents within a period.
+period_patterns = [
+    path("documents/", PeriodDocumentListView.as_view(), name="documents"),
+    path("documents/<uuid:pk>/", PeriodDocumentDetailView.as_view(), name="document"),
+    path(
+        "documents/<uuid:pk>/upload/",
+        PeriodDocumentUploadView.as_view(),
+        name="document-upload",
+    ),
+    path(
+        "documents/<uuid:pk>/config/",
+        PeriodDocumentConfigView.as_view(),
+        name="document-config",
+    ),
+    path(
+        "documents/<uuid:pk>/verify/",
+        PeriodDocumentVerifyView.as_view(),
+        name="document-verify",
+    ),
+]
+
+# Rows extracted from one document.
+document_patterns = [
+    path("transactions/", TransactionListView.as_view(), name="transactions"),
+    path("transactions/<uuid:pk>/", TransactionDetailView.as_view(), name="transaction"),
+    path("check-details/", CheckDetailListView.as_view(), name="check-details"),
+    path("check-details/<uuid:pk>/", CheckDetailDetailView.as_view(), name="check-detail"),
+    path("field-values/", FieldValueListView.as_view(), name="field-values"),
+    path("field-values/<uuid:pk>/", FieldValueDetailView.as_view(), name="field-value"),
+]
 
 urlpatterns = [
     path("auth/", include(("v1.identity.urls", "identity"), namespace="auth")),
+
     path("firm/", FirmView.as_view(), name="firm"),
-    path("firm/", include(firm.urls)),
-    path("", include(root.urls)),
-    path("clients/<int:client_id>/", include(client_scoped.urls)),
-    path("periods/<int:period_id>/", include(period_scoped.urls)),
-    path("documents/<int:document_id>/", include(document_scoped.urls)),
+    path("firm/members/", FirmMemberListView.as_view(), name="firm-members"),
+    path("firm/members/<uuid:pk>/", FirmMemberDetailView.as_view(), name="firm-member"),
+
+    path("clients/", ClientListView.as_view(), name="clients"),
+    path("clients/<uuid:pk>/", ClientDetailView.as_view(), name="client"),
+    path("clients/<uuid:client_id>/", include((client_patterns, "client-scoped"))),
+
+    path("periods/<uuid:period_id>/", include((period_patterns, "period-scoped"))),
+    path("documents/<uuid:document_id>/", include((document_patterns, "document-scoped"))),
+
     path("review/", include(("v1.review.urls", "review"), namespace="review")),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
 ]

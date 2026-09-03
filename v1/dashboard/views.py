@@ -8,13 +8,10 @@ scoping, so it was one more place tenancy could be got wrong.
 """
 
 from django.db.models import Count
-from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from v1.common.envelope import EnvelopeMixin
-from v1.common.permissions import IsFirmMemberOrReviewer
 from v1.common.querysets import accessible_clients
+from v1.common.views import BaseAPIView
 from v1.configuration.models import DocumentSource, JournalTemplate
 from v1.ledger.models import LedgerAccount
 from v1.periods.models import AccountingPeriod, PeriodDocument
@@ -26,11 +23,8 @@ MONTH_NAMES = [
 ]
 
 
-class DashboardView(EnvelopeMixin, GenericAPIView):
+class DashboardView(BaseAPIView):
     """Counts and recent activity across everything the caller can reach."""
-
-    permission_classes = [IsAuthenticated, IsFirmMemberOrReviewer]
-    serializer_class = None
 
     def get(self, request):
         clients = accessible_clients(request.user)

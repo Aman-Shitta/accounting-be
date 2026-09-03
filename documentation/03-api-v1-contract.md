@@ -36,8 +36,12 @@ document sources (name).
 **Throttling.** 60/min authenticated, 30/min anonymous. `auth/login` is
 10/min and `auth/set-password` / `auth/forgot-password` 5/min.
 
-**IDs.** Integer primary keys. `client.external_ref` is the firm's own code and
-is unique *per firm*, never globally.
+**IDs.** UUIDv7, as strings. They sort by creation time, so ordering by id is
+a reasonable proxy for ordering by age. A malformed id does not reach a view —
+it fails to match the route and returns a bare 404 with no envelope.
+
+`client.external_ref` is the firm's own code and is unique *per firm*, never
+globally. It is not an id.
 
 ---
 

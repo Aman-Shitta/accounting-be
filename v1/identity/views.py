@@ -3,8 +3,8 @@
 import logging
 
 from rest_framework import status
-from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -30,16 +30,15 @@ def _token_pair(user) -> dict:
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
-class LoginView(EnvelopeMixin, GenericAPIView):
+class LoginView(EnvelopeMixin, APIView):
     """Exchange email and password for an access/refresh pair."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    serializer_class = LoginSerializer
     throttle_scope = "login"
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
+        serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST, "Login failed.", errors=serializer.errors
@@ -53,12 +52,11 @@ class LoginView(EnvelopeMixin, GenericAPIView):
         )
 
 
-class RefreshTokenView(EnvelopeMixin, GenericAPIView):
+class RefreshTokenView(EnvelopeMixin, APIView):
     """Exchange a refresh token for a fresh access token."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    serializer_class = None
 
     def post(self, request):
         raw = (request.data or {}).get("refresh")
@@ -81,16 +79,15 @@ class RefreshTokenView(EnvelopeMixin, GenericAPIView):
         )
 
 
-class SetPasswordView(EnvelopeMixin, GenericAPIView):
+class SetPasswordView(EnvelopeMixin, APIView):
     """Consume an invite or reset token and set a password."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    serializer_class = SetPasswordSerializer
     throttle_scope = "set_password"
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
+        serializer = SetPasswordSerializer(data=request.data)
         if not serializer.is_valid():
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST,
@@ -113,16 +110,15 @@ class SetPasswordView(EnvelopeMixin, GenericAPIView):
         )
 
 
-class ForgotPasswordView(EnvelopeMixin, GenericAPIView):
+class ForgotPasswordView(EnvelopeMixin, APIView):
     """Send a reset link, if the address belongs to an account."""
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    serializer_class = ForgotPasswordSerializer
     throttle_scope = "set_password"
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
+        serializer = ForgotPasswordSerializer(data=request.data)
         if not serializer.is_valid():
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST, "Invalid request.", errors=serializer.errors
@@ -137,11 +133,10 @@ class ForgotPasswordView(EnvelopeMixin, GenericAPIView):
         )
 
 
-class WhoAmIView(EnvelopeMixin, GenericAPIView):
+class WhoAmIView(EnvelopeMixin, APIView):
     """The caller's identity, roles and how many clients they can reach."""
 
     permission_classes = [IsAuthenticated]
-    serializer_class = None
 
     def get(self, request):
         user = request.user
@@ -164,14 +159,13 @@ class WhoAmIView(EnvelopeMixin, GenericAPIView):
         )
 
 
-class MemberInviteView(EnvelopeMixin, GenericAPIView):
+class MemberInviteView(EnvelopeMixin, APIView):
     """Invite someone into the caller's firm."""
 
     permission_classes = [IsAuthenticated, IsFirmOwner]
-    serializer_class = InviteSerializer
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
+        serializer = InviteSerializer(data=request.data)
         if not serializer.is_valid():
             return create_api_response(
                 status.HTTP_400_BAD_REQUEST, "Invalid invite.", errors=serializer.errors

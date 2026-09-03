@@ -88,6 +88,50 @@ values, templates — because an accounting product needs to show who changed a
 number. It is *not* extended to config or period tables. If write volume becomes
 a problem, this is the first knob to turn.
 
+### Plain APIView everywhere, no ViewSets
+
+Every endpoint is an `APIView` with explicit methods and an explicit URL. No
+routers, no generic view classes.
+
+The trade is verbosity for legibility: `v1/urls.py` now lists all 49 routes, so
+the URL map *is* the API's index rather than something a reader has to infer
+from what a router generated. Shared behaviour lives in small mixins
+(`ListCreateMixin`, `DetailMixin`) in `v1/common/views.py`, and pagination is a
+function rather than a DRF pagination class, since those are wired to generic
+views.
+
+It also removed a real bug class: `ClientScopedView.initial()` resolves the
+client *before* dispatch, so a POST to another firm's client is a 404 rather
+than a 400 from serializer validation — the latter confirms the id exists.
+
+### UUIDv7 primary keys
+
+Every table in `v1/` uses `UUIDField(primary_key=True, default=new_id)`, where
+`new_id` is UUIDv7.
+
+- **Over a sequence:** ids can be minted before insert, nothing about a firm's
+  size or activity leaks from a guessable id, and rows can arrive from more
+  than one writer without collision.
+- **Over UUIDv4:** the leading 48 bits are a millisecond timestamp, so keys
+  sort by creation time. Inserts append at the right edge of the B-tree
+  instead of scattering across it, and `ORDER BY id` is a usable proxy for
+  `ORDER BY created_at`.
+
+`uuid.uuid7()` arrives in Python 3.14; on 3.12 this uses `uuid-utils`, behind a
+shim in `v1/common/ids.py` that prefers the stdlib when it is available.
+
+Two consequences worth knowing:
+
+- Detail routes match `<uuid:pk>`, so a non-UUID id is a **routing miss** — a
+  bare Django 404 with no envelope, before DRF is reached. That is correct: a
+  client sending a malformed id has a bug, not a permissions problem.
+- The frozen config payload is JSONB, so ids in it are stringified. A UUID is
+  not JSON.
+
+The initial migrations were regenerated rather than altered. Changing a primary
+key type across every foreign key is a painful migration chain, and the schema
+is greenfield and undeployed — there was nothing to preserve.
+
 ## Rejected alternatives
 
 **Mirror tables for config versioning instead of JSONB.** Keeps the config

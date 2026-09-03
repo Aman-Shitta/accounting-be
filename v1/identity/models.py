@@ -13,7 +13,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from v1.common.models import TimeStampedModel
+from v1.common.models import TimeStampedModel, UUIDPrimaryKeyModel
 
 INVITE_TOKEN_TTL = timedelta(hours=48)
 RESET_TOKEN_TTL = timedelta(hours=1)
@@ -44,7 +44,7 @@ class UserProfile(TimeStampedModel):
         return f"Profile for {self.user}"
 
 
-class PasswordSetToken(models.Model):
+class PasswordSetToken(UUIDPrimaryKeyModel):
     """
     A single-use, expiring token backing both the invite and the reset flow.
 

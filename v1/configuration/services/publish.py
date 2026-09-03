@@ -54,17 +54,26 @@ def build_payload(client) -> dict:
 
     return {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
-        "client": {"id": client.id, "name": client.name, "external_ref": client.external_ref},
+        "client": {
+            "id": str(client.id),
+            "name": client.name,
+            "external_ref": client.external_ref,
+        },
         "document_sources": [_serialize_source(s) for s in sources],
         "journal_templates": [_serialize_template(t) for t in templates],
     }
 
 
 def _account_ref(account) -> dict | None:
+    """
+    A ledger account as it appears in the frozen payload.
+
+    Ids are stringified: the payload is JSONB, and a UUID is not JSON.
+    """
     if account is None:
         return None
     return {
-        "id": account.id,
+        "id": str(account.id),
         "account_number": account.account_number,
         "name": account.name,
     }
@@ -75,7 +84,7 @@ def _serialize_source(source: DocumentSource) -> dict:
         # `key` is what a PeriodDocument stores, so it must stay stable for the
         # life of the source. The primary key is the only thing that does.
         "key": str(source.id),
-        "id": source.id,
+        "id": str(source.id),
         "name": source.name,
         "document_type": source.document_type,
         "is_transactional": source.is_transactional,
@@ -84,7 +93,7 @@ def _serialize_source(source: DocumentSource) -> dict:
         "extraction_notes": source.extraction_notes,
         "fields": [
             {
-                "id": field.id,
+                "id": str(field.id),
                 "key": field.key,
                 "label": field.label,
                 "prompt_hint": field.prompt_hint,
@@ -101,7 +110,7 @@ def _serialize_source(source: DocumentSource) -> dict:
 def _serialize_template(template: JournalTemplate) -> dict:
     return {
         "key": str(template.id),
-        "id": template.id,
+        "id": str(template.id),
         "name": template.name,
         "reference": template.reference,
         "frequency": template.frequency,
@@ -112,7 +121,7 @@ def _serialize_template(template: JournalTemplate) -> dict:
         "lines": [
             {
                 "key": str(line.id),
-                "id": line.id,
+                "id": str(line.id),
                 "side": line.side,
                 "amount_source": line.amount_source,
                 "extraction_field_key": (

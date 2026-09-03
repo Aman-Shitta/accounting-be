@@ -3,9 +3,24 @@
 from django.db import models
 from django.utils import timezone
 
+from v1.common.ids import new_id
 
-class TimeStampedModel(models.Model):
-    """Adds creation and modification timestamps."""
+
+class UUIDPrimaryKeyModel(models.Model):
+    """
+    A UUIDv7 primary key.
+
+    See :mod:`v1.common.ids` for why v7 rather than v4 or a sequence.
+    """
+
+    id = models.UUIDField(primary_key=True, default=new_id, editable=False)
+
+    class Meta:
+        abstract = True
+
+
+class TimeStampedModel(UUIDPrimaryKeyModel):
+    """A UUIDv7 key plus creation and modification timestamps."""
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

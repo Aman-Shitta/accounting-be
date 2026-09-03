@@ -5,17 +5,14 @@ import logging
 from celery import chain
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
+from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from v1.common.envelope import EnvelopeMixin
-from v1.common.permissions import IsFirmMemberOrReviewer
 from v1.common.querysets import accessible_clients
-from v1.common.views import ClientNestedViewSet
+from v1.common.views import BaseAPIView, ClientScopedView, DetailMixin, ListCreateMixin
 from v1.periods.models import (
     AccountingPeriod,
     PeriodCheckDetail,
@@ -37,8 +34,10 @@ from v1.periods.tasks import process_document_task, validate_control_totals_task
 
 logger = logging.getLogger(__name__)
 
+# ------------------------------------------------------------------ periods
 
-class AccountingPeriodViewSet(ClientNestedViewSet):
+
+class PeriodListView(ListCreateMixin, ClientScopedView):
     """A client's monthly closes."""
 
     queryset = (
@@ -47,8 +46,10 @@ class AccountingPeriodViewSet(ClientNestedViewSet):
         .prefetch_related("documents")
     )
     serializer_class = AccountingPeriodSerializer
+    ordering_fields = ["year", "month", "created_at"]
+    default_ordering = "-year"
 
-    def create(self, request, client_id=None):
+    def post(self, request, client_id):
         """Open a month, pinning the client's current configuration."""
         serializer = OpenPeriodSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -69,33 +70,41 @@ class AccountingPeriodViewSet(ClientNestedViewSet):
             AccountingPeriodSerializer(period).data, status=status.HTTP_201_CREATED
         )
 
+
+class PeriodDetailView(DetailMixin, ClientScopedView):
+    queryset = (
+        AccountingPeriod.objects.filter(is_deleted=False)
+        .select_related("client", "config_version")
+        .prefetch_related("documents")
+    )
+    serializer_class = AccountingPeriodSerializer
+
     def perform_destroy(self, instance):
         """Soft delete, so the month can be reopened and history survives."""
         instance.soft_delete()
 
-    @action(detail=False, methods=["get"], url_path="years")
-    def years(self, request, client_id=None):
-        """Years this client has periods for, for a year picker."""
-        return Response(
-            sorted(
-                self.get_queryset().values_list("year", flat=True).distinct(),
-                reverse=True,
-            )
-        )
+
+class PeriodYearsView(ClientScopedView):
+    """Years this client has periods for, for a year picker."""
+
+    queryset = AccountingPeriod.objects.filter(is_deleted=False)
+    serializer_class = AccountingPeriodSerializer
+
+    def get(self, request, client_id):
+        years = self.get_queryset().values_list("year", flat=True).distinct()
+        return Response(sorted(years, reverse=True))
 
 
-class PeriodDocumentViewSet(EnvelopeMixin, viewsets.ModelViewSet):
+# ---------------------------------------------------------------- documents
+
+
+class PeriodScopedView(BaseAPIView):
     """
-    Documents within a period.
+    A view under ``/periods/{period_id}/``.
 
-    Nested under ``/periods/{period_id}/`` rather than a client, because the
-    period is what a user is looking at once a month is open.
+    Nested on the period rather than the client, because a period is what a
+    user is looking at once a month is open.
     """
-
-    permission_classes = [IsAuthenticated, IsFirmMemberOrReviewer]
-    serializer_class = PeriodDocumentSerializer
-    parser_classes = [MultiPartParser, FormParser]
-    http_method_names = ["get", "post", "patch", "head", "options"]
 
     @property
     def period(self):
@@ -114,22 +123,52 @@ class PeriodDocumentViewSet(EnvelopeMixin, viewsets.ModelViewSet):
             self._period = period
         return self._period
 
-    def get_queryset(self):
+    def documents(self):
         return (
             PeriodDocument.objects.filter(period=self.period)
             .select_related("document_source", "assigned_reviewer__user")
             .annotate(transaction_count=Count("transactions"))
         )
 
-    @action(detail=True, methods=["post"], url_path="upload")
-    def upload(self, request, period_id=None, pk=None):
-        """
-        Attach a file and start extraction.
 
-        Re-uploading replaces the previous extraction rather than adding to it
-        — the task clears prior rows before running.
-        """
-        document = self.get_object()
+class PeriodDocumentListView(PeriodScopedView):
+    def get(self, request, period_id):
+        documents = self.documents().order_by("source_name")
+        return Response(
+            {
+                "count": documents.count(),
+                "next": None,
+                "previous": None,
+                "results": PeriodDocumentSerializer(documents, many=True).data,
+            }
+        )
+
+
+class PeriodDocumentDetailView(PeriodScopedView):
+    def get(self, request, period_id, pk):
+        document = get_object_or_404(self.documents(), pk=pk)
+        return Response(PeriodDocumentSerializer(document).data)
+
+    def patch(self, request, period_id, pk):
+        document = get_object_or_404(self.documents(), pk=pk)
+        serializer = PeriodDocumentSerializer(document, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class PeriodDocumentUploadView(PeriodScopedView):
+    """
+    Attach a file and start extraction.
+
+    Re-uploading replaces the previous extraction rather than adding to it —
+    the task clears prior rows before running.
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, period_id, pk):
+        document = get_object_or_404(self.documents(), pk=pk)
 
         serializer = DocumentUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -143,45 +182,48 @@ class PeriodDocumentViewSet(EnvelopeMixin, viewsets.ModelViewSet):
         )
 
         result = chain(
-            process_document_task.s(document.id),
-            validate_control_totals_task.s(document_id=document.id),
+            process_document_task.s(str(document.id)),
+            validate_control_totals_task.s(document_id=str(document.id)),
         ).apply_async()
 
         logger.info(f"Queued extraction for document {document.id} (task {result.id})")
 
         return Response(
-            {
-                **PeriodDocumentSerializer(document).data,
-                "task_id": result.id,
-            },
+            {**PeriodDocumentSerializer(document).data, "task_id": result.id},
             status=status.HTTP_202_ACCEPTED,
         )
 
-    @action(detail=True, methods=["get"], url_path="config")
-    def config(self, request, period_id=None, pk=None):
-        """
-        The frozen configuration this document was opened against — not the
-        client's current configuration.
-        """
-        document = self.get_object()
+
+class PeriodDocumentConfigView(PeriodScopedView):
+    """
+    The frozen configuration this document was opened against — not the
+    client's current configuration.
+    """
+
+    def get(self, request, period_id, pk):
+        document = get_object_or_404(self.documents(), pk=pk)
         frozen = resolved_source(document)
         if frozen is None:
             raise NotFound("This document's source is not in the pinned configuration.")
         return Response(frozen)
 
-    @action(detail=True, methods=["post"], url_path="verify")
-    def verify(self, request, period_id=None, pk=None):
-        """Mark a document reviewed and correct."""
-        document = self.get_object()
+
+class PeriodDocumentVerifyView(PeriodScopedView):
+    def post(self, request, period_id, pk):
+        document = get_object_or_404(self.documents(), pk=pk)
         document.status = PeriodDocument.Status.VERIFIED
         document.save(update_fields=["status", "updated_at"])
         return Response(PeriodDocumentSerializer(document).data)
 
 
-class DocumentScopedViewSet(EnvelopeMixin, viewsets.ModelViewSet):
-    """Base for rows that belong to one period document."""
+# ----------------------------------------------------------- extracted rows
 
-    permission_classes = [IsAuthenticated, IsFirmMemberOrReviewer]
+
+class DocumentScopedView(ListCreateMixin, BaseAPIView):
+    """Rows belonging to one period document."""
+
+    queryset = None
+    serializer_class = None
 
     @property
     def document(self):
@@ -200,19 +242,37 @@ class DocumentScopedViewSet(EnvelopeMixin, viewsets.ModelViewSet):
         return self._document
 
     def get_queryset(self):
-        return super().get_queryset().filter(document=self.document)
+        return self.queryset.filter(document=self.document)
+
+    def get_object(self, pk):
+        return get_object_or_404(self.get_queryset(), pk=pk)
+
+    def get_serializer_context(self):
+        return {"request": self.request, "view": self}
+
+    def serialize(self, instance, many=False, **kwargs):
+        return self.serializer_class(
+            instance, many=many, context=self.get_serializer_context(), **kwargs
+        ).data
 
     def perform_create(self, serializer):
-        serializer.save(document=self.document)
+        return serializer.save(document=self.document)
 
 
-class PeriodTransactionViewSet(DocumentScopedViewSet):
+class DocumentRowDetailView(DetailMixin, DocumentScopedView):
+    """Detail for one extracted row. Inherits the document scoping above."""
+
+
+class TransactionListView(DocumentScopedView):
     """Extracted transactions, and the corrections a reviewer makes to them."""
 
     queryset = PeriodTransaction.objects.select_related(
         "ledger_account", "offset_ledger_account"
     )
     serializer_class = PeriodTransactionSerializer
+    search_fields = ["description", "check_number"]
+    ordering_fields = ["page_number", "line_number", "amount", "transaction_date"]
+    default_ordering = "page_number"
 
     def perform_create(self, serializer):
         """A reviewer adding a transaction the extractor missed."""
@@ -221,18 +281,30 @@ class PeriodTransactionViewSet(DocumentScopedViewSet):
             .order_by("-line_number")
             .first()
         )
-        serializer.save(
-            document=self.document,
-            line_number=(last.line_number + 1) if last else 1,
+        return serializer.save(
+            document=self.document, line_number=(last.line_number + 1) if last else 1
         )
 
 
-class PeriodCheckDetailViewSet(DocumentScopedViewSet):
+class TransactionDetailView(DocumentRowDetailView):
+    queryset = PeriodTransaction.objects.select_related(
+        "ledger_account", "offset_ledger_account"
+    )
+    serializer_class = PeriodTransactionSerializer
+
+
+class CheckDetailListView(DocumentScopedView):
+    queryset = PeriodCheckDetail.objects.select_related("transaction")
+    serializer_class = PeriodCheckDetailSerializer
+    default_ordering = "page_number"
+
+
+class CheckDetailDetailView(DocumentRowDetailView):
     queryset = PeriodCheckDetail.objects.select_related("transaction")
     serializer_class = PeriodCheckDetailSerializer
 
 
-class PeriodFieldValueViewSet(DocumentScopedViewSet):
+class FieldValueListView(DocumentScopedView):
     """
     Extracted field values.
 
@@ -244,4 +316,17 @@ class PeriodFieldValueViewSet(DocumentScopedViewSet):
         "ledger_account", "offset_ledger_account"
     )
     serializer_class = PeriodFieldValueSerializer
-    http_method_names = ["get", "patch", "head", "options"]
+    default_ordering = "field_key"
+
+    def post(self, request, **kwargs):
+        raise NotFound()
+
+
+class FieldValueDetailView(DocumentRowDetailView):
+    queryset = PeriodFieldValue.objects.select_related(
+        "ledger_account", "offset_ledger_account"
+    )
+    serializer_class = PeriodFieldValueSerializer
+
+    def delete(self, request, **kwargs):
+        raise NotFound()
