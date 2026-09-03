@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from v1.configuration.models import DocumentType, DocumentSource, ExtractionField
+from v1.configuration.models import DocumentSource, DocumentType, ExtractionField
 from v1.configuration.services.publish import publish_config
 from v1.identity.models import UserProfile
 from v1.ledger.models import LedgerAccount
