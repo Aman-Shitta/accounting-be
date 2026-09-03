@@ -18,7 +18,7 @@ API-only Django project where a CPA firm is a first-class tenant.
 - [x] **2** — Postgres, local storage, API-only settings
 - [x] **3** — `v1/` package and the new schema
 - [x] **4** — Auth without SSO
-- [ ] **5** — Config versioning replaces snapshots
+- [x] **5** — Config versioning replaces snapshots
 - [ ] **6** — API v1 surface
 - [ ] **7** — Rewire the extractor
 
