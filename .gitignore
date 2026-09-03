@@ -60,3 +60,19 @@ pylint-report.txt
 uploads
 uploads/
 */static/
+
+# Secrets — never commit
+*.json.key
+aicounting-*-*.json
+mysql.cnf
+mysql.cnf.prod
+.prod.dep.md
+.env
+
+# Local runtime artifacts
+dump.rdb
+celerybeat-schedule.db
+media/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
