@@ -344,16 +344,23 @@ def test_a_document_reports_its_frozen_configuration(configured_client, two_firm
     assert keys == ["gross_wages", "employer_taxes"], "the period keeps its pinned config"
 
 
-def test_a_reviewer_can_reach_documents_across_firms(configured_client, reviewer):
-    """
-    Platform-scoped by design today — flagged in
-    documentation/02-decisions.md as needing a product decision.
-    """
+def test_a_reviewer_reaches_their_own_firms_documents(configured_client, reviewer):
     period = open_period(configured_client["client"], 2026, 3)
 
     response = api_client_for(reviewer).get(f"/api/v1/periods/{period.id}/documents/")
 
     assert response.status_code == 200
+
+
+def test_a_reviewer_cannot_reach_another_firms_documents(
+    configured_client, reviewer_b
+):
+    """`configured_client` belongs to firm A; reviewer_b reviews for firm B."""
+    period = open_period(configured_client["client"], 2026, 3)
+
+    response = api_client_for(reviewer_b).get(f"/api/v1/periods/{period.id}/documents/")
+
+    assert response.status_code == 404
 
 
 # ---- dashboard --------------------------------------------------------------

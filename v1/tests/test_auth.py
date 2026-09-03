@@ -173,18 +173,20 @@ def test_whoami_needs_a_token(api):
     assert api.get(ME).status_code == 401
 
 
-def test_reviewers_are_invited_without_a_firm():
+def test_a_reviewer_is_invited_into_a_firm_like_anyone_else():
+    firm = Firm.objects.create(name="Beans & Co")
+
     membership, _ = services.invite_member(
-        email="rev@example.com", role=FirmMembership.Role.REVIEWER
+        email="rev@example.com", role=FirmMembership.Role.REVIEWER, firm=firm
     )
-    assert membership.firm is None
+
+    assert membership.firm == firm
 
 
-def test_a_non_reviewer_invite_requires_a_firm():
-    with pytest.raises(services.InviteError):
-        services.invite_member(
-            email="nofirm@example.com", role=FirmMembership.Role.ACCOUNTANT
-        )
+@pytest.mark.parametrize("role", [r.value for r in FirmMembership.Role])
+def test_no_role_can_be_invited_without_a_firm(role):
+    with pytest.raises(services.InviteError, match="firm is required"):
+        services.invite_member(email=f"nofirm-{role}@example.com", role=role, firm=None)
 
 
 def test_inviting_the_same_person_twice_is_refused():

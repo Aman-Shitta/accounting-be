@@ -52,17 +52,20 @@ User ─1:1─ UserProfile
 - **`FirmMembership(user, firm, role)`** replaces three near-duplicate models
   (`DimAICCustomer` as owner, `DimAICAccountant`, `DimAICReviewer`), each of
   which separately carried `system_user`, `azure_id`, `refresher_token` and
-  `verified`. Roles: `owner`, `accountant`, `reviewer`.
+  `verified`. Roles: `owner`, `accountant`, `reviewer`. `firm` is required for
+  every role.
 - **`UserProfile`** absorbs the per-user fields those three duplicated.
 - **`ClientAssignment`** replaces the `assigned_accountants` M2M, so the join
   carries `assigned_at` / `assigned_by`.
-- A `FirmMembership` with `firm = NULL` and `role = reviewer` is a
-  **platform-level reviewer** — see `02-decisions.md`, this is a deliberate
-  cross-tenant hole inherited from today's behaviour and needs confirmation.
+- **Reviewers are firm-scoped.** `FirmMembership.next_reviewer(firm)` only
+  considers reviewers at the firm that owns the document, so review never
+  crosses the tenant boundary.
 
 ### Enforcement
 
-`v1/common/querysets.py` provides one scoping entry point:
+Owners and reviewers see every client of their firm; accountants see only the
+clients assigned to them. `v1/common/querysets.py` provides one scoping entry
+point:
 
 ```python
 class TenantScopedQuerySet(models.QuerySet):

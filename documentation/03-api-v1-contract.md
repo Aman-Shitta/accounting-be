@@ -55,7 +55,8 @@ receives a link and chooses a password.
 | GET | `me/` | | identity, roles, reachable client count |
 | POST | `invite/` | `{email, role, first_name?, last_name?}` | the new membership |
 
-`role` is `owner`, `accountant` or `reviewer`.
+`role` is `owner`, `accountant` or `reviewer`. Every invite joins the caller's
+firm, reviewers included.
 
 **Invite flow.** `POST auth/invite/` → the invitee gets an email containing
 `{APP_BASE_URL}/set-password?token=…` → the client reads `token` off the query
@@ -204,8 +205,10 @@ and the client has `allow_review` set.
 | POST | `documents/{id}/claim/` | → `in_review` |
 | POST | `documents/{id}/submit/` | `{notes, approved}`; approving sends it to classification |
 
-> Reviewers are platform-level today and see documents across every firm. See
-> `02-decisions.md` — this needs a product decision.
+Reviewers are scoped to their firm: work is assigned round-robin among the
+reviewers at the firm that owns the document, and the queue never shows another
+firm's documents. A firm with no reviewers still parks mismatched documents —
+they appear in that firm's queue unassigned.
 
 ---
 

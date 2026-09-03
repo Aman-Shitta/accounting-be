@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from v1.common.envelope import EnvelopeMixin
 from v1.common.permissions import IsFirmMember, IsFirmMemberOrReviewer, IsFirmOwner
+from v1.common.querysets import firm_for
 from v1.common.views import ClientNestedViewSet, TenantScopedViewSet
 from v1.identity.serializers import MembershipSerializer
 from v1.tenancy.models import (
@@ -24,18 +25,6 @@ from v1.tenancy.serializers import (
     ClientSerializer,
     FirmSerializer,
 )
-
-
-def firm_for(user):
-    """The firm the caller belongs to, or 404 for a platform-level reviewer."""
-    membership = (
-        FirmMembership.objects.filter(user=user, is_active=True, firm__isnull=False)
-        .select_related("firm")
-        .first()
-    )
-    if membership is None:
-        raise NotFound("You do not belong to a firm.")
-    return membership.firm
 
 
 class FirmView(EnvelopeMixin, GenericAPIView):

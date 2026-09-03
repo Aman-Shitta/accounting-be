@@ -18,12 +18,12 @@ def accessible_clients(user):
     Return the ``Client`` queryset this user may see.
 
     - **owner** — every client of their firm
+    - **reviewer** — every client of their firm, so they can be handed any of
+      its documents for review
     - **accountant** — only clients explicitly assigned to them
-    - **reviewer** — every client, platform-wide
 
-    Reviewers are deliberately platform-scoped, matching the round-robin the
-    product ships today. See ``documentation/02-decisions.md``; this crosses
-    firm boundaries and is flagged for review.
+    Nothing here reaches beyond the firm on the membership. A user with
+    memberships in several firms sees the union of what each grants.
     """
     from v1.tenancy.models import Client, FirmMembership
 
@@ -38,25 +38,21 @@ def accessible_clients(user):
     if not memberships:
         return Client.objects.none()
 
-    live = Client.objects.filter(is_deleted=False)
-
-    if any(m.role == FirmMembership.Role.REVIEWER for m in memberships):
-        return live
-
-    owner_firm_ids = [
-        m.firm_id for m in memberships if m.role == FirmMembership.Role.OWNER and m.firm_id
-    ]
+    # Owners and reviewers both see their whole firm; accountants see only what
+    # they have been assigned.
+    firm_wide_roles = {FirmMembership.Role.OWNER, FirmMembership.Role.REVIEWER}
+    firm_ids = [m.firm_id for m in memberships if m.role in firm_wide_roles]
     accountant_ids = [
         m.id for m in memberships if m.role == FirmMembership.Role.ACCOUNTANT
     ]
 
     condition = models.Q(pk__in=[])
-    if owner_firm_ids:
-        condition |= models.Q(firm_id__in=owner_firm_ids)
+    if firm_ids:
+        condition |= models.Q(firm_id__in=firm_ids)
     if accountant_ids:
         condition |= models.Q(assignments__membership_id__in=accountant_ids)
 
-    return live.filter(condition).distinct()
+    return Client.objects.filter(is_deleted=False).filter(condition).distinct()
 
 
 class TenantScopedQuerySet(models.QuerySet):
@@ -84,3 +80,24 @@ def tenant_manager(lookup: str):
         "ScopedQuerySet", (TenantScopedQuerySet,), {"client_lookup": lookup}
     )
     return models.Manager.from_queryset(queryset_cls)
+
+
+def firm_for(user):
+    """
+    The firm the caller belongs to. Every role has one, reviewers included.
+
+    Raises ``NotFound`` when the user has no active membership — there is
+    nothing for them to act on.
+    """
+    from rest_framework.exceptions import NotFound
+
+    from v1.tenancy.models import FirmMembership
+
+    membership = (
+        FirmMembership.objects.filter(user=user, is_active=True)
+        .select_related("firm")
+        .first()
+    )
+    if membership is None:
+        raise NotFound("You do not belong to a firm.")
+    return membership.firm

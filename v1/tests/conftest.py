@@ -100,11 +100,21 @@ def two_firms(db):
 
 
 @pytest.fixture
-def reviewer(db):
-    """A platform-level reviewer — no firm."""
+def reviewer(db, two_firms):
+    """A reviewer at firm A."""
     user = make_user("reviewer@example.com")
     FirmMembership.objects.create(
-        user=user, firm=None, role=FirmMembership.Role.REVIEWER
+        user=user, firm=two_firms["a"]["firm"], role=FirmMembership.Role.REVIEWER
+    )
+    return user
+
+
+@pytest.fixture
+def reviewer_b(db, two_firms):
+    """A reviewer at firm B, for checking the two do not see each other."""
+    user = make_user("reviewer-b@example.com")
+    FirmMembership.objects.create(
+        user=user, firm=two_firms["b"]["firm"], role=FirmMembership.Role.REVIEWER
     )
     return user
 

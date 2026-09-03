@@ -211,8 +211,12 @@ def validate_control_totals_task(_previous_result=None, document_id=None) -> dic
 
 
 def _assign_reviewer(doc: PeriodDocument, mismatch: dict) -> None:
-    """Park the document for human review and hand it to the next reviewer."""
-    reviewer = FirmMembership.next_reviewer()
+    """
+    Park the document for review and hand it to the next reviewer at the firm
+    that owns it. A firm with no reviewers leaves the document unassigned but
+    still parked, so it shows up in that firm's queue rather than vanishing.
+    """
+    reviewer = FirmMembership.next_reviewer(doc.period.client.firm)
 
     doc.status = PeriodDocument.Status.PENDING_REVIEW
     doc.balance_mismatch_details = mismatch
@@ -229,7 +233,10 @@ def _assign_reviewer(doc: PeriodDocument, mismatch: dict) -> None:
     if reviewer:
         logger.info(f"Document {doc.id} assigned to reviewer {reviewer.user.email}")
     else:
-        logger.warning(f"No reviewer available for document {doc.id}")
+        logger.warning(
+            f"No reviewer at {doc.period.client.firm.name} available for "
+            f"document {doc.id}; it is parked unassigned"
+        )
 
     logger.warning(f"Control total mismatch for document {doc.id}: {mismatch}")
 

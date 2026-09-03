@@ -79,8 +79,8 @@ A local Postgres works just as well as the compose service — the settings read
 
 Answers change the schema, so they are worth resolving before Phase 3 lands.
 
-1. **Should reviewers be scoped to a firm?** Today they are platform-level and
-   see documents across every firm. Preserved as-is for now — see
+1. ~~Should reviewers be scoped to a firm?~~ **Resolved: yes.** Every
+   membership now requires a firm and review work is assigned within it. See
    [02-decisions.md](02-decisions.md).
 2. **Is the Django admin genuinely unwanted?** It is being removed along with the
    whole template layer. Reinstating it later means writing the admin classes

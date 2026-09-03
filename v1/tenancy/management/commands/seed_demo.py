@@ -14,6 +14,7 @@ from v1.configuration.models import DocumentSource, DocumentType, ExtractionFiel
 from v1.configuration.services.publish import publish_config
 from v1.identity.models import UserProfile
 from v1.ledger.models import LedgerAccount
+from v1.periods.models import AccountingPeriod
 from v1.periods.services.open_period import open_period
 from v1.tenancy.models import Client, ClientAssignment, Firm, FirmMembership
 
@@ -51,9 +52,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         if options["reset"]:
-            Firm.objects.filter(name="Demo Accounting LLP").delete()
-            User.objects.filter(email__endswith="@demo.aicounting.app").delete()
-            self.stdout.write("Removed the previous demo data.")
+            self._reset()
 
         if Firm.objects.filter(name="Demo Accounting LLP").exists():
             raise SystemExit(
@@ -74,7 +73,7 @@ class Command(BaseCommand):
 
         reviewer = self._user("reviewer@demo.aicounting.app", "Robin", "Ng")
         FirmMembership.objects.create(
-            user=reviewer, firm=None, role=FirmMembership.Role.REVIEWER
+            user=reviewer, firm=firm, role=FirmMembership.Role.REVIEWER
         )
 
         client = Client.objects.create(
@@ -134,6 +133,22 @@ class Command(BaseCommand):
             role = user.firm_memberships.first().get_role_display()
             self.stdout.write(f"    {user.email:<38} {role}")
         self.stdout.write(f"\n  Password        {PASSWORD}\n")
+
+    def _reset(self):
+        """
+        Remove the demo firm.
+
+        Periods hold a PROTECT reference to their config version, so they have
+        to go before the firm's clients can cascade away.
+        """
+        firms = Firm.objects.filter(name="Demo Accounting LLP")
+        if not firms.exists():
+            return
+
+        AccountingPeriod.objects.filter(client__firm__in=firms).delete()
+        firms.delete()
+        User.objects.filter(email__endswith="@demo.aicounting.app").delete()
+        self.stdout.write("Removed the previous demo data.")
 
     def _user(self, email: str, first_name: str, last_name: str):
         user = User.objects.create_user(

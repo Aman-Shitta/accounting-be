@@ -68,8 +68,8 @@ class FirmMembership(TimeStampedModel):
     each carried their own copy of the linked user, Azure id, refresh token and
     verified flag.
 
-    ``firm`` is null only for platform-level reviewers, who are handed work
-    across every firm — see ``documentation/02-decisions.md``.
+    Every membership belongs to a firm, reviewers included — the firm is the
+    tenant boundary and nothing crosses it.
     """
 
     class Role(models.TextChoices):
@@ -86,9 +86,6 @@ class FirmMembership(TimeStampedModel):
         Firm,
         on_delete=models.CASCADE,
         related_name="memberships",
-        null=True,
-        blank=True,
-        help_text="Null only for platform-level reviewers",
     )
     role = models.CharField(max_length=20, choices=Role.choices)
     is_active = models.BooleanField(default=True)
@@ -115,26 +112,26 @@ class FirmMembership(TimeStampedModel):
             models.UniqueConstraint(
                 fields=["user", "firm", "role"], name="uniq_membership_user_firm_role"
             ),
-            models.CheckConstraint(
-                condition=models.Q(firm__isnull=False)
-                | models.Q(role="reviewer"),
-                name="only_reviewers_may_be_firmless",
-            ),
         ]
-        indexes = [models.Index(fields=["user", "is_active"])]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["firm", "role", "is_active"]),
+        ]
 
     def __str__(self):
-        scope = self.firm.name if self.firm else "platform"
-        return f"{self.user} — {self.get_role_display()} @ {scope}"
+        return f"{self.user} — {self.get_role_display()} @ {self.firm.name}"
 
     @classmethod
-    def next_reviewer(cls):
+    def next_reviewer(cls, firm):
         """
-        Least-recently-assigned active reviewer, and stamp them so the next
-        call returns someone else. Returns ``None`` when there are none.
+        The firm's least-recently-assigned active reviewer, stamped so the next
+        call returns someone else. ``None`` when the firm has no reviewers.
+
+        Scoped to one firm: a reviewer sees the documents of their own firm's
+        clients and nobody else's.
         """
         reviewer = (
-            cls.objects.filter(role=cls.Role.REVIEWER, is_active=True)
+            cls.objects.filter(firm=firm, role=cls.Role.REVIEWER, is_active=True)
             .order_by(models.F("review_assigned_at").asc(nulls_first=True))
             .first()
         )

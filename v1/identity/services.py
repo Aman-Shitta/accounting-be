@@ -52,22 +52,19 @@ def _send(subject: str, body: str, to_email: str) -> None:
 
 @transaction.atomic
 def invite_member(
-    *, email: str, role: str, firm=None, invited_by=None, first_name: str = "", last_name: str = ""
+    *, email: str, role: str, firm, invited_by=None, first_name: str = "", last_name: str = ""
 ) -> tuple[FirmMembership, str]:
     """
     Create (or reuse) a user, give them a membership, and email a set-password
     link. Returns the membership and the raw token.
 
-    Reviewers are platform-level and take ``firm=None``; every other role
-    requires a firm.
+    Every role belongs to a firm, reviewers included.
     """
     email = email.strip().lower()
     if not email:
         raise InviteError("An email address is required.")
 
-    if role == FirmMembership.Role.REVIEWER:
-        firm = None
-    elif firm is None:
+    if firm is None:
         raise InviteError(f"A firm is required to invite a {role}.")
 
     user, created = User.objects.get_or_create(
@@ -96,11 +93,10 @@ def invite_member(
 
     _, raw_token = PasswordSetToken.issue(user, PasswordSetToken.Purpose.INVITE)
 
-    scope = firm.name if firm else "the review team"
     _send(
-        subject=f"You have been invited to {scope}",
+        subject=f"You have been invited to {firm.name}",
         body=(
-            f"You have been invited to join {scope} on aicounting.\n\n"
+            f"You have been invited to join {firm.name} on aicounting.\n\n"
             f"Set your password to get started:\n{_set_password_url(raw_token)}\n\n"
             f"This link expires in 48 hours."
         ),

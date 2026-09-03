@@ -32,14 +32,22 @@ def test_an_accountant_sees_only_assigned_clients(two_firms):
     assert two_firms["a"]["clients"][1] not in visible
 
 
-def test_a_reviewer_sees_across_firms(two_firms, reviewer):
+def test_a_reviewer_sees_their_own_firms_clients_and_no_others(two_firms, reviewer):
     """
-    Deliberate: reviewers are platform-level today. Flagged in
-    documentation/02-decisions.md as needing a product decision.
+    A reviewer covers their whole firm — they can be handed any of its
+    documents — but the firm is still the boundary.
     """
     visible = accessible_clients(reviewer)
 
-    assert set(visible) == set(two_firms["a"]["clients"] + two_firms["b"]["clients"])
+    assert set(visible) == set(two_firms["a"]["clients"])
+    assert not visible.filter(firm=two_firms["b"]["firm"]).exists()
+
+
+def test_two_firms_reviewers_do_not_see_each_other_s_clients(
+    two_firms, reviewer, reviewer_b
+):
+    assert set(accessible_clients(reviewer)) == set(two_firms["a"]["clients"])
+    assert set(accessible_clients(reviewer_b)) == set(two_firms["b"]["clients"])
 
 
 def test_a_user_with_no_membership_sees_nothing(db):
@@ -124,30 +132,37 @@ def test_one_client_cannot_name_two_sources_the_same(configured_client):
         )
 
 
-def test_only_reviewers_may_have_no_firm(db):
-    user = make_user("orphan@example.com")
+@pytest.mark.parametrize("role", [r.value for r in FirmMembership.Role])
+def test_no_membership_may_exist_without_a_firm(db, role):
+    """The firm is the tenant boundary; reviewers are no longer an exception."""
+    user = make_user(f"orphan-{role}@example.com")
 
     with pytest.raises(IntegrityError), transaction.atomic():
-        FirmMembership.objects.create(
-            user=user, firm=None, role=FirmMembership.Role.ACCOUNTANT
-        )
+        FirmMembership.objects.create(user=user, firm=None, role=role)
 
 
-def test_reviewer_round_robin_cycles(db):
+def test_reviewer_round_robin_cycles_within_a_firm(two_firms):
+    firm = two_firms["a"]["firm"]
     first = make_user("rev1@example.com")
     second = make_user("rev2@example.com")
     for user in (first, second):
         FirmMembership.objects.create(
-            user=user, firm=None, role=FirmMembership.Role.REVIEWER
+            user=user, firm=firm, role=FirmMembership.Role.REVIEWER
         )
 
-    picked = [FirmMembership.next_reviewer().user for _ in range(4)]
+    picked = [FirmMembership.next_reviewer(firm).user for _ in range(4)]
 
     assert picked == [first, second, first, second]
 
 
-def test_round_robin_returns_none_when_there_are_no_reviewers(db):
-    assert FirmMembership.next_reviewer() is None
+def test_round_robin_never_reaches_another_firms_reviewer(two_firms, reviewer):
+    """reviewer belongs to firm A, so firm B must not be handed them."""
+    assert FirmMembership.next_reviewer(two_firms["a"]["firm"]).user == reviewer
+    assert FirmMembership.next_reviewer(two_firms["b"]["firm"]) is None
+
+
+def test_round_robin_returns_none_when_a_firm_has_no_reviewers(two_firms):
+    assert FirmMembership.next_reviewer(two_firms["a"]["firm"]) is None
 
 
 def test_a_firm_gets_a_unique_public_id(db):

@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from v1.common.envelope import EnvelopeMixin
 from v1.common.permissions import IsFirmOwner
-from v1.common.querysets import accessible_clients
+from v1.common.querysets import accessible_clients, firm_for
 from v1.common.responses import create_api_response
 from v1.identity import services
 from v1.identity.serializers import (
@@ -177,15 +177,11 @@ class MemberInviteView(EnvelopeMixin, GenericAPIView):
                 status.HTTP_400_BAD_REQUEST, "Invalid invite.", errors=serializer.errors
             )
 
-        owner_membership = FirmMembership.objects.filter(
-            user=request.user, role=FirmMembership.Role.OWNER, is_active=True
-        ).first()
-
         try:
             membership, _ = services.invite_member(
                 email=serializer.validated_data["email"],
                 role=serializer.validated_data["role"],
-                firm=owner_membership.firm if owner_membership else None,
+                firm=firm_for(request.user),
                 invited_by=request.user,
                 first_name=serializer.validated_data.get("first_name", ""),
                 last_name=serializer.validated_data.get("last_name", ""),

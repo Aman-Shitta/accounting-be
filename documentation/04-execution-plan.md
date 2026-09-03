@@ -1,3 +1,7 @@
+> **Historical record — the plan as approved.** One decision has since changed:
+> reviewers are now firm-scoped, not platform-level. See
+> [02-decisions.md](02-decisions.md).
+
 # Rebuild aicounting-backend as a multi-tenant, API-only v1
 
 ## Context

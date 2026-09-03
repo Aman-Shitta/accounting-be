@@ -29,21 +29,28 @@ Removing `django.contrib.admin` also removes `TEMPLATES`, `staticfiles`,
 - **Against:** no ops UI. Inspecting or fixing data means psql.
 - **Reversible?** Yes, but the admin classes would have to be written fresh.
 
-### Reviewers stay platform-level ⚠️
+### Reviewers are scoped to a firm — resolved
 
-`FirmMembership` allows `firm = NULL` for `role = reviewer`, matching today's
-`DimAICReviewer.get_next_reviewer()`, which round-robins over every verified
-reviewer on the platform regardless of firm.
+Originally carried over from `DimAICReviewer`, which had no firm at all:
+`get_next_reviewer()` round-robined over every verified reviewer on the
+platform, so a reviewer could be handed any firm's documents. That was a
+cross-tenant hole, and the product owner confirmed it should close.
 
-**This is a cross-tenant hole.** A reviewer at the platform level sees documents
-belonging to any firm. It is inherited behaviour, not a new design, and it is
-preserved so the review queue keeps working — but a genuinely multi-tenant
-product probably wants reviewers scoped to a firm, with a platform pool as an
-explicit opt-in per firm.
+`FirmMembership.firm` is now **non-nullable for every role**, and
+`FirmMembership.next_reviewer(firm)` takes the firm that owns the document.
+A reviewer sees their own firm's clients — all of them, since they may be
+handed any of its documents — and nobody else's.
 
-**Needs a yes/no.** If reviewers should be firm-scoped, `FirmMembership.firm`
-becomes non-nullable and `get_next_reviewer` takes a firm argument. That is a
-small change now and an expensive one later.
+A firm with no reviewers parks a mismatched document unassigned rather than
+reaching across to another firm's pool. It still shows in that firm's queue, so
+the work is visible rather than silently lost.
+
+Migrations `tenancy/0002` and `0003` make the change. `0002` drops the
+`only_reviewers_may_be_firmless` constraint and deletes any firmless
+membership — such a reviewer has no firm to be scoped to and no way to guess
+one, so they must be re-invited per firm. The two are split because Postgres
+refuses to `ALTER` a table with pending trigger events from the same
+transaction.
 
 ### Claude backends kept, standalone Claude pipeline deleted
 

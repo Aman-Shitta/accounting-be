@@ -1,9 +1,9 @@
 """
 The reviewer queue.
 
-A document lands here when its control totals do not balance. Reviewers are
-platform-level today — see documentation/02-decisions.md, which flags that as
-crossing firm boundaries.
+A document lands here when its control totals do not balance and the client
+has ``allow_review`` set. Reviewers are scoped to their firm: the round-robin
+that assigns work only considers reviewers at the firm that owns the document.
 """
 
 from rest_framework import serializers, viewsets
@@ -30,6 +30,8 @@ class ReviewQueueViewSet(EnvelopeMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = PeriodDocumentSerializer
 
     def get_queryset(self):
+        # Assignment is already firm-scoped, so filtering by the caller's own
+        # reviewer memberships cannot reach another firm's documents.
         memberships = FirmMembership.objects.filter(
             user=self.request.user, role=FirmMembership.Role.REVIEWER, is_active=True
         )
