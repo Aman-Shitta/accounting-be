@@ -6,6 +6,7 @@ Roles come from ``FirmMembership``. Object access is decided by
 :mod:`v1.common.querysets`.
 """
 
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission
 
 from v1.common.querysets import accessible_clients
@@ -85,22 +86,26 @@ class HasClientAccess(BasePermission):
     """
     The client named in the URL is one the user can see.
 
-    Views expose the client id as ``client_id`` or ``client_pk`` in the URL
-    kwargs. A client outside the user's scope is reported as missing, not
-    forbidden, so existence does not leak across firms.
+    Raises ``NotFound`` rather than returning ``False``: a 403 would confirm
+    that a client id exists, which is exactly what must not leak across firms.
+    Views expose the id as ``client_id`` or ``client_pk`` in their URL kwargs.
     """
-
-    message = "No such client."
 
     def has_permission(self, request, view):
         client_id = view.kwargs.get("client_id") or view.kwargs.get("client_pk")
         if client_id is None:
             return True
-        return accessible_clients(request.user).filter(pk=client_id).exists()
+
+        if not accessible_clients(request.user).filter(pk=client_id).exists():
+            raise NotFound("No such client.")
+        return True
 
     def has_object_permission(self, request, view, obj):
         client = getattr(obj, "client", None) or obj
         client_id = getattr(client, "pk", None)
-        if client_id is None:
-            return False
-        return accessible_clients(request.user).filter(pk=client_id).exists()
+
+        if client_id is None or not accessible_clients(request.user).filter(
+            pk=client_id
+        ).exists():
+            raise NotFound("No such client.")
+        return True

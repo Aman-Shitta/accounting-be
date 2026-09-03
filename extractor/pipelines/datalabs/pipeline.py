@@ -19,21 +19,25 @@ import logging
 import os
 import re
 import sys
-from typing import Any, Dict, List
+from typing import Any
 
-from v1.periods.models import PeriodDocument
 from extractor.base import BaseDocumentProcessor
 from extractor.persistence.bank_statement_saver import BankStatementSaver
 from extractor.pipelines.datalabs.backends import (
     # ClaudeCheckImageExtractor as CheckImageExtractor,
     GeminiCheckImageExtractor as CheckImageExtractor,
+)
+from extractor.pipelines.datalabs.backends import (
     # ClaudeSummaryExtractor as SummaryExtractor,
     GeminiSummaryExtractor as SummaryExtractor,
+)
+from extractor.pipelines.datalabs.backends import (
     # ClaudeTransactionExtractor as TransactionExtractor,
     GeminiTransactionExtractor as TransactionExtractor,
 )
 from extractor.pipelines.datalabs.parser import DatalabsParser
 from extractor.utils import clean_temp_file, generate_temp_pdf
+from v1.periods.models import PeriodDocument
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +55,15 @@ class ExtractorPipeline(BaseDocumentProcessor):
         self.check_image_extractor = CheckImageExtractor(doc)
 
         # Intermediate state for debugging
-        self.segmentation_result: Dict[str, Any] = {}
-        self.tables_by_page: Dict[int, Any] = {}
+        self.segmentation_result: dict[str, Any] = {}
+        self.tables_by_page: dict[int, Any] = {}
         self.text_content: str = ""
-        self.transactions: List[Dict[str, Any]] = []
-        self.summary: Dict[str, Any] = {}
-        self.check_images: List[Dict[str, Any]] = []
-        self.check_pages: List[int] = []
+        self.transactions: list[dict[str, Any]] = []
+        self.summary: dict[str, Any] = {}
+        self.check_images: list[dict[str, Any]] = []
+        self.check_pages: list[int] = []
 
-    def process_document(self, file_bytes: bytes, **kwargs) -> Dict[str, Any]:
+    def process_document(self, file_bytes: bytes, **kwargs) -> dict[str, Any]:
         saver = BankStatementSaver(self.document)
         temp_file = None
 
@@ -229,7 +233,7 @@ class ExtractorPipeline(BaseDocumentProcessor):
                 logger.warning(
                     f"Failed to save Datalabs metadata: {meta_err}"
                 )
-            
+
 
     # ------------------------------------------------------------------
     # Deterministic merge
@@ -237,9 +241,9 @@ class ExtractorPipeline(BaseDocumentProcessor):
 
     @staticmethod
     def _merge_check_data(
-        transactions: List[Dict[str, Any]],
-        check_images: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        transactions: list[dict[str, Any]],
+        check_images: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """
         Enrich check transactions with OCR data matched by check number.
 
@@ -251,7 +255,7 @@ class ExtractorPipeline(BaseDocumentProcessor):
         OCR data is found, the original description is kept as-is.
         """
         # Build lookup: normalized check_number → OCR data
-        check_map: Dict[str, Dict[str, Any]] = {}
+        check_map: dict[str, dict[str, Any]] = {}
         for ci in check_images:
             cn = _normalize_check_number(ci.get("check_number", ""))
             if cn:

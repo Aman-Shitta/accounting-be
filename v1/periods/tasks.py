@@ -14,7 +14,7 @@ queue one job per client at a time.
 import logging
 import time
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Optional
+from typing import Any
 
 from celery import shared_task
 from django.core.files.storage import default_storage
@@ -54,7 +54,7 @@ def _fail(doc: PeriodDocument, reason: str) -> dict[str, Any]:
 @shared_task
 def process_document_task(doc_id) -> dict[str, Any]:
     """Read the uploaded file, run the pipeline for its type, persist results."""
-    doc: Optional[PeriodDocument] = (
+    doc: PeriodDocument | None = (
         PeriodDocument.objects.filter(id=doc_id)
         .select_related("period__client", "document_source")
         .first()

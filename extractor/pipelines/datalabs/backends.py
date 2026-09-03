@@ -20,9 +20,8 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
-from v1.periods.models import PeriodDocument
 from extractor.claude_service import ClaudeMixin
 from extractor.gemini_service import GeminiMixin
 from extractor.pipelines.datalabs.schemas import (
@@ -30,6 +29,7 @@ from extractor.pipelines.datalabs.schemas import (
     StatementSummary,
     TransactionList,
 )
+from v1.periods.models import PeriodDocument
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class ExtractorBackend(ABC):
 # Claude helpers
 # ======================================================================
 
-def _claude_tool(name: str, description: str, model_cls) -> Dict[str, Any]:
+def _claude_tool(name: str, description: str, model_cls) -> dict[str, Any]:
     """Build a Claude tool definition from a Pydantic model class."""
     from extractor.claude_service import ClaudeService
 
@@ -161,8 +161,8 @@ class ClaudeTransactionExtractor(ExtractorBackend, ClaudeMixin):
         self.init_claude()
 
     def extract(
-        self, tables_by_page: Dict[int, List[Dict[str, Any]]]
-    ) -> List[Dict[str, Any]]:
+        self, tables_by_page: dict[int, list[dict[str, Any]]]
+    ) -> list[dict[str, Any]]:
         payload = json.dumps(tables_by_page, ensure_ascii=False)
         result = self.claude_stream_tool(
             messages=[
@@ -191,8 +191,8 @@ class GeminiTransactionExtractor(ExtractorBackend, GeminiMixin):
         self.init_gemini()
 
     def extract(
-        self, tables_by_page: Dict[int, List[Dict[str, Any]]]
-    ) -> List[Dict[str, Any]]:
+        self, tables_by_page: dict[int, list[dict[str, Any]]]
+    ) -> list[dict[str, Any]]:
         payload = json.dumps(tables_by_page, ensure_ascii=False)
         parsed = self.gemini_generate_json(
             contents=[
@@ -225,7 +225,7 @@ class ClaudeSummaryExtractor(ExtractorBackend, ClaudeMixin):
         super().__init__(document)
         self.init_claude()
 
-    def extract(self, text_content: str) -> Dict[str, Any]:
+    def extract(self, text_content: str) -> dict[str, Any]:
         if not text_content or not text_content.strip():
             logger.warning("No text content for summary extraction — returning zeros.")
             return _empty_summary()
@@ -255,7 +255,7 @@ class GeminiSummaryExtractor(ExtractorBackend, GeminiMixin):
         super().__init__(document)
         self.init_gemini()
 
-    def extract(self, text_content: str) -> Dict[str, Any]:
+    def extract(self, text_content: str) -> dict[str, Any]:
         if not text_content or not text_content.strip():
             logger.warning("No text content for summary extraction — returning zeros.")
             return _empty_summary()
@@ -290,7 +290,7 @@ class ClaudeCheckImageExtractor(ExtractorBackend, ClaudeMixin):
         super().__init__(document)
         self.init_claude()
 
-    def extract(self, check_page_html: Dict[int, str]) -> List[Dict[str, Any]]:
+    def extract(self, check_page_html: dict[int, str]) -> list[dict[str, Any]]:
         if not check_page_html:
             return []
 
@@ -322,7 +322,7 @@ class GeminiCheckImageExtractor(ExtractorBackend, GeminiMixin):
         super().__init__(document)
         self.init_gemini()
 
-    def extract(self, check_page_html: Dict[int, str]) -> List[Dict[str, Any]]:
+    def extract(self, check_page_html: dict[int, str]) -> list[dict[str, Any]]:
         if not check_page_html:
             return []
 
@@ -346,7 +346,7 @@ class GeminiCheckImageExtractor(ExtractorBackend, GeminiMixin):
 # Helpers
 # ======================================================================
 
-def _empty_summary() -> Dict[str, Any]:
+def _empty_summary() -> dict[str, Any]:
     return {
         "beginning_balance": 0.0,
         "ending_balance": 0.0,
@@ -357,7 +357,7 @@ def _empty_summary() -> Dict[str, Any]:
     }
 
 
-def _coerce_summary(raw: Dict[str, Any]) -> Dict[str, Any]:
+def _coerce_summary(raw: dict[str, Any]) -> dict[str, Any]:
     """Ensure all expected summary keys exist with sensible defaults."""
     defaults = _empty_summary()
     return {k: raw.get(k, v) for k, v in defaults.items()}

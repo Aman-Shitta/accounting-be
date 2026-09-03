@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 import anthropic
 from django.conf import settings
@@ -48,13 +48,13 @@ class ClaudeService:
     content blocks and tool-use structured output.
     """
 
-    _instance: Optional["ClaudeService"] = None
-    _client: Optional[anthropic.Anthropic] = None
+    _instance: ClaudeService | None = None
+    _client: anthropic.Anthropic | None = None
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         use_singleton: bool = True,
     ):
         self.api_key = api_key or getattr(settings, "ANTHROPIC_API_KEY", None)
@@ -72,7 +72,7 @@ class ClaudeService:
                 ClaudeService._client = self.client
 
     @classmethod
-    def get_instance(cls) -> "ClaudeService":
+    def get_instance(cls) -> ClaudeService:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
@@ -85,11 +85,11 @@ class ClaudeService:
     # ----- content-block helpers --------------------------------------------
 
     @staticmethod
-    def create_text_part(text: str) -> Dict[str, Any]:
+    def create_text_part(text: str) -> dict[str, Any]:
         return {"type": "text", "text": text}
 
     @staticmethod
-    def create_pdf_part(pdf_bytes: bytes) -> Dict[str, Any]:
+    def create_pdf_part(pdf_bytes: bytes) -> dict[str, Any]:
         """Build a base64-encoded PDF document block."""
         data = base64.standard_b64encode(pdf_bytes).decode("utf-8")
         return {
@@ -105,8 +105,8 @@ class ClaudeService:
     def build_tool_schema(
         name: str,
         description: str,
-        input_schema: Dict[str, Any] | Type,
-    ) -> Dict[str, Any]:
+        input_schema: dict[str, Any] | type,
+    ) -> dict[str, Any]:
         """
         Build a Claude tool definition.
 
@@ -129,10 +129,10 @@ class ClaudeService:
 
     def generate_text(
         self,
-        messages: List[Dict[str, Any]],
-        system: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        system: str | None = None,
         max_tokens: int = 16000,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
         **extra,
@@ -158,14 +158,14 @@ class ClaudeService:
 
     def generate_tool_use(
         self,
-        messages: List[Dict[str, Any]],
-        tool: Dict[str, Any],
-        system: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        tool: dict[str, Any],
+        system: str | None = None,
         max_tokens: int = 16000,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Force Claude to call a specific tool and return its ``input`` dict.
 
@@ -192,14 +192,14 @@ class ClaudeService:
 
     def stream_tool_use(
         self,
-        messages: List[Dict[str, Any]],
-        tool: Dict[str, Any],
-        system: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        tool: dict[str, Any],
+        system: str | None = None,
         max_tokens: int = 16000,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Streaming variant of ``generate_tool_use`` — useful for long outputs.
         Returns the tool_use ``input`` dict from the final message.
@@ -217,14 +217,14 @@ class ClaudeService:
 
     def stream_tool_use_with_meta(
         self,
-        messages: List[Dict[str, Any]],
-        tool: Dict[str, Any],
-        system: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        tool: dict[str, Any],
+        system: str | None = None,
         max_tokens: int = 16000,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """
         Streaming tool-use call that also returns response metadata.
 
@@ -232,10 +232,10 @@ class ClaudeService:
         dict with ``id``, ``model``, ``stop_reason``, and ``usage`` — suitable
         for debug storage.
         """
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(1, max_retries + 1):
             try:
-                kwargs: Dict[str, Any] = dict(
+                kwargs: dict[str, Any] = dict(
                     model=model or self.model,
                     max_tokens=max_tokens,
                     tools=[tool],
@@ -288,7 +288,7 @@ class ClaudeService:
         if kwargs.get("system") is None:
             kwargs.pop("system", None)
 
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(1, max_retries + 1):
             try:
                 return fn(**kwargs)
@@ -306,7 +306,7 @@ def _should_retry(exc: Exception) -> bool:
     status = getattr(exc, "status_code", None)
     if status in _RETRYABLE_STATUS_CODES:
         return True
-    if isinstance(exc, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
+    if isinstance(exc, anthropic.APIConnectionError | anthropic.APITimeoutError):
         return True
     if isinstance(exc, anthropic.RateLimitError):
         return True
@@ -328,7 +328,7 @@ def _log_exc(label: str, exc: Exception) -> None:
         logger.error(f"{label}: {exc}")
 
 
-def _inline_refs(schema: Dict[str, Any]) -> Dict[str, Any]:
+def _inline_refs(schema: dict[str, Any]) -> dict[str, Any]:
     """Flatten Pydantic $defs inline so Claude can consume the schema."""
     defs = schema.pop("$defs", {})
     schema.pop("definitions", None)
@@ -366,12 +366,12 @@ class ClaudeMixin:
                 )
     """
 
-    _claude_service: Optional[ClaudeService] = None
+    _claude_service: ClaudeService | None = None
 
     def init_claude(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         use_singleton: bool = True,
     ) -> None:
         if use_singleton:
@@ -400,10 +400,10 @@ class ClaudeMixin:
     def claude_generate_text(self, **kwargs) -> str:
         return self.claude.generate_text(**kwargs)
 
-    def claude_generate_tool(self, **kwargs) -> Dict[str, Any]:
+    def claude_generate_tool(self, **kwargs) -> dict[str, Any]:
         return self.claude.generate_tool_use(**kwargs)
 
-    def claude_stream_tool(self, **kwargs) -> Dict[str, Any]:
+    def claude_stream_tool(self, **kwargs) -> dict[str, Any]:
         return self.claude.stream_tool_use(**kwargs)
 
     def claude_stream_tool_with_meta(self, **kwargs):

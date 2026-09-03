@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Optional
 
 from django.db import transaction as db_transaction
 
@@ -20,7 +19,7 @@ from v1.periods.models import PeriodCheckDetail, PeriodDocument, PeriodTransacti
 logger = logging.getLogger(__name__)
 
 
-def _clean_check_number(raw) -> Optional[str]:
+def _clean_check_number(raw) -> str | None:
     """
     Normalise a check number, or return ``None`` when there isn't one.
 
@@ -48,7 +47,7 @@ class BankStatementSaver:
 
     # ---- transactions -----------------------------------------------------
 
-    def save_transactions(self, transactions: List[Dict]) -> Dict[str, int]:
+    def save_transactions(self, transactions: list[dict]) -> dict[str, int]:
         """
         Persist transaction dicts, creating a check detail row for any
         transaction carrying a check number.
@@ -100,7 +99,7 @@ class BankStatementSaver:
         return source.default_offset_account if source else None
 
     def _save_transaction(
-        self, line_number: int, txn: Dict, default_offset
+        self, line_number: int, txn: dict, default_offset
     ) -> PeriodTransaction:
         raw_date = str(txn.get("date") or "").strip()
         direction = str(txn.get("type") or "").lower()
@@ -124,7 +123,7 @@ class BankStatementSaver:
             offset_ledger_account=default_offset,
         )
 
-    def _save_check_detail(self, row: PeriodTransaction, txn: Dict) -> PeriodCheckDetail:
+    def _save_check_detail(self, row: PeriodTransaction, txn: dict) -> PeriodCheckDetail:
         """
         Record payee and memo for a check.
 
@@ -157,7 +156,7 @@ class BankStatementSaver:
 
     # ---- document-level results -------------------------------------------
 
-    def save_control_totals(self, control_totals: Dict) -> None:
+    def save_control_totals(self, control_totals: dict) -> None:
         """Opening and closing balances, used to validate the extraction."""
         try:
             self.document.control_totals = convert_decimals_to_float(control_totals)
@@ -166,7 +165,7 @@ class BankStatementSaver:
             self.document.control_totals = {}
         self.document.save(update_fields=["control_totals", "updated_at"])
 
-    def save_metadata(self, metadata: Dict) -> None:
+    def save_metadata(self, metadata: dict) -> None:
         """Per-page parsed markdown and artifact locations."""
         try:
             self.document.markdown_metadata = convert_decimals_to_float(metadata)

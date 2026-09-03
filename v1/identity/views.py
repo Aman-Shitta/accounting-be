@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from v1.common.envelope import EnvelopeMixin
 from v1.common.permissions import IsFirmOwner
 from v1.common.querysets import accessible_clients
 from v1.common.responses import create_api_response
@@ -29,7 +30,7 @@ def _token_pair(user) -> dict:
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
 
 
-class LoginView(GenericAPIView):
+class LoginView(EnvelopeMixin, GenericAPIView):
     """Exchange email and password for an access/refresh pair."""
 
     permission_classes = [AllowAny]
@@ -52,7 +53,7 @@ class LoginView(GenericAPIView):
         )
 
 
-class RefreshTokenView(GenericAPIView):
+class RefreshTokenView(EnvelopeMixin, GenericAPIView):
     """Exchange a refresh token for a fresh access token."""
 
     permission_classes = [AllowAny]
@@ -80,7 +81,7 @@ class RefreshTokenView(GenericAPIView):
         )
 
 
-class SetPasswordView(GenericAPIView):
+class SetPasswordView(EnvelopeMixin, GenericAPIView):
     """Consume an invite or reset token and set a password."""
 
     permission_classes = [AllowAny]
@@ -112,7 +113,7 @@ class SetPasswordView(GenericAPIView):
         )
 
 
-class ForgotPasswordView(GenericAPIView):
+class ForgotPasswordView(EnvelopeMixin, GenericAPIView):
     """Send a reset link, if the address belongs to an account."""
 
     permission_classes = [AllowAny]
@@ -136,7 +137,7 @@ class ForgotPasswordView(GenericAPIView):
         )
 
 
-class WhoAmIView(GenericAPIView):
+class WhoAmIView(EnvelopeMixin, GenericAPIView):
     """The caller's identity, roles and how many clients they can reach."""
 
     permission_classes = [IsAuthenticated]
@@ -163,7 +164,7 @@ class WhoAmIView(GenericAPIView):
         )
 
 
-class MemberInviteView(GenericAPIView):
+class MemberInviteView(EnvelopeMixin, GenericAPIView):
     """Invite someone into the caller's firm."""
 
     permission_classes = [IsAuthenticated, IsFirmOwner]

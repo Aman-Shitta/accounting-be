@@ -1,26 +1,19 @@
 from __future__ import annotations
 
-import re
-import os
 import logging
-import tempfile
+import os
 from io import BytesIO
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import Any
 
 from django.conf import settings
-from django.db import transaction
-
-from decimal import Decimal, InvalidOperation
-
-
-from pydantic import BaseModel, Field, create_model
 from landingai_ade import LandingAIADE
 from landingai_ade.lib import pydantic_to_json_schema
+from pydantic import BaseModel, Field, create_model
 
 from extractor.base import BaseDocumentProcessor
+from extractor.utils import clean_temp_file, generate_temp_pdf, split_pdf_to_pages
 from v1.periods.models import PeriodDocument
-from extractor.utils import split_pdf_to_pages, generate_temp_pdf, clean_temp_file
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +30,14 @@ class KeyItem(BaseModel):
 
 class KeyItemList(BaseModel):
     """List of key-value pairs extracted from a sales document page."""
-    key_items: List[KeyItem] = Field(
+    key_items: list[KeyItem] = Field(
         default_factory=list,
         description="List of all key-value pairs (attributes) extracted from the document page. "
                     "Each item should represent a meaningful data point like totals, dates, amounts, etc."
     )
 
 
-def build_dynamic_extraction_model(attributes: List[Dict[str, Any]]) -> type:
+def build_dynamic_extraction_model(attributes: list[dict[str, Any]]) -> type:
     """
     Dynamically build a Pydantic model based on configured attributes.
 
@@ -80,7 +73,7 @@ def build_dynamic_extraction_model(attributes: List[Dict[str, Any]]) -> type:
 
         # All fields are Optional[str] with None default
         field_definitions[key] = (
-            Optional[str],
+            str | None,
             Field(None, description=description)
         )
 
@@ -215,15 +208,11 @@ class DocumentProcessor(BaseDocumentProcessor):
         )
         return parse_response
 
-    def process_document(self, file_bytes: bytes, **kwargs) -> Dict[str, Any]:
+    def process_document(self, file_bytes: bytes, **kwargs) -> dict[str, Any]:
         """
         Process the sales document by extracting key-value attributes from each page.
         """
         from extractor.persistence.attribute_saver import AttributeSaver
-
-        mime_type = kwargs.get('mime_type', 'application/pdf')
-        md = kwargs.get('md', False)
-        special_rules = kwargs.get('special_rules', "")
 
         page_bytes_list = split_pdf_to_pages(file_bytes)
         saver = AttributeSaver(self.document)
@@ -313,7 +302,7 @@ class DocumentProcessor(BaseDocumentProcessor):
             "page_count": len(self.page_data)
         }
 
-    def _convert_extraction_to_key_items(self, extracted_data: Dict) -> List[Dict[str, str]]:
+    def _convert_extraction_to_key_items(self, extracted_data: dict) -> list[dict[str, str]]:
         """
         Convert extracted data to a unified key_items format.
         """

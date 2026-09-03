@@ -35,7 +35,7 @@ def api_exception_handler(exc, context):
     if isinstance(exc, DjangoValidationError):
         exc = ValidationError(detail=getattr(exc, "message_dict", None) or exc.messages)
 
-    if isinstance(exc, (Http404, ObjectDoesNotExist)):
+    if isinstance(exc, Http404 | ObjectDoesNotExist):
         return create_api_response(status.HTTP_404_NOT_FOUND, "Not found.")
 
     if isinstance(exc, PermissionDenied):

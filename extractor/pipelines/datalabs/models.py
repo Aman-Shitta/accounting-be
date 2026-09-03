@@ -7,10 +7,7 @@ minimal output contract.
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Call 1 — Transaction Extraction
@@ -60,7 +57,7 @@ class DatalabsTransaction(BaseModel):
 class TransactionExtractionResult(BaseModel):
     """Output schema for LLM Call 1."""
 
-    transactions: List[DatalabsTransaction] = Field(
+    transactions: list[DatalabsTransaction] = Field(
         default_factory=list,
         description="All transaction rows from the document, in document order.",
     )
@@ -104,7 +101,7 @@ class CheckImageData(BaseModel):
         ...,
         description="The check number printed on the check.",
     )
-    amount: Optional[float] = Field(
+    amount: float | None = Field(
         None,
         description="Dollar amount on the check, if readable.",
     )
@@ -125,7 +122,7 @@ class CheckImageData(BaseModel):
 class CheckImageExtractionResult(BaseModel):
     """Output schema for LLM Call 3."""
 
-    checks: List[CheckImageData] = Field(
+    checks: list[CheckImageData] = Field(
         default_factory=list,
         description="All checks found across the provided check image pages.",
     )

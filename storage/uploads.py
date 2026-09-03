@@ -14,7 +14,7 @@ import json
 import logging
 import traceback
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -24,7 +24,7 @@ from storage.paths import DocumentPathBuilder
 logger = logging.getLogger(__name__)
 
 
-def get_path_builder(instance: Any) -> Optional[DocumentPathBuilder]:
+def get_path_builder(instance: Any) -> DocumentPathBuilder | None:
     """
     Build a :class:`DocumentPathBuilder` from any model instance that can
     reach a client, directly or through its accounting period.
@@ -141,7 +141,7 @@ class DocumentDebugStorage:
     def _fallback(self, stage: str, filename: str) -> str:
         return f"processing_artifacts/{self.doc_id}/{stage}/{filename}"
 
-    def _save_file(self, content: Union[bytes, str], path: str) -> Optional[str]:
+    def _save_file(self, content: bytes | str, path: str) -> str | None:
         try:
             if isinstance(content, str):
                 content = content.encode("utf-8")
@@ -152,14 +152,14 @@ class DocumentDebugStorage:
             logger.error(f"Failed to save artifact to {path}: {e}")
             return None
 
-    def _save_json(self, data: Any, path: str) -> Optional[str]:
+    def _save_json(self, data: Any, path: str) -> str | None:
         try:
             return self._save_file(json.dumps(data, indent=2, default=str), path)
         except (TypeError, ValueError) as e:
             logger.error(f"Failed to serialize artifact for {path}: {e}")
             return None
 
-    def save_raw_input(self, file_bytes: bytes, original_filename: str) -> Optional[str]:
+    def save_raw_input(self, file_bytes: bytes, original_filename: str) -> str | None:
         path = (
             self._paths.artifact_raw_input_path(self.doc_id, original_filename)
             if self._paths
@@ -167,7 +167,7 @@ class DocumentDebugStorage:
         )
         return self._save_file(file_bytes, path)
 
-    def save_parsed_markdown(self, markdown: str, filename: str = "full_document.md") -> Optional[str]:
+    def save_parsed_markdown(self, markdown: str, filename: str = "full_document.md") -> str | None:
         path = (
             self._paths.artifact_ocr_path(self.doc_id, filename)
             if self._paths
@@ -175,7 +175,7 @@ class DocumentDebugStorage:
         )
         return self._save_file(markdown, path)
 
-    def save_extracted_data(self, data: Dict, filename: str = "extracted_data.json") -> Optional[str]:
+    def save_extracted_data(self, data: dict, filename: str = "extracted_data.json") -> str | None:
         path = (
             self._paths.artifact_extractor_path(self.doc_id, filename)
             if self._paths
@@ -183,7 +183,7 @@ class DocumentDebugStorage:
         )
         return self._save_json(data, path)
 
-    def save_final_output(self, output: Dict, filename: str = "final_output.json") -> Optional[str]:
+    def save_final_output(self, output: dict, filename: str = "final_output.json") -> str | None:
         path = (
             self._paths.artifact_final_summary_path(self.doc_id, filename)
             if self._paths
@@ -191,7 +191,7 @@ class DocumentDebugStorage:
         )
         return self._save_json(output, path)
 
-    def save_error_log(self, error: Exception, context: Dict = None) -> Optional[str]:
+    def save_error_log(self, error: Exception, context: dict = None) -> str | None:
         return self.save_final_output(
             {
                 "document_id": self.doc_id,

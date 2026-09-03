@@ -11,13 +11,11 @@ Google Gemini AI across all extraction pipelines. It handles:
 
 import logging
 import os
-import re
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from django.conf import settings
-
 from google import genai
 from google.genai import types
 
@@ -43,12 +41,12 @@ class GeminiService:
     """
 
     _instance: Optional['GeminiService'] = None
-    _client: Optional[genai.Client] = None
+    _client: genai.Client | None = None
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         use_singleton: bool = True
     ):
         """
@@ -88,9 +86,9 @@ class GeminiService:
         top_p: float = 0.95,
         top_k: int = 25,
         max_output_tokens: int = 8000,
-        response_mime_type: Optional[str] = None,
-        response_schema: Optional[types.Schema] = None,
-        system_instruction: Optional[List[str]] = None,
+        response_mime_type: str | None = None,
+        response_schema: types.Schema | None = None,
+        system_instruction: list[str] | None = None,
     ) -> types.GenerateContentConfigDict:
         """
         Build a default configuration dictionary for Gemini requests.
@@ -161,9 +159,9 @@ class GeminiService:
 
     def generate_content_stream(
         self,
-        contents: List[Any],
-        config: Optional[Dict] = None,
-        model: Optional[str] = None,
+        contents: list[Any],
+        config: dict | None = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
     ):
@@ -219,9 +217,9 @@ class GeminiService:
 
     def generate_content(
         self,
-        contents: List[Any],
-        config: Optional[Dict] = None,
-        model: Optional[str] = None,
+        contents: list[Any],
+        config: dict | None = None,
+        model: str | None = None,
         max_retries: int = 3,
         retry_delay: float = 5.0,
     ) -> str:
@@ -291,9 +289,9 @@ class GeminiService:
 
     def generate_content_stream_to_text(
         self,
-        contents: List[Any],
-        config: Optional[Dict] = None,
-        model: Optional[str] = None,
+        contents: list[Any],
+        config: dict | None = None,
+        model: str | None = None,
         max_retries: int = 3,
     ) -> str:
         """
@@ -318,13 +316,13 @@ class GeminiService:
 
     def generate_json(
         self,
-        contents: List[Any],
+        contents: list[Any],
         schema: types.Schema,
-        system_instruction: Optional[List[str]] = None,
+        system_instruction: list[str] | None = None,
         temperature: float = 0.2,
         max_output_tokens: int = 8000,
-        model: Optional[str] = None,
-    ) -> Dict:
+        model: str | None = None,
+    ) -> dict:
         """
         Generate structured JSON output from Gemini.
 
@@ -370,7 +368,7 @@ class GeminiService:
         """
         return types.Part.from_text(text=text)
 
-    def create_user_content_type(self, parts: List[types.Part]) -> types.Content:
+    def create_user_content_type(self, parts: list[types.Part]) -> types.Content:
 
         content = types.Content(
             role="user",
@@ -456,12 +454,12 @@ class GeminiMixin:
                 response = self.gemini_generate_stream(contents, config)
     """
 
-    _gemini_service: Optional[GeminiService] = None
+    _gemini_service: GeminiService | None = None
 
     def init_gemini(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
         use_singleton: bool = True
     ):
         """
@@ -506,9 +504,9 @@ class GeminiMixin:
         top_p: float = 0.2,
         top_k: int = 25,
         max_output_tokens: int = 8000,
-        response_mime_type: Optional[str] = None,
-        response_schema: Optional[types.Schema] = None,
-        system_instruction: Optional[List[str]] = None,
+        response_mime_type: str | None = None,
+        response_schema: types.Schema | None = None,
+        system_instruction: list[str] | None = None,
     ) -> types.GenerateContentConfigDict:
         """
         Build a Gemini configuration dictionary.
@@ -527,9 +525,9 @@ class GeminiMixin:
 
     def gemini_generate_stream(
         self,
-        contents: List[Any],
-        config: Optional[Dict] = None,
-        model: Optional[str] = None,
+        contents: list[Any],
+        config: dict | None = None,
+        model: str | None = None,
         max_retries: int = 3,
     ):
         """
@@ -546,9 +544,9 @@ class GeminiMixin:
 
     def gemini_generate(
         self,
-        contents: List[Any],
-        config: Optional[Dict] = None,
-        model: Optional[str] = None,
+        contents: list[Any],
+        config: dict | None = None,
+        model: str | None = None,
         max_retries: int = 3,
     ) -> str:
         """
@@ -565,13 +563,13 @@ class GeminiMixin:
 
     def gemini_generate_json(
         self,
-        contents: List[Any],
+        contents: list[Any],
         schema: types.Schema,
-        system_instruction: Optional[List[str]] = None,
+        system_instruction: list[str] | None = None,
         temperature: float = 0.2,
         max_output_tokens: int = 8000,
-        model: Optional[str] = None,
-    ) -> Dict:
+        model: str | None = None,
+    ) -> dict:
         """
         Generate structured JSON output from Gemini.
 

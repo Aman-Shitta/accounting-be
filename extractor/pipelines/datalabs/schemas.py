@@ -7,7 +7,7 @@ the two providers return the exact same shape.
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class Transaction(BaseModel):
 
 
 class TransactionList(BaseModel):
-    transactions: List[Transaction]
+    transactions: list[Transaction]
 
 
 class StatementSummary(BaseModel):
@@ -37,11 +37,11 @@ class StatementSummary(BaseModel):
 
 class CheckItem(BaseModel):
     check_number: str
-    amount: Optional[float] = None
+    amount: float | None = None
     payee: str = ""
     memo: str = ""
     date: str = Field(default="", description="Date on the check in MM/DD/YYYY format.")
 
 
 class CheckList(BaseModel):
-    checks: List[CheckItem]
+    checks: list[CheckItem]

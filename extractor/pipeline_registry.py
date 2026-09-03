@@ -5,7 +5,6 @@ To switch provider for a document type, change one line in ``PIPELINE_MAP``.
 """
 
 import importlib
-from typing import Type
 
 from extractor.constants import DocumentType
 
@@ -25,6 +24,7 @@ PIPELINE_MAP = {
     # transaction extraction — emits line items
     DocumentType.BANK_STATEMENT.value: PIPELINES["DATALABS_EXTRACTOR"],
     DocumentType.CREDIT_CARD.value: PIPELINES["DATALABS_EXTRACTOR"],
+    DocumentType.CHECK_REGISTER.value: PIPELINES["DATALABS_EXTRACTOR"],
 
     # attribute extraction — emits values for configured fields
     DocumentType.SALES.value: PIPELINES["LANDING_AI_KV"],
@@ -33,7 +33,7 @@ PIPELINE_MAP = {
 }
 
 
-def get_pipeline_class(doc_type: str) -> Type:
+def get_pipeline_class(doc_type: str) -> type:
     """
     Resolve the pipeline class for a document type.
 

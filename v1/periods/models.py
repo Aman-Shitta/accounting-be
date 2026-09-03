@@ -7,11 +7,10 @@ their own resolved accounts, so they stay meaningful even if the configuration
 they came from is later changed or removed.
 """
 
+from auditlog.registry import auditlog
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-
-from auditlog.registry import auditlog
 
 from storage.uploads import upload_to_montly_accounting_folder
 from v1.common.models import SoftDeleteModel, TimeStampedModel

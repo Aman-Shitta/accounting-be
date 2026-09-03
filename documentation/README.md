@@ -19,8 +19,8 @@ API-only Django project where a CPA firm is a first-class tenant.
 - [x] **3** — `v1/` package and the new schema
 - [x] **4** — Auth without SSO
 - [x] **5** — Config versioning replaces snapshots
-- [ ] **6** — API v1 surface
-- [ ] **7** — Rewire the extractor
+- [x] **6** — API v1 surface
+- [x] **7** — Rewire the extractor (landed with Phase 3)
 
 Branch: `refactor/v1-multitenant`.
 
@@ -42,6 +42,25 @@ Branch: `refactor/v1-multitenant`.
   currently serves auth only. The resource endpoints land in Phase 6; the
   contract is already written in
   [03-api-v1-contract.md](03-api-v1-contract.md).
+
+- **Phase 7 landed inside Phase 3.** The extractor's model touchpoints had to
+  move in the same commit that deleted the old apps, so the savers, the
+  classification service and the Celery tasks were rewired there rather than
+  in a separate pass.
+
+## Verification
+
+```sh
+ruff check .
+python manage.py check
+python manage.py makemigrations --check --dry-run
+pytest
+```
+
+All four run in CI on every push and pull request
+([.github/workflows/ci.yml](../.github/workflows/ci.yml)), along with a sweep
+that imports every module — three separate undeclared dependencies have shipped
+in this repo, and that check is what catches the next one.
 
 ## Running it locally
 

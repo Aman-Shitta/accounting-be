@@ -1,8 +1,8 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
-from typing import Any, Dict, Optional
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class AbstractDocumentProcessor(ABC):
     """
 
     @abstractmethod
-    def process_document(self, file_bytes: bytes, **kwargs) -> Dict[str, Any]:
+    def process_document(self, file_bytes: bytes, **kwargs) -> dict[str, Any]:
         """
         Process a document and extract data.
 
@@ -26,9 +26,13 @@ class AbstractDocumentProcessor(ABC):
         """
         pass
 
-    def set_debug_storage(self, debug_storage) -> None:
-        """Attach a debug storage helper. Subclasses override to store the reference."""
-        pass
+    def set_debug_storage(self, debug_storage) -> None:  # noqa: B027
+        """
+        Attach an artifact writer.
+
+        Deliberately concrete and empty: a pipeline that saves no intermediate
+        output should not have to implement it.
+        """
 
     def validate_input(self, file_bytes: bytes) -> bool:
         if not file_bytes:
@@ -57,7 +61,7 @@ class BaseDocumentProcessor(AbstractDocumentProcessor):
         return value.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
     @staticmethod
-    def parse_amount(amount_value) -> Optional[Decimal]:
+    def parse_amount(amount_value) -> Decimal | None:
         """
         Parse an amount value (int, float, str, or None) into a ``Decimal``
         truncated to two decimal places.
@@ -68,7 +72,7 @@ class BaseDocumentProcessor(AbstractDocumentProcessor):
         if amount_value is None:
             return None
 
-        if isinstance(amount_value, (int, float)):
+        if isinstance(amount_value, int | float):
             value = Decimal(str(amount_value))
             return value.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 

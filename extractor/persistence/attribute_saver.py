@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import re
 from decimal import Decimal, InvalidOperation
-from typing import Dict, List, Optional, Set
 
 from django.db import transaction as db_transaction
 
@@ -32,9 +31,9 @@ class AttributeSaver:
 
     def __init__(self, document: PeriodDocument):
         self.document = document
-        self._seen: Set[str] = set()
+        self._seen: set[str] = set()
 
-    def save_attributes(self, page_data: List[Dict]) -> Dict[str, int]:
+    def save_attributes(self, page_data: list[dict]) -> dict[str, int]:
         """
         Write one ``PeriodFieldValue`` per configured field.
 
@@ -114,7 +113,7 @@ class AttributeSaver:
         return item.get("value", "") if isinstance(item, dict) else getattr(item, "value", "")
 
     @staticmethod
-    def _parse_amount(raw) -> Optional[str]:
+    def _parse_amount(raw) -> str | None:
         """
         Reduce an extracted amount to a plain numeric string.
 

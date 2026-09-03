@@ -6,9 +6,8 @@ import re
 import sys
 import tempfile
 import unicodedata
-
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pypdf import PdfReader, PdfWriter
 
@@ -150,7 +149,7 @@ class JSONHelper:
             return raw
 
     @staticmethod
-    def parse_json(raw: str, default: Optional[Dict] = None) -> Dict:
+    def parse_json(raw: str, default: dict | None = None) -> dict:
         """
         Parse JSON string with multiple fallback strategies.
 
@@ -191,8 +190,8 @@ class JSONHelper:
     @staticmethod
     def validate_and_repair(
         raw: str,
-        expected_keys: Optional[Dict[str, Any]] = None
-    ) -> Dict:
+        expected_keys: dict[str, Any] | None = None
+    ) -> dict:
         """
         Parse JSON and ensure expected keys exist.
 

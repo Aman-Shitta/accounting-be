@@ -22,12 +22,11 @@ from __future__ import annotations
 import ast
 import json
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from django.conf import settings
 from datalab_sdk import DatalabClient
-
 from datalab_sdk.models import PipelineExecution
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +66,9 @@ class DatalabsParser:
     # Marker pipeline
     # ------------------------------------------------------------------
 
-    def parse(self, execution: PipelineExecution) -> Dict[str, Any]:
+    def parse(self, execution: PipelineExecution) -> dict[str, Any]:
         """Extract the Marker JSON tree from step 0 of the pipeline execution."""
- 
+
         results = self.client.get_step_result(execution.execution_id, step_index=0)
         # results = dict_keys(['success', 'error_in', 'error', 'inferenced_pages', 'total_pages', 'output_format', 'markdown', 'html', 'images', 'chunks', 'json', 'metadata', 'links', 'filepath', 'page_range', 'post_inference_params', 'runtime', 'status', 'page_count'])
 
@@ -77,7 +76,7 @@ class DatalabsParser:
         # '\n\nE/\n\n![Central Bank logo](30a26f2d17ca95672702bf50fb4f0242_img.jpg)\n\nCentral Bank logo\n\n# Central B'
 
 
-        raw = results["json"] if isinstance(results, dict) else getattr(results, "json")
+        raw = results["json"] if isinstance(results, dict) else results.json
         return self._coerce_to_dict(raw)
 
     def parse_markdown(self, execution: PipelineExecution) -> str:
@@ -90,7 +89,7 @@ class DatalabsParser:
     # Segmentation pipeline
     # ------------------------------------------------------------------
 
-    def segment(self, execution: PipelineExecution) -> Dict[str, Any]:
+    def segment(self, execution: PipelineExecution) -> dict[str, Any]:
         """
         Extract the segmentation result from step 1 of the pipeline execution.
 
@@ -127,9 +126,9 @@ class DatalabsParser:
 
     @staticmethod
     def extract_tables(
-        parse_json: Dict[str, Any],
-        pages: Optional[Set[int]] = None,
-    ) -> Dict[int, List[Dict[str, Any]]]:
+        parse_json: dict[str, Any],
+        pages: set[int] | None = None,
+    ) -> dict[int, list[dict[str, Any]]]:
         """
         Flatten the Marker block tree into ``{page_number: [table_dict, ...]}``.
 
@@ -145,14 +144,14 @@ class DatalabsParser:
             pages: Optional set of 1-indexed page numbers to include.
                    If *None*, all pages are included.
         """
-        by_page: Dict[int, List[Dict[str, Any]]] = {}
+        by_page: dict[int, list[dict[str, Any]]] = {}
         for page_idx, child in enumerate(parse_json.get("children", []) or [], start=1):
             if child.get("block_type") != "Page":
                 continue
             if pages is not None and page_idx not in pages:
                 continue
-            page_tables: List[Dict[str, Any]] = []
-            recent_headers: List[str] = []
+            page_tables: list[dict[str, Any]] = []
+            recent_headers: list[str] = []
             current_header_idx = -1
             for block_idx, page_child in enumerate(child.get("children", []) or []):
                 block_type = page_child.get("block_type")
@@ -186,9 +185,9 @@ class DatalabsParser:
 
     @staticmethod
     def extract_pages_html(
-        parse_json: Dict[str, Any],
-        pages: Optional[Set[int]] = None,
-    ) -> Dict[int, str]:
+        parse_json: dict[str, Any],
+        pages: set[int] | None = None,
+    ) -> dict[int, str]:
         """
         Return ``{1-indexed page_number: page_html}`` for the requested pages.
 
@@ -199,7 +198,7 @@ class DatalabsParser:
             pages: Optional set of 1-indexed page numbers to include.
                    If *None*, all pages are included.
         """
-        by_page: Dict[int, str] = {}
+        by_page: dict[int, str] = {}
         for idx, child in enumerate(parse_json.get("children", []) or [], start=1):
             if child.get("block_type") != "Page":
                 continue
@@ -210,8 +209,8 @@ class DatalabsParser:
 
     @staticmethod
     def extract_text_content(
-        parse_json: Dict[str, Any],
-        pages: Optional[Set[int]] = None,
+        parse_json: dict[str, Any],
+        pages: set[int] | None = None,
     ) -> str:
         """
         Collect readable text from Text / SectionHeader / ListItem blocks.
@@ -225,7 +224,7 @@ class DatalabsParser:
             pages: Optional set of 1-indexed page numbers to include.
         """
         _TEXT_BLOCK_TYPES = {"Text", "SectionHeader", "ListGroup", "ListItem", "Line"}
-        lines: List[str] = []
+        lines: list[str] = []
 
         for idx, child in enumerate(parse_json.get("children", []) or [], start=1):
             if child.get("block_type") != "Page":
@@ -240,9 +239,9 @@ class DatalabsParser:
 
     @staticmethod
     def _collect_text(
-        node: Dict[str, Any],
+        node: dict[str, Any],
         allowed_types: set,
-        out: List[str],
+        out: list[str],
     ) -> None:
         """Recursively collect text from allowed block types."""
         block_type = node.get("block_type", "")
@@ -260,7 +259,7 @@ class DatalabsParser:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def build_page_route(segmentation_result: Dict[str, Any]) -> Dict[str, List[int]]:
+    def build_page_route(segmentation_result: dict[str, Any]) -> dict[str, list[int]]:
         """
         Convert segmentation output to ``{segment_name: [page_numbers_0indexed]}``.
 
@@ -271,7 +270,7 @@ class DatalabsParser:
                 "deposit_slip": [7, 8, 9],
             }
         """
-        route: Dict[str, List[int]] = {}
+        route: dict[str, list[int]] = {}
         for segment in segmentation_result.get("segments", []):
             name = segment.get("name", "unknown")
             page_list = segment.get("pages", [])
@@ -279,7 +278,7 @@ class DatalabsParser:
         return route
 
     @staticmethod
-    def resolve_check_pages(segmentation_result: Dict[str, Any]) -> List[int]:
+    def resolve_check_pages(segmentation_result: dict[str, Any]) -> list[int]:
         """
         Build the final list of 0-indexed pages for check-image OCR.
 
@@ -289,8 +288,8 @@ class DatalabsParser:
         segmentation model.
         """
         route = DatalabsParser.build_page_route(segmentation_result)
-        check_pages: Set[int] = set(route.get("check_item", []))
-        deposit_pages: Set[int] = set(route.get("deposit_slip", []))
+        check_pages: set[int] = set(route.get("check_item", []))
+        deposit_pages: set[int] = set(route.get("deposit_slip", []))
 
         # Adjacency heuristic — include deposit page N-1 when page N is check
         resolved = set(check_pages)
@@ -306,7 +305,7 @@ class DatalabsParser:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _coerce_to_dict(raw: Any) -> Dict[str, Any]:
+    def _coerce_to_dict(raw: Any) -> dict[str, Any]:
         """Datalabs sometimes returns JSON as a str (or a Python-repr str)."""
         if isinstance(raw, dict):
             return raw

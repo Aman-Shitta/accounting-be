@@ -1,5 +1,4 @@
 from django.conf import settings
-
 from openai import OpenAI
 
 

@@ -20,7 +20,6 @@ independent of the backend holding them (local filesystem now, GCS later).
 """
 
 from datetime import datetime
-from typing import Optional
 
 
 class StoragePaths:
@@ -88,7 +87,7 @@ class DocumentPathBuilder:
         folder: str,
         filename: str,
         add_timestamp: bool = True,
-        custom_date: Optional[str] = None,
+        custom_date: str | None = None,
     ) -> str:
         date_folder = custom_date or self._today()
         if add_timestamp:
@@ -116,7 +115,7 @@ class DocumentPathBuilder:
         filename: str,
         doc_id: str,
         add_timestamp: bool = True,
-        custom_date: Optional[str] = None,
+        custom_date: str | None = None,
     ) -> str:
         date_folder = custom_date or self._today()
         if add_timestamp:
@@ -131,7 +130,7 @@ class DocumentPathBuilder:
         stage: str,
         filename: str,
         add_timestamp: bool = True,
-        custom_date: Optional[str] = None,
+        custom_date: str | None = None,
     ) -> str:
         date_folder = custom_date or self._today()
         if add_timestamp:

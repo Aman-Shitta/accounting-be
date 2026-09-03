@@ -1,0 +1,13 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+    "B008",  # DRF and Django idiomatically call functions in argument defaults
+]
+
+[lint.per-file-ignores]
+"*/migrations/*" = ["E", "F", "W", "I", "UP", "B"]
+"*/settings.py" = ["F403", "F405"]  # env_settings is a deliberate star import
