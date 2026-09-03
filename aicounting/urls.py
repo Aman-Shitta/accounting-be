@@ -8,13 +8,6 @@ tenancy first.
 
 from django.urls import include, path
 
-app_v1_url_patterns = [
-    path("auth/", include("authentication.urls")),
-    path("user/", include("user.urls")),
-    path("account/", include("account.urls")),
-    path("dashboard/", include("dashboard.urls")),
-]
-
 urlpatterns = [
-    path("api/v1/", include((app_v1_url_patterns, "api_v1"))),
+    path("api/v1/", include(("v1.urls", "v1"), namespace="v1")),
 ]

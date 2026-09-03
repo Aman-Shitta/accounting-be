@@ -6,6 +6,7 @@ Django admin and no static-file pipeline. See ``documentation/02-decisions.md``.
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,10 +47,14 @@ INSTALLED_APPS = [
     "corsheaders",
     "auditlog",
 
-    "authentication",
-    "user",
-    "account",
-    "dashboard",
+    "v1.common",
+    "v1.identity",
+    "v1.tenancy",
+    "v1.ledger",
+    "v1.configuration",
+    "v1.periods",
+    "v1.review",
+    "v1.dashboard",
 ]
 
 MIDDLEWARE = [
@@ -57,15 +62,15 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-
-    # Authenticates the bearer token once and caches it on the request, so DRF
-    # does not re-verify. Always sets request.user, which auditlog relies on.
-    "authentication.middleware.JWTAuthenticationMiddleware",
+    # Resolves the bearer token before auditlog reads request.user.
+    "v1.common.middleware.JWTUserMiddleware",
     "auditlog.middleware.AuditlogMiddleware",
 ]
 
-# No SessionMiddleware, CsrfViewMiddleware or AuthenticationMiddleware: auth is
-# bearer-token only, so there is no cookie session for CSRF to protect.
+# No SessionMiddleware, CsrfViewMiddleware or django.contrib.auth's
+# AuthenticationMiddleware: auth is bearer-token only, so there is no cookie
+# session for CSRF to protect, and that middleware hard-requires one.
+# JWTUserMiddleware fills the same role for tokens.
 
 # ---------------------------------------------------------------------------
 # Database
@@ -86,6 +91,13 @@ DATABASES = {
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+
+# Argon2 first: new passwords use it, and existing PBKDF2 hashes are upgraded
+# on next login.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -134,15 +146,35 @@ CORS_ALLOW_CREDENTIALS = True
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "authentication.authenticate.JSONWebTokenAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "EXCEPTION_HANDLER": "v1.common.exceptions.api_exception_handler",
     "DEFAULT_PARSER_CLASSES": (
         "rest_framework.parsers.JSONParser",
         "rest_framework.parsers.FormParser",
         "rest_framework.parsers.MultiPartParser",
     ),
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"anon": "30/min", "user": "60/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/min",
+        "user": "60/min",
+        # Credential endpoints are the ones worth guessing at.
+        "login": "10/min",
+        "set_password": "5/min",
+    },
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=int(os.environ.get("ACCESS_TOKEN_LIFETIME_MINUTES", "30"))
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=int(os.environ.get("REFRESH_TOKEN_LIFETIME_DAYS", "7"))
+    ),
+    "ROTATE_REFRESH_TOKENS": False,
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
 }
 
 # ---------------------------------------------------------------------------
@@ -154,7 +186,7 @@ CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localho
 
 CELERY_BEAT_SCHEDULE = {
     "process-classification-queue": {
-        "task": "account.tasks.process_classification_queue_task",
+        "task": "v1.periods.tasks.process_classification_queue_task",
         "schedule": 60.0,
     },
 }
@@ -167,6 +199,25 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
+
+# ---------------------------------------------------------------------------
+# Email — invites and password resets
+# ---------------------------------------------------------------------------
+
+# The frontend origin that renders the set-password screen.
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@aicounting.app")
+
+if os.environ.get("EMAIL_HOST"):
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.environ["EMAIL_HOST"]
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+    EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", "True")
+else:
+    # Development: invite and reset links are printed to the console.
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ---------------------------------------------------------------------------
 # Provider credentials and other environment settings

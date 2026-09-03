@@ -1,230 +1,193 @@
 """
-GL classification service.
+GL classification.
 
-Runs after extraction succeeds (optionally after control-total validation)
-to classify each line item against the client's chart of accounts via the
-Responses API + vector stores.
+Runs after extraction (and after control-total validation, when that applies)
+to assign a ledger account to every transaction, using the client's classifier
+profile — an OpenAI assistant backed by a vector store built from the client's
+chart of accounts.
 """
 
 import logging
 
-from account.models.monthly_accounting_document_model import MonthlyAccountingDocument
+from django.utils import timezone
+
+from v1.periods.models import PeriodDocument, PeriodTransaction
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentNotFoundError(Exception):
-    """Raised when a document ID cannot be found."""
-    pass
+    """No document with that id."""
+
+
+class ClassifierUnavailableError(Exception):
+    """
+    The client has no usable classifier profile.
+
+    Raised rather than returning zero, so a missing profile surfaces as a
+    failure instead of looking like a document with nothing to classify.
+    """
 
 
 class GLClassificationService:
-    """
-    Service for GL account classification operations.
+    """Assigns ledger accounts to a document's extracted transactions."""
 
-    Handles the classification of line items in processed documents.
-    """
-
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         self.document = document
 
     @classmethod
-    def from_document_id(cls, document_id: str) -> "GLClassificationService":
-        """Create service from document ID."""
-        try:
-            document = MonthlyAccountingDocument.objects.get(id=document_id)
-            return cls(document)
-        except MonthlyAccountingDocument.DoesNotExist:
+    def from_document_id(cls, document_id) -> "GLClassificationService":
+        document = (
+            PeriodDocument.objects.filter(id=document_id)
+            .select_related("period__client", "document_source")
+            .first()
+        )
+        if document is None:
             raise DocumentNotFoundError(f"Document not found: {document_id}")
+        return cls(document)
+
+    @property
+    def client(self):
+        return self.document.period.client
+
+    # ---- check enrichment --------------------------------------------------
 
     def enrich_check_descriptions(self) -> int:
         """
-        Enrich check transaction descriptions with payee/memo info.
-
-        Returns:
-            Number of descriptions enriched
+        Fold payee and memo from check images into the transaction
+        description, so the classifier sees "Check 1042 | Payee: Acme Supply"
+        rather than an opaque check number.
         """
-        enriched_count = 0
+        enriched = 0
+        details = self.document.check_details.filter(
+            transaction__isnull=False
+        ).select_related("transaction")
 
-        check_items = self.document.check_items.filter(
-            related_line_item__isnull=False
-        ).select_related('related_line_item')
+        for detail in details:
+            transaction = detail.transaction
+            parts = [transaction.description or ""]
 
-        for check_item in check_items:
-            line_item = check_item.related_line_item
-            description_parts = [line_item.description or ""]
+            for label, value in (("Payee", detail.payee), ("Memo", detail.memo)):
+                text = (value or "").strip()
+                if text and text.lower() != "null" and label not in parts[0]:
+                    parts.append(f"{label}: {text}")
 
-            if check_item.payee and check_item.payee.strip():
-                raw_payee = check_item.payee.strip()
-                if raw_payee.lower() != "null":
-                    payee_info = f"Payee: {raw_payee}"
-                    if payee_info not in description_parts[0]:
-                        description_parts.append(payee_info)
+            if len(parts) == 1:
+                continue
 
-            if check_item.memo and check_item.memo.strip():
-                raw_memo = check_item.memo.strip()
-                if raw_memo.lower() != "null":
-                    memo_info = f"Memo: {raw_memo}"
-                    if memo_info not in description_parts[0]:
-                        description_parts.append(memo_info)
+            transaction.description = " | ".join(p for p in parts if p)
+            transaction.save(update_fields=["description", "updated_at"])
+            enriched += 1
 
-            if len(description_parts) > 1:
-                line_item.description = " | ".join(description_parts)
-                line_item.save(update_fields=['description'])
-                enriched_count += 1
+        logger.info(f"Enriched {enriched} check descriptions")
+        return enriched
 
-        logger.info(
-            f"Enriched {enriched_count} check descriptions for document {self.document.id}")
-        return enriched_count
+    # ---- classification ----------------------------------------------------
 
-    def classify_line_items(self) -> int:
+    def classify_transactions(self) -> int:
         """
-        Classify GL accounts for all line items in the document.
+        Classify every unclassified transaction on the document.
 
-        Uses the Responses API (classify_v2) for stateless, isolated
-        classification — safe for concurrent multi-client processing.
-
-        Returns:
-            Number of line items classified
+        Returns the number assigned an account. Raises
+        :class:`ClassifierUnavailableError` when the client has no usable
+        classifier profile.
         """
-        from account.models.monthly_document_line_models import MonthlyDocumentBankLineItem
-        from account.models import DimAICGLAcct
         from extractor.classification.classifier import GLClassifier
+        from v1.ledger.models import LedgerAccount
 
-        input_file_rules = (
-            self.document.input_file_snapshot.description
-            if self.document.input_file_snapshot else ""
-        )
+        profile = getattr(self.client, "classifier_profile", None)
+        if profile is None or not profile.is_usable:
+            raise ClassifierUnavailableError(
+                f"Client {self.client.id} has no usable classifier profile; "
+                f"upload a chart of accounts to provision one."
+            )
 
         self.enrich_check_descriptions()
 
-        client_assistant = getattr(
-            self.document.monthly_accounting.client, 'assistant', None)
-        vector_store_ids = (
-            [client_assistant.vector_store_id]
-            if client_assistant and client_assistant.vector_store_id else []
+        transactions = list(
+            PeriodTransaction.objects.filter(document=self.document)
+            .select_related("ledger_account")
+            .order_by("page_number", "line_number")
+        )
+        if not transactions:
+            logger.info(f"No transactions to classify on document {self.document.id}")
+            return 0
+
+        logger.info(f"Classifying {len(transactions)} transactions")
+
+        source = self.document.document_source
+        classifier = GLClassifier(
+            vector_store_ids=[profile.vector_store_id],
+            model=profile.model_name,
+            response_schema=profile.response_schema,
+            special_rules=source.extraction_notes if source else "",
         )
 
-        classified_count = 0
+        classified_pages = classifier.classify_extracted_data(
+            self._as_classifier_input(transactions)
+        )
 
-        if vector_store_ids:
-            try:
-                line_items_qs = MonthlyDocumentBankLineItem.objects.filter(
-                    document=self.document
-                ).select_related('gl_account', 'offset_gl_account').order_by('page_number', 'line_number')
+        return self._apply(transactions, classified_pages or {}, LedgerAccount)
 
-                default_offset_gl = self._get_default_offset_gl()
-                line_items_qs.update(offset_gl_account=default_offset_gl)
+    def _as_classifier_input(self, transactions: list) -> dict:
+        """Shape transactions as ``{page: {"line_items": {line: {...}}}}``."""
+        pages: dict = {}
 
-                line_items_list = list(line_items_qs)
+        for txn in transactions:
+            amount = float(txn.amount) if txn.amount is not None else None
+            is_debit = txn.direction == PeriodTransaction.Direction.DEBIT
 
-                if not line_items_list:
-                    logger.info(
-                        f"No line items to classify for document {self.document.id}")
-                    return 0
-
-                logger.info(
-                    f"Processing {len(line_items_list)} line items for classification")
-
-                extracted_data = self._build_extracted_data(line_items_list)
-
-                classifier = GLClassifier(
-                    vector_store_ids=vector_store_ids,
-                    model=client_assistant.model_name if client_assistant else "gpt-4o",
-                    response_schema=client_assistant.response_schema if client_assistant else None,
-                    special_rules=input_file_rules,
-                )
-
-                classified_pages = classifier.classify_extracted_data(
-                    extracted_data)
-
-                line_items_by_page = {}
-                for li in line_items_list:
-                    line_items_by_page.setdefault(li.page_number, {})[
-                        li.line_number] = li
-
-                updated_items = []
-                for page_num, page_data in (classified_pages or {}).items():
-                    iterable = page_data.values() if isinstance(page_data, dict) else page_data
-                    for cls_item in iterable:
-                        try:
-                            line_num = int(cls_item.get('id', 0))
-                            target = line_items_by_page.get(
-                                int(page_num), {}).get(line_num)
-
-                            if not target or target.gl_account:
-                                continue
-
-                            gl_identifier = cls_item.get('gl_account')
-                            if gl_identifier:
-                                resolved_gl = DimAICGLAcct.objects.filter(
-                                    client_id=self.document.monthly_accounting.client,
-                                    account_number=str(gl_identifier).strip()
-                                ).first()
-
-                                if resolved_gl:
-                                    target.gl_account = resolved_gl
-                                    updated_items.append(target)
-                        except Exception as e:
-                            logger.warning(
-                                f"Skipping classification item: {e}")
-
-                if updated_items:
-                    MonthlyDocumentBankLineItem.objects.bulk_update(
-                        updated_items, ['gl_account']
-                    )
-                    classified_count = len(updated_items)
-
-            except Exception as e:
-                logger.error(
-                    f"Classification failed for document {self.document.id}: {e}")
-
-        logger.info(
-            f"Classified {classified_count} line items for document {self.document.id}")
-        return classified_count
-
-    def _build_extracted_data(self, line_items: list) -> dict:
-        """
-        Build extracted data structure for a batch of line items.
-
-        Returns:
-            Dict structured as {page_number: {"line_items": {line_number: {...}}}}
-        """
-        extracted = {}
-
-        for li in line_items:
-            page_dict = extracted.setdefault(
-                li.page_number, {"line_items": {}})
-            txn_type = li.transaction_type
-
-            debit_amount = None
-            credit_amount = None
-            if txn_type == 'debit':
-                debit_amount = float(
-                    li.amount) if li.amount is not None else None
-            elif txn_type == 'credit':
-                credit_amount = float(
-                    li.amount) if li.amount is not None else None
-            else:
-                if li.amount is not None:
-                    debit_amount = float(li.amount)
-
-            page_dict["line_items"][li.line_number] = {
-                "id": li.line_number,
-                "description": li.description or "",
-                "debit_amount": debit_amount,
-                "credit_amount": credit_amount,
-                "transaction_type": txn_type or ("debit" if debit_amount else "credit")
+            page = pages.setdefault(txn.page_number, {"line_items": {}})
+            page["line_items"][txn.line_number] = {
+                "id": txn.line_number,
+                "description": txn.description or "",
+                "debit_amount": amount if is_debit else None,
+                "credit_amount": None if is_debit else amount,
+                "transaction_type": txn.direction,
             }
 
-        return extracted
+        return pages
 
-    def _get_default_offset_gl(self):
-        """Get default offset GL account from input file snapshot."""
-        if not self.document.input_file_snapshot:
-            return None
+    def _apply(self, transactions: list, classified_pages: dict, LedgerAccount) -> int:
+        """
+        Write the classifier's account numbers back, resolving each to a real
+        ledger account for this client. Already-classified rows are left alone.
+        """
+        by_position = {(t.page_number, t.line_number): t for t in transactions}
+        accounts = {
+            a.account_number: a
+            for a in LedgerAccount.objects.filter(client=self.client, is_active=True)
+        }
 
-        bank_attributes = self.document.input_file_snapshot.attribute_snapshots.all()
-        if bank_attributes.count() == 1:
-            return bank_attributes.first().offset_gl_account
-        return None
+        updated = []
+        now = timezone.now()
+
+        for page_number, page in classified_pages.items():
+            items = page.values() if isinstance(page, dict) else page
+
+            for item in items:
+                try:
+                    line_number = int(item.get("id", 0))
+                except (TypeError, ValueError):
+                    logger.warning(f"Classifier returned an unusable line id: {item!r}")
+                    continue
+
+                target = by_position.get((int(page_number), line_number))
+                if target is None or target.ledger_account_id:
+                    continue
+
+                account = accounts.get(str(item.get("gl_account") or "").strip())
+                if account is None:
+                    continue
+
+                target.ledger_account = account
+                target.classified_at = now
+                updated.append(target)
+
+        if updated:
+            PeriodTransaction.objects.bulk_update(
+                updated, ["ledger_account", "classified_at"]
+            )
+
+        logger.info(f"Classified {len(updated)} transactions on document {self.document.id}")
+        return len(updated)

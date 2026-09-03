@@ -4,7 +4,7 @@ import logging
 
 # Local imports
 from aicounting.openai_client import OpeAIClient
-from user.gl_classification_prompt import GL_ASSISITANT_INSTRUCTION_SET
+from extractor.classification.prompts import GL_ASSISITANT_INSTRUCTION_SET
 
 logger = logging.getLogger(__name__)
 

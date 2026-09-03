@@ -1,13 +1,8 @@
 """
-Bank Statement Saver
+Persists transaction extraction results.
 
-Single source of truth for persisting bank statement and credit card
-extraction results to the database.
-
-Consolidates the ``_save_extracted_data``, ``_save_transaction``,
-``_create_check_item_from_transaction``, ``_save_control_totals``,
-and ``_save_doc_metadata`` methods that were previously duplicated
-across ``pipeline_landing_v1.py``, ``pipeline_claude.py``, and ``pipeline.py``.
+Single source of truth for turning a pipeline's transaction dicts into
+``PeriodTransaction`` and ``PeriodCheckDetail`` rows.
 """
 
 from __future__ import annotations
@@ -16,24 +11,31 @@ import logging
 import re
 from typing import Dict, List, Optional
 
-from django.db import transaction
+from django.db import transaction as db_transaction
 
-from account.models import (
-    MonthlyAccountingDocument,
-    MonthlyDocumentBankCheckItem,
-    MonthlyDocumentBankLineItem,
-)
 from extractor.base import BaseDocumentProcessor
 from extractor.utils import convert_decimals_to_float
+from v1.periods.models import PeriodCheckDetail, PeriodDocument, PeriodTransaction
 
 logger = logging.getLogger(__name__)
 
 
+def _clean_check_number(raw) -> Optional[str]:
+    """
+    Normalise a check number, or return ``None`` when there isn't one.
+
+    Statements pad with zeros and asterisks, and sometimes put a word where the
+    number should be.
+    """
+    if not raw or not str(raw).strip():
+        return None
+    cleaned = re.sub(r"[^\d.]", "", str(raw).lstrip("0").strip("*"))
+    return cleaned or None
+
+
 class BankStatementSaver:
     """
-    Centralized persistence for bank statement / credit card extraction results.
-
-    Usage::
+    Persistence for bank statement and credit card extraction.
 
         saver = BankStatementSaver(document)
         stats = saver.save_transactions(transactions)
@@ -41,177 +43,134 @@ class BankStatementSaver:
         saver.save_metadata(metadata)
     """
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         self.document = document
 
+    # ---- transactions -----------------------------------------------------
 
     def save_transactions(self, transactions: List[Dict]) -> Dict[str, int]:
         """
-        Persist a list of transaction dicts to the database.
+        Persist transaction dicts, creating a check detail row for any
+        transaction carrying a check number.
 
-        Automatically creates ``MonthlyDocumentBankCheckItem`` records
-        for any transaction flagged as a check.
+        Expected keys: ``date``, ``description``, ``amount``, ``type``, and
+        optionally ``page_number``, ``check_number``, ``check_payee``,
+        ``check_memo``, ``check_written_date``.
 
-        Args:
-            transactions: List of transaction dicts.  Expected keys:
-                ``date``, ``description``, ``amount``, ``type`` (debit/credit),
-                ``page_number``, ``check_number``, and optional rectification
-                flags (``is_rectified``, ``was_missing``, ``was_compared``).
-
-        Returns:
-            Stats dict: ``{"line_items": int, "check_items": int, "pages_processed": int}``
+        Returns counts of what was written.
         """
-        stats = {
-            "line_items": 0,
-            "check_items": 0,
-            "pages_processed": set(),
-        }
-
         if not transactions:
             logger.warning("No transactions found in extracted data")
-            return {"line_items": 0, "check_items": 0, "pages_processed": 0}
+            return {"transactions": 0, "check_details": 0, "pages_processed": 0}
 
-        logger.info(f"Saving {len(transactions)} transactions to DB...")
+        logger.info(f"Saving {len(transactions)} transactions...")
 
-        with transaction.atomic():
-            for idx, txn in enumerate(transactions):
-                assert "date" in txn and "description" in txn and "amount" in txn and "type" in txn, (
-                    f"Transaction dict is missing required keys: {txn}"
-                )
-                line_item = self._save_transaction(idx + 1, txn)
-                stats["line_items"] += 1
-                stats["pages_processed"].add(txn.get("page_number", 1))
+        default_offset = self._default_offset_account()
+        written, checks, pages = 0, 0, set()
 
-                if line_item.is_check_transaction:
-                    stats["check_items"] += 1
+        with db_transaction.atomic():
+            for index, txn in enumerate(transactions, start=1):
+                missing = {"date", "description", "amount", "type"} - set(txn)
+                if missing:
+                    logger.warning(f"Skipping transaction {index}, missing {missing}")
+                    continue
 
-        stats["pages_processed"] = len(stats["pages_processed"])
+                row = self._save_transaction(index, txn, default_offset)
+                written += 1
+                pages.add(row.page_number)
+
+                if row.is_check:
+                    self._save_check_detail(row, txn)
+                    checks += 1
+
+        stats = {
+            "transactions": written,
+            "check_details": checks,
+            "pages_processed": len(pages),
+        }
         logger.info(f"Saved extracted data: {stats}")
         return stats
 
-    def save_control_totals(self, control_totals: Dict) -> None:
-        """Save control totals to the document model."""
-        try:
-            self.document.control_item = convert_decimals_to_float(control_totals)
-            self.document.save()
-            logger.info("Control totals saved to document")
-        except Exception as e:
-            logger.error(f"Failed to save control totals: {e}")
-            self.document.control_item = {}
-            self.document.save()
-
-    def save_metadata(self, metadata: Dict) -> None:
-        """Save document-level metadata (markdown, extracted data, etc.)."""
-        try:
-            self.document.markdown_metadata = convert_decimals_to_float(metadata)
-            self.document.save()
-            logger.info("Document metadata saved")
-        except Exception as e:
-            logger.error(f"Failed to save markdown metadata: {e}")
-            self.document.markdown_metadata = {}
-            self.document.save()
-
+    def _default_offset_account(self):
+        """
+        The offset account configured on this document's source — the other
+        side of every entry from this statement.
+        """
+        source = self.document.document_source
+        return source.default_offset_account if source else None
 
     def _save_transaction(
-        self, line_number: int, txn_data: Dict
-    ) -> MonthlyDocumentBankLineItem:
-        """Save a single transaction to the database."""
-        date = BaseDocumentProcessor.format_date(txn_data.get("date", ""))
-        description = txn_data.get("description", "")
-        amount = BaseDocumentProcessor.parse_amount(txn_data.get("amount"))
-        transaction_type = txn_data.get("type", "").lower()
+        self, line_number: int, txn: Dict, default_offset
+    ) -> PeriodTransaction:
+        raw_date = str(txn.get("date") or "").strip()
+        direction = str(txn.get("type") or "").lower()
+        check_number = _clean_check_number(txn.get("check_number"))
 
-        debit_amount = None
-        credit_amount = None
-
-        if transaction_type == "debit" and amount:
-            debit_amount = str(amount)
-        elif transaction_type == "credit" and amount:
-            credit_amount = str(amount)
-
-        check_number = txn_data.get("check_number", "")
-        is_check_transaction = bool(check_number and str(check_number).strip())
-
-        if check_number:
-            check_number = str(check_number).lstrip("0").strip("*")
-            check_number = re.sub(r"[^\d\.]", "", check_number)
-            if not check_number:
-                is_check_transaction = False
-                check_number = None
-
-        page_number = txn_data.get("page_number", 1)
-
-        # Rectification metadata
-        is_rectified = txn_data.get("is_rectified", False)
-        was_missing = txn_data.get("was_missing", False)
-        was_compared = txn_data.get("was_compared", False)
-
-        line_item = MonthlyDocumentBankLineItem.objects.create(
+        return PeriodTransaction.objects.create(
             document=self.document,
-            page_number=page_number,
+            page_number=txn.get("page_number", 1),
             line_number=line_number,
-            date=date,
-            description=description,
-            amount=amount,
-            transaction_type=(
-                transaction_type if transaction_type in ("debit", "credit") else None
+            transaction_date=BaseDocumentProcessor.parse_date(raw_date),
+            raw_date=raw_date[:64],
+            description=txn.get("description", ""),
+            amount=BaseDocumentProcessor.parse_amount(txn.get("amount")),
+            direction=(
+                direction
+                if direction in (PeriodTransaction.Direction.DEBIT, PeriodTransaction.Direction.CREDIT)
+                else PeriodTransaction.Direction.DEBIT
             ),
-            debit_amount=debit_amount,
-            credit_amount=credit_amount,
-            is_check_transaction=is_check_transaction,
-            check_number=check_number if is_check_transaction else None,
-            is_rectified=is_rectified,
-            was_missing=was_missing,
-            was_compared=was_compared,
-            gl_account=None,
-            offset_gl_account=None,
+            is_check=check_number is not None,
+            check_number=check_number or "",
+            offset_ledger_account=default_offset,
         )
 
-        if is_check_transaction:
-            self._create_check_item(line_item, txn_data)
+    def _save_check_detail(self, row: PeriodTransaction, txn: Dict) -> PeriodCheckDetail:
+        """
+        Record payee and memo for a check.
 
-        return line_item
+        The check-image pass supplies these directly; when it has not run, fall
+        back to pulling them out of the transaction description.
+        """
+        description = txn.get("description", "")
+        payee = txn.get("check_payee") or self._extract(
+            r"(?:to|payee[:\s]+)([^-|]+)", description
+        )
+        memo = txn.get("check_memo") or self._extract(
+            r"(?:memo[:\s]+)(.+?)(?:\||$)", description
+        )
 
-    def _create_check_item(
-        self, line_item: MonthlyDocumentBankLineItem, txn_data: Dict
-    ) -> MonthlyDocumentBankCheckItem:
-        """Create a check item record linked to a transaction line item."""
-        check_written_date = txn_data.get("check_written_date", "")
-        if check_written_date:
-            check_written_date = BaseDocumentProcessor.format_date(check_written_date)
-
-        # Use enriched payee/memo if available, 
-        # otherwise fall back to regex parsing from description.
-        payee = txn_data.get("check_payee", "")
-        memo = txn_data.get("check_memo", "")
-
-        if not payee:
-            description = txn_data.get("description", "")
-            payee_match = re.search(
-                r"(?:to|payee[:\s]+)([^-|]+)", description, re.IGNORECASE
-            )
-            if payee_match:
-                payee = payee_match.group(1).strip()
-
-        if not memo:
-            description = txn_data.get("description", "")
-            memo_match = re.search(
-                r"(?:memo[:\s]+)(.+?)(?:\||$)", description, re.IGNORECASE
-            )
-            if memo_match:
-                memo = memo_match.group(1).strip()
-
-        check_item = MonthlyDocumentBankCheckItem.objects.create(
+        return PeriodCheckDetail.objects.create(
             document=self.document,
-            page_number=line_item.page_number,
-            amount=str(line_item.amount) if line_item.amount else "",
+            transaction=row,
+            page_number=row.page_number,
+            check_number=row.check_number,
+            amount=row.amount,
             payee=payee,
             memo=memo,
-            clearing_date=line_item.date,
-            passing_date=check_written_date,
-            check_number=line_item.check_number,
-            related_line_item=line_item,
+            cleared_on=row.transaction_date,
         )
 
-        logger.debug(f"Created check item for check #{line_item.check_number}")
-        return check_item
+    @staticmethod
+    def _extract(pattern: str, text: str) -> str:
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(1).strip() if match else ""
+
+    # ---- document-level results -------------------------------------------
+
+    def save_control_totals(self, control_totals: Dict) -> None:
+        """Opening and closing balances, used to validate the extraction."""
+        try:
+            self.document.control_totals = convert_decimals_to_float(control_totals)
+        except (TypeError, ValueError) as e:
+            logger.error(f"Failed to serialize control totals: {e}")
+            self.document.control_totals = {}
+        self.document.save(update_fields=["control_totals", "updated_at"])
+
+    def save_metadata(self, metadata: Dict) -> None:
+        """Per-page parsed markdown and artifact locations."""
+        try:
+            self.document.markdown_metadata = convert_decimals_to_float(metadata)
+        except (TypeError, ValueError) as e:
+            logger.error(f"Failed to serialize markdown metadata: {e}")
+            self.document.markdown_metadata = {}
+        self.document.save(update_fields=["markdown_metadata", "updated_at"])

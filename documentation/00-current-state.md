@@ -181,3 +181,20 @@ The same applies to the `05_document_ai` and `06_rectification` artifact stages
 in `aicounting/azure_storage_paths.py` and the `save_rectified_data` /
 `save_rectifier_items` helpers in `aicounting/file_upload_helper.py` — both
 modules are rewritten wholesale in Phase 2.
+
+## Undeclared dependencies found during the rewrite
+
+Three packages were imported at module scope but absent from
+`requirements.txt`, so a clean install could not import the code that used
+them:
+
+| Package | Imported by |
+|---|---|
+| `anthropic` | `extractor/pipelines/datalabs/backends.py` |
+| `datalab-python-sdk` | `extractor/pipelines/datalabs/parser.py` |
+| `pypdf` | `extractor/utils.py` |
+
+The first two are on the only wired bank-statement path, so that pipeline could
+not run at all on a fresh environment. All three are now declared, and an
+import sweep over every module runs as part of verification to keep the gap
+from reopening.

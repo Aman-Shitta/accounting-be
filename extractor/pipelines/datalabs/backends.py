@@ -22,7 +22,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from account.models import MonthlyAccountingDocument
+from v1.periods.models import PeriodDocument
 from extractor.claude_service import ClaudeMixin
 from extractor.gemini_service import GeminiMixin
 from extractor.pipelines.datalabs.schemas import (
@@ -120,7 +120,7 @@ RULES:
 class ExtractorBackend(ABC):
     """Common interface for all Datalabs LLM backends."""
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         self.document = document
 
     @abstractmethod
@@ -156,7 +156,7 @@ class ClaudeTransactionExtractor(ExtractorBackend, ClaudeMixin):
         model_cls=TransactionList,
     )
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_claude()
 
@@ -186,7 +186,7 @@ class ClaudeTransactionExtractor(ExtractorBackend, ClaudeMixin):
 class GeminiTransactionExtractor(ExtractorBackend, GeminiMixin):
     """LLM Call 1 — extract transactions via Gemini structured output."""
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_gemini()
 
@@ -221,7 +221,7 @@ class ClaudeSummaryExtractor(ExtractorBackend, ClaudeMixin):
         model_cls=StatementSummary,
     )
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_claude()
 
@@ -251,7 +251,7 @@ class ClaudeSummaryExtractor(ExtractorBackend, ClaudeMixin):
 class GeminiSummaryExtractor(ExtractorBackend, GeminiMixin):
     """LLM Call 2 — extract control totals via Gemini structured output."""
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_gemini()
 
@@ -286,7 +286,7 @@ class ClaudeCheckImageExtractor(ExtractorBackend, ClaudeMixin):
         model_cls=CheckList,
     )
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_claude()
 
@@ -318,7 +318,7 @@ class ClaudeCheckImageExtractor(ExtractorBackend, ClaudeMixin):
 class GeminiCheckImageExtractor(ExtractorBackend, GeminiMixin):
     """LLM Call 3 — extract check data from Marker HTML via Gemini."""
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         super().__init__(document)
         self.init_gemini()
 

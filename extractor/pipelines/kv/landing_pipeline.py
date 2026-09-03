@@ -19,9 +19,7 @@ from landingai_ade import LandingAIADE
 from landingai_ade.lib import pydantic_to_json_schema
 
 from extractor.base import BaseDocumentProcessor
-from account.models import (
-    MonthlyAccountingDocument
-)
+from v1.periods.models import PeriodDocument
 from extractor.utils import split_pdf_to_pages, generate_temp_pdf, clean_temp_file
 
 logger = logging.getLogger(__name__)
@@ -97,14 +95,14 @@ def build_dynamic_extraction_model(attributes: List[Dict[str, Any]]) -> type:
 
 class DocumentProcessor(BaseDocumentProcessor):
     """
-    Sales document processor using LandingAI for extraction.
-    Extracts key-value attributes from sales documents and saves them to the database.
+    Field extraction for payroll, sales and misc documents via LandingAI.
 
-    The processor dynamically builds a Pydantic schema based on the configured attributes
-    for the document's input file, including any helper text/comments that guide extraction.
+    The schema is built per document from the ``ExtractionField`` rows on its
+    ``DocumentSource``, and properties are dropped from it as they are found,
+    so later pages only look for what is still missing.
     """
 
-    def __init__(self, doc: MonthlyAccountingDocument):
+    def __init__(self, doc: PeriodDocument):
         super().__init__(doc)
         self.page_data = []
         self.pages_data = {}
@@ -123,44 +121,28 @@ class DocumentProcessor(BaseDocumentProcessor):
 
     def _build_dynamic_schema(self):
         """
-        Build a dynamic extraction schema based on the configured attributes
-        for this document's input file. Uses attribute name and comments (helper text)
-        to create precise extraction instructions for LandingAI.
+        Build the extraction schema from the fields configured on this
+        document's source.
+
+        Each field's ``key`` becomes a schema property and its ``prompt_hint``
+        becomes that property's description, so the extractor is told exactly
+        what to look for rather than guessing at key names.
         """
-        from account.models import FactAICInputFileAttributeSnapshot
+        from v1.configuration.models import ExtractionField
 
-        # Fetch configured attributes with all needed fields
-        attribute_objects = FactAICInputFileAttributeSnapshot.objects.only(
-            'id', 'name', 'type', 'gl_account', 'offset_gl_account', 'comments'
-        ).filter(input_file_snapshot=self.document.input_file_snapshot)
+        fields = ExtractionField.objects.filter(
+            document_source=self.document.document_source
+        ).order_by("position", "id")
 
-        # Store attribute instances for later use when saving
-        self.configured_attributes = {}
-        attribute_configs = []
+        self.configured_attributes = {f.key: f for f in fields}
+        attribute_configs = [
+            {"key": f.key, "name": f.label, "comments": f.prompt_hint}
+            for f in fields
+        ]
 
-        for obj in attribute_objects:
-            normalized_key = obj.name.lower().replace(" ", "_")
-            self.configured_attributes[normalized_key] = obj
+        self.attribute_names = list(self.configured_attributes)
+        logger.info(f"Configured fields for extraction: {self.attribute_names}")
 
-            attribute_configs.append({
-                'key': normalized_key,
-                'name': obj.name,
-                'comments': obj.comments or ''  # Helper text for extraction,
-            })
-
-        # attribute_configs.append(
-        #     {
-        #         'key': 'page_number',
-        #         'name': 'Page Number',
-        #         'comments': 'The page number from which the attribute was extracted.'
-        #     }
-        # )
-        # Create a list of attribute names for logging
-        self.attribute_names = list(self.configured_attributes.keys())
-        logger.info(
-            f"Configured attributes for extraction: {self.attribute_names}")
-
-        # Build the dynamic Pydantic model with attribute-specific descriptions
         if attribute_configs:
             self.DynamicExtractionModel = build_dynamic_extraction_model(
                 attribute_configs)
@@ -169,9 +151,10 @@ class DocumentProcessor(BaseDocumentProcessor):
             logger.info(
                 f"Built dynamic schema with {len(attribute_configs)} fields")
         else:
-            # Fallback to generic key-item schema if no attributes configured
+            # Nothing configured: fall back to open-ended key/value extraction
+            # so the document still yields something a person can look at.
             logger.warning(
-                "No attributes configured, using fallback KeyItemList schema")
+                "No extraction fields configured, using generic KeyItemList schema")
             self.DynamicExtractionModel = None
             self.extraction_schema = pydantic_to_json_schema(KeyItemList)
 

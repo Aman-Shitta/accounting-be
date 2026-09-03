@@ -1,11 +1,10 @@
 """
-Attribute Saver
+Persists field extraction results for field-configured document types
+(payroll, sales, misc).
 
-Single source of truth for persisting key-value attribute extraction
-results (sales, payroll, misc documents) to the database.
-
-Consolidates the ``_save_extracted_data`` method that was duplicated
-between ``kv_processor/pipeline.py`` and ``kv_processor/pipeline_landing.py``.
+Every configured field gets a row, whether or not the extractor found it — a
+missing value is information, and the UI shows the gap rather than the field
+silently disappearing.
 """
 
 from __future__ import annotations
@@ -15,147 +14,128 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Set
 
-from django.db import transaction
+from django.db import transaction as db_transaction
 
-from account.models import MonthlyAccountingDocument
+from v1.configuration.models import ExtractionField
+from v1.periods.models import PeriodDocument, PeriodFieldValue
 
 logger = logging.getLogger(__name__)
 
 
 class AttributeSaver:
     """
-    Centralized persistence for key-value attribute extraction results.
-
-    Usage::
+    Persistence for key-value extraction.
 
         saver = AttributeSaver(document)
         stats = saver.save_attributes(page_data)
     """
 
-    def __init__(self, document: MonthlyAccountingDocument):
+    def __init__(self, document: PeriodDocument):
         self.document = document
-        self._extracted_attributes: Set[str] = set()
+        self._seen: Set[str] = set()
 
     def save_attributes(self, page_data: List[Dict]) -> Dict[str, int]:
         """
-        Save extracted key-value attributes to the database.
+        Write one ``PeriodFieldValue`` per configured field.
 
-        Handles:
-            - Matching extracted keys to configured attributes.
-            - De-duplicating across pages (first occurrence wins).
-            - Creating empty records for attributes not found.
+        ``page_data`` is a list of ``{"page_number": int, "key_items":
+        [{"key": str, "value": str}]}``. Earlier pages win when the same key
+        appears twice.
 
-        Args:
-            page_data: List of page result dicts, each with:
-                ``{"page_number": int, "key_items": [{"key": str, "value": str}]}``
-
-        Returns:
-            Stats dict: ``{"key_items": int, "skipped_extracted_attributes": int,
-                           "duplicate_attributes_skipped": int}``
+        The account references are resolved and copied onto each row, so the
+        value keeps its meaning if the field is later edited or removed.
         """
-        from account.models import (
-            MonthlyDocumentAttributeItem,
-            FactAICInputFileAttributeSnapshot,
-        )
+        stats = {"field_values": 0, "not_found": 0, "duplicates_skipped": 0}
 
-        stats = {
-            "key_items": 0,
-            "skipped_extracted_attributes": 0,
-            "duplicate_attributes_skipped": 0,
+        fields = {
+            field.key: field
+            for field in ExtractionField.objects.filter(
+                document_source=self.document.document_source
+            ).select_related("ledger_account", "offset_ledger_account")
         }
 
-        # Build lookup of configured attributes
-        configured_attributes = {
-            obj.name.lower().replace(" ", "_"): obj
-            for obj in FactAICInputFileAttributeSnapshot.objects.only(
-                "id", "name", "type", "gl_account", "offset_gl_account"
-            ).filter(input_file_snapshot=self.document.input_file_snapshot)
-        }
+        if not fields:
+            logger.warning(
+                f"No extraction fields configured for document {self.document.id}; "
+                f"nothing to save"
+            )
+            return stats
 
-        with transaction.atomic():
-            for page_result in page_data:
-                page_number = page_result.get("page_number", 1)
-                extracted_items = page_result.get("key_items", [])
+        with db_transaction.atomic():
+            for page in page_data:
+                page_number = page.get("page_number", 1)
 
-                for item in extracted_items:
-                    # Handle both dict and Pydantic model formats
-                    if isinstance(item, dict):
-                        key = item.get("key", "").lower().replace(" ", "_")
-                        value = item.get("value", "")
-                    else:
-                        key = getattr(item, "key", "").lower().replace(" ", "_")
-                        value = getattr(item, "value", "")
+                for item in page.get("key_items", []):
+                    key = self._normalise_key(item)
+                    value = self._item_value(item)
 
-                    # Skip duplicates from earlier pages
-                    if key in self._extracted_attributes:
-                        stats["duplicate_attributes_skipped"] += 1
+                    if key in self._seen:
+                        stats["duplicates_skipped"] += 1
                         continue
 
-                    attr_instance = configured_attributes.get(key)
-                    parsed_value = self._parse_amount(value)
+                    field = fields.get(key)
+                    parsed = self._parse_amount(value)
+                    if not field or parsed is None:
+                        continue
 
-                    if attr_instance and parsed_value:
-                        MonthlyDocumentAttributeItem.objects.create(
-                            document=self.document,
-                            attribute=attr_instance,
-                            page_number=page_number,
-                            value=parsed_value,
-                            transaction_type=attr_instance.type,
-                            gl_account=attr_instance.gl_account,
-                            offset_gl_account=attr_instance.offset_gl_account,
-                        )
-                        self._extracted_attributes.add(key)
-                        stats["key_items"] += 1
+                    self._create_value(field, page_number, parsed)
+                    self._seen.add(key)
+                    stats["field_values"] += 1
 
-            # Create empty entries for attributes not found in any page
-            for attr_name, attr_obj in configured_attributes.items():
-                if attr_name not in self._extracted_attributes:
-                    logger.info(f"Saving empty attribute for missing: {attr_name}")
-                    MonthlyDocumentAttributeItem.objects.create(
-                        document=self.document,
-                        attribute=attr_obj,
-                        page_number=1,
-                        value="",
-                        transaction_type=attr_obj.type,
-                        gl_account=attr_obj.gl_account,
-                        offset_gl_account=attr_obj.offset_gl_account,
-                    )
-                    stats["skipped_extracted_attributes"] += 1
+            for key, field in fields.items():
+                if key not in self._seen:
+                    logger.info(f"Field '{key}' not found in document; recording empty")
+                    self._create_value(field, page_number=1, value="")
+                    stats["not_found"] += 1
 
         logger.info(f"Saved extracted data: {stats}")
         return stats
 
-    @staticmethod
-    def _parse_amount(amount_str) -> Optional[str]:
-        """
-        Parse and clean amount string.
+    def _create_value(self, field: ExtractionField, page_number: int, value: str):
+        return PeriodFieldValue.objects.create(
+            document=self.document,
+            extraction_field=field,
+            field_key=field.key,
+            field_label=field.label,
+            page_number=page_number,
+            value=value,
+            direction=field.direction,
+            ledger_account=field.ledger_account,
+            offset_ledger_account=field.offset_ledger_account,
+        )
 
-        Returns the cleaned value as a string, or ``None`` if empty/invalid.
+    @staticmethod
+    def _normalise_key(item) -> str:
+        raw = item.get("key", "") if isinstance(item, dict) else getattr(item, "key", "")
+        return str(raw).lower().replace(" ", "_")
+
+    @staticmethod
+    def _item_value(item):
+        return item.get("value", "") if isinstance(item, dict) else getattr(item, "value", "")
+
+    @staticmethod
+    def _parse_amount(raw) -> Optional[str]:
         """
-        if not amount_str or str(amount_str).strip() in ("", "null", "none", "-"):
+        Reduce an extracted amount to a plain numeric string.
+
+        Returns ``None`` when there is nothing usable, and the original text
+        when it is not a number at all — some configured fields are dates or
+        reference codes, not amounts.
+        """
+        if raw is None or str(raw).strip().lower() in ("", "null", "none", "-"):
             return None
 
-        cleaned = re.sub(r"[^\d\.]", "", str(amount_str))
+        text = str(raw).strip()
+        negative = text.startswith("(") and text.endswith(")")
+        cleaned = re.sub(r"[^\d.]", "", text)
+
+        if not cleaned:
+            return text
 
         try:
-            clean_amount = (
-                str(cleaned)
-                .replace(",", "")
-                .replace("$", "")
-                .replace("(", "-")
-                .replace(")", "")
-                .strip()
-            )
+            Decimal(cleaned)
+        except (InvalidOperation, ValueError):
+            logger.warning(f"Could not parse '{raw}' as an amount; storing as text")
+            return text
 
-            if clean_amount.startswith("-"):
-                # Validate it's a real number
-                Decimal(clean_amount[1:])
-                return clean_amount
-            else:
-                Decimal(clean_amount)
-                return clean_amount
-
-        except (InvalidOperation, ValueError, TypeError) as e:
-            logger.error(f"Failed to parse amount '{amount_str}': {e}")
-
-        return str(amount_str) if amount_str else None
+        return f"-{cleaned}" if negative else cleaned

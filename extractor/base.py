@@ -86,6 +86,22 @@ class BaseDocumentProcessor(AbstractDocumentProcessor):
             return None
 
     @staticmethod
+    def parse_date(date_str: str):
+        """
+        Parse an extracted date into a ``date``, or ``None`` when it cannot be
+        read. Statements are inconsistent, so callers keep the raw text too.
+        """
+        from dateutil import parser as dateutil_parser
+
+        if not date_str or not str(date_str).strip():
+            return None
+        try:
+            return dateutil_parser.parse(str(date_str), fuzzy=False).date()
+        except (ValueError, OverflowError, TypeError):
+            logger.debug(f"Could not parse date: {date_str!r}")
+            return None
+
+    @staticmethod
     def format_date(date_str: str) -> str:
         """
         Format a date string into standardised ``DD-Month-YYYY`` format.

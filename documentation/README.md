@@ -16,8 +16,8 @@ API-only Django project where a CPA firm is a first-class tenant.
 - [x] **0** — Documentation, `.gitignore` for the leaked secrets, branch
 - [ ] **1** — Delete dead code, remove Document AI
 - [x] **2** — Postgres, local storage, API-only settings
-- [ ] **3** — `v1/` package and the new schema
-- [ ] **4** — Auth without SSO
+- [x] **3** — `v1/` package and the new schema
+- [x] **4** — Auth without SSO
 - [ ] **5** — Config versioning replaces snapshots
 - [ ] **6** — API v1 surface
 - [ ] **7** — Rewire the extractor
@@ -32,6 +32,16 @@ Branch: `refactor/v1-multitenant`.
   unimportable between commits. It goes with the auth rewrite in Phase 4, where
   its callers are replaced anyway. Azure *storage* removal happened in Phase 2
   as planned.
+
+- **Phases 3 and 4 landed together.** Deleting the old apps required a
+  replacement for `authentication/` to exist in the same commit, otherwise the
+  tree would not import. The v1 models and the new auth stack ship as one
+  change.
+
+- **Phase 6 endpoints do not exist yet.** With the old apps gone, `/api/v1/`
+  currently serves auth only. The resource endpoints land in Phase 6; the
+  contract is already written in
+  [03-api-v1-contract.md](03-api-v1-contract.md).
 
 ## Running it locally
 

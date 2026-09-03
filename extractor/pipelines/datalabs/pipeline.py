@@ -21,7 +21,7 @@ import re
 import sys
 from typing import Any, Dict, List
 
-from account.models import MonthlyAccountingDocument
+from v1.periods.models import PeriodDocument
 from extractor.base import BaseDocumentProcessor
 from extractor.persistence.bank_statement_saver import BankStatementSaver
 from extractor.pipelines.datalabs.backends import (
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 class ExtractorPipeline(BaseDocumentProcessor):
     """Datalabs single-pipeline (parse + segment) → 3-stage LLM extract → merge → save."""
 
-    def __init__(self, doc: MonthlyAccountingDocument):
+    def __init__(self, doc: PeriodDocument):
         super().__init__(doc)
         self.parser = DatalabsParser()
 
