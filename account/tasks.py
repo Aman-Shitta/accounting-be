@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db.models import Sum, Q
 
-from aicounting.file_upload_helper import DocumentDebugStorage
+from storage.uploads import DocumentDebugStorage
 from account.models import (
     ClassificationQueue,
     MonthlyAccountingDocument,

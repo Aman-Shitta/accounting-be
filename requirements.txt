@@ -1,10 +1,8 @@
 anthropic==0.69.0
 asgiref==3.8.1
-azure-storage-blob==12.26.0
 celery==5.5.3
 django-auditlog==3.4.1
 django-cors-headers==4.9.0
-django-storages==1.14.6
 Django==5.2.1
 djangorestframework==3.16.0
 google-auth==2.40.3
@@ -16,9 +14,9 @@ microsoft-kiota-abstractions==1.9.5
 msal==1.32.3
 msgraph-core==1.3.5
 msgraph-sdk==1.37.0
-mysqlclient==2.2.7
 openai==1.93.0
 pandas==2.3.1
+psycopg[binary]==3.2.9
 pydantic==2.11.7
 pypdf==5.9.0
 python-dotenv==1.1.1

@@ -4,7 +4,7 @@ from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
 
 User = get_user_model()
 
-from aicounting.file_upload_helper import upload_to_je_export_folder, upload_to_monthly_accounting_snapshot_folder
+from storage.uploads import upload_to_je_export_folder, upload_to_monthly_accounting_snapshot_folder
 
 class FactAICInputFileSnapshot(models.Model):
     """

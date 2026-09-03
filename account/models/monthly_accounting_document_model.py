@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from .fact_aic_monthly_accounting import FactAICMonthlyAccounting
 from account.models import FactAICInputFileSnapshot
 
-from aicounting.file_upload_helper import upload_to_montly_accounting_folder
+from storage.uploads import upload_to_montly_accounting_folder
 User = get_user_model()
 
 

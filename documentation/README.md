@@ -15,7 +15,7 @@ API-only Django project where a CPA firm is a first-class tenant.
 
 - [x] **0** — Documentation, `.gitignore` for the leaked secrets, branch
 - [ ] **1** — Delete dead code, remove Document AI
-- [ ] **2** — Postgres, local storage, API-only settings
+- [x] **2** — Postgres, local storage, API-only settings
 - [ ] **3** — `v1/` package and the new schema
 - [ ] **4** — Auth without SSO
 - [ ] **5** — Config versioning replaces snapshots
@@ -23,6 +23,28 @@ API-only Django project where a CPA firm is a first-class tenant.
 - [ ] **7** — Rewire the extractor
 
 Branch: `refactor/v1-multitenant`.
+
+## Deviations from the plan
+
+- **Azure AD SSO removal moved from Phase 2 to Phase 4.** `authentication/`,
+  `user/accountant_views.py` and `user/admin_app/invite_views.py` all import
+  `aicounting.msal_conf`, so deleting it in Phase 2 would have left the tree
+  unimportable between commits. It goes with the auth rewrite in Phase 4, where
+  its callers are replaced anyway. Azure *storage* removal happened in Phase 2
+  as planned.
+
+## Running it locally
+
+```sh
+docker compose up -d          # postgres + redis
+cp .env.example .env          # fill in provider keys
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py runserver
+```
+
+A local Postgres works just as well as the compose service — the settings read
+`POSTGRES_*` from the environment either way.
 
 ## Open questions
 

@@ -88,7 +88,7 @@ class OpenAIAssistant(OpeAIClient):
                                 file_streams.append(file_stream)
 
                                 # Save the JSON version to Azure storage for future reference
-                                self._save_json_to_azure(
+                                self._save_json_to_storage(
                                     json_content, doc, json_filename)
 
                         elif file_extension in ['xlsx', 'xls']:
@@ -108,7 +108,7 @@ class OpenAIAssistant(OpeAIClient):
                                 file_streams.append(file_stream)
 
                                 # Save the JSON version to Azure storage for future reference
-                                self._save_json_to_azure(
+                                self._save_json_to_storage(
                                     json_content, doc, json_filename)
 
                         else:
@@ -290,34 +290,31 @@ class OpenAIAssistant(OpeAIClient):
             logger.error(f"Error converting Excel to JSON for {filename}: {e}")
             return None
 
-    def _save_json_to_azure(self, json_content, original_doc, json_filename):
-        """Save the JSON version of the file to Azure storage for future reference"""
+    def _save_json_to_storage(self, json_content, original_doc, json_filename):
+        """Keep the JSON rendering of an uploaded document for future reference."""
         try:
             from django.core.files.storage import default_storage
             from django.core.files.base import ContentFile
-            from aicounting.azure_storage_paths import AzureBlobPathBuilder
+            from storage.paths import DocumentPathBuilder
 
-            # Use AzureBlobPathBuilder for proper path structure
             if self.customer and self.client_obj:
-                builder = AzureBlobPathBuilder(
-                    customer_id=self.customer.id,
-                    customer_name=self.customer.customer_name or "Unknown",
+                builder = DocumentPathBuilder(
+                    firm_id=self.customer.id,
+                    firm_name=self.customer.customer_name or "Unknown",
                     client_id=self.client_obj.id,
                     client_name=self.client_obj.client_name or "Unknown"
                 )
-                json_path = builder.client_documents_path(
-                    json_filename, add_timestamp=True)
+                json_path = builder.client_documents_path(json_filename)
             else:
                 json_path = f"client_documents/{json_filename}"
 
-            # Save to Azure storage
             default_storage.save(json_path, ContentFile(
                 json_content.encode('utf-8')))
-            logger.info(f"Saved JSON version to Azure: {json_path}")
+            logger.info(f"Saved JSON version to storage: {json_path}")
 
         except Exception as e:
             logger.error(
-                f"Error saving JSON to Azure for {json_filename}: {e}")
+                f"Error saving JSON to storage for {json_filename}: {e}")
 
     def provison_client_assistant(self):
         """
@@ -485,7 +482,7 @@ class OpenAIAssistant(OpeAIClient):
                                 file_streams.append(file_stream)
 
                                 # Save the JSON version to Azure storage for future reference
-                                self._save_json_to_azure(
+                                self._save_json_to_storage(
                                     json_content, doc, json_filename)
 
                         elif file_extension in ['xlsx', 'xls']:
@@ -505,7 +502,7 @@ class OpenAIAssistant(OpeAIClient):
                                 file_streams.append(file_stream)
 
                                 # Save the JSON version to Azure storage for future reference
-                                self._save_json_to_azure(
+                                self._save_json_to_storage(
                                     json_content, doc, json_filename)
 
                         else:
