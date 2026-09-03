@@ -166,3 +166,18 @@ Four untracked files carried credentials: a live GCP service-account private key
 (`aicounting-2025v1-*.json`), and the MySQL production password in plaintext in
 both `mysql.cnf.prod` and `.prod.dep.md`. All four are now gitignored; the
 password dies with the MySQL migration, and the GCP key should be rotated.
+
+## Dead columns left behind by Phase 1
+
+Deleting the rectifier orphaned five columns on `monthly_document_line_item`:
+`is_rectified`, `was_missing`, `was_compared`, `rectified_confidence`,
+`rectification_reasoning`. The Datalabs pipeline never emits them, so
+`BankStatementSaver` writes the defaults on every row and the serializers return
+`False`/`None` unconditionally. They are dropped with the rest of the schema in
+Phase 3 rather than in a separate migration against a database that is about to
+be discarded.
+
+The same applies to the `05_document_ai` and `06_rectification` artifact stages
+in `aicounting/azure_storage_paths.py` and the `save_rectified_data` /
+`save_rectifier_items` helpers in `aicounting/file_upload_helper.py` — both
+modules are rewritten wholesale in Phase 2.

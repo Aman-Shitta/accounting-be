@@ -4,8 +4,6 @@ from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any, Dict, Optional
 
-from extractor.gemini_service import GeminiMixin
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,8 +40,8 @@ class BaseDocumentProcessor(AbstractDocumentProcessor):
     """
     Base document processor with shared parsing utilities.
 
-    No AI-provider coupling. Pipelines that need Gemini should inherit from
-    ``GeminiDocumentProcessor`` instead.
+    No AI-provider coupling. Pipelines reach a provider through a mixin
+    (``GeminiMixin``, ``ClaudeMixin``) on the extractor that needs it.
     """
 
     def __init__(self, doc):
@@ -124,39 +122,3 @@ class BaseDocumentProcessor(AbstractDocumentProcessor):
             logger.warning(f"Could not parse date format: {date_str}")
             return date_str
 
-
-class GeminiDocumentProcessor(GeminiMixin, BaseDocumentProcessor):
-    """
-    Base class for pipelines that need Gemini AI.
-
-    Initializes the shared Gemini client and exposes ``ai_client`` for
-    backward compatibility with existing pipeline code.
-    """
-
-    def __init__(self, doc):
-        super().__init__(doc)
-        self.init_gemini()
-        self.ai_client = self.gemini_client
-
-    def _generate_content_stream(self, **kwargs):
-        """
-        Generate content stream using the shared Gemini service.
-        Kept for backward compatibility with existing pipeline code.
-        """
-        contents = kwargs.get("contents", [])
-        config = kwargs.get("config", {})
-        model = kwargs.get("model", None)
-
-        final_config = self.get_gemini_config(
-            max_output_tokens=config.get("max_output_tokens", 8000),
-            top_p=config.get("top_p", 0.95),
-            top_k=config.get("top_k", 25),
-            temperature=config.get("temperature", 0.2),
-        )
-        final_config.update(config)
-
-        return self.gemini_generate_stream(
-            contents=contents,
-            config=final_config,
-            model=model,
-        )

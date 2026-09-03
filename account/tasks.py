@@ -20,8 +20,6 @@ from account.models import (
     MonthlyDocumentBankKeyItem,
     MonthlyDocumentBankCheckItem,
 )
-from agentic_doc.config import ParseConfig
-from agentic_doc.parse import parse
 from extractor.classification.service import GLClassificationService
 from extractor.constants import DocumentType
 from extractor.pipeline_registry import get_pipeline_class

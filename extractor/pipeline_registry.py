@@ -1,9 +1,7 @@
 """
 Pipeline routing: resolves a pipeline class for a given document type.
 
-Replaces the previous ProcessorRegistry + _register_default_processors dance.
-To switch provider (e.g., LandingAI vs Claude for bank statements), change one
-line in PIPELINE_MAP below.
+To switch provider for a document type, change one line in ``PIPELINE_MAP``.
 """
 
 import importlib
@@ -16,26 +14,22 @@ class UnsupportedDocTypeError(Exception):
     """Raised when no pipeline is mapped for a document type."""
     pass
 
+
 PIPELINES: dict[str, str] = {
-    "GEMINI_EXTRACTOR": "extractor.pipelines.gemini.pipeline.ExtractorPipeline",
-    "LANDING_AI_EXTRACTOR": "extractor.pipelines.landing_ai.pipeline.ExtractorPipeline",
-    "CLAUDE_EXTRACTOR": "extractor.pipelines.claude.pipeline.ExtractorPipeline",
-    "LANDING_AI_KV": "extractor.pipelines.kv.landing_pipeline.DocumentProcessor",
     "DATALABS_EXTRACTOR": "extractor.pipelines.datalabs.pipeline.ExtractorPipeline",
+    "LANDING_AI_KV": "extractor.pipelines.kv.landing_pipeline.DocumentProcessor",
 }
 
 
 PIPELINE_MAP = {
-    # transaction extraction
-    DocumentType.BANK_STATEMENT.value: PIPELINES.get("DATALABS_EXTRACTOR"),
-    DocumentType.CREDIT_CARD.value: PIPELINES.get("DATALABS_EXTRACTOR"),
+    # transaction extraction — emits line items
+    DocumentType.BANK_STATEMENT.value: PIPELINES["DATALABS_EXTRACTOR"],
+    DocumentType.CREDIT_CARD.value: PIPELINES["DATALABS_EXTRACTOR"],
 
-    # DocumentType.BANK_STATEMENT.value: PIPELINES.get("LANDING_AI_EXTRACTOR"),
-    # DocumentType.CREDIT_CARD.value: PIPELINES.get("LANDING_AI_EXTRACTOR"),
-    # attribute extraction 
-    DocumentType.SALES.value: PIPELINES.get("LANDING_AI_KV"),
-    DocumentType.PAYROLL.value: PIPELINES.get("LANDING_AI_KV"),
-    DocumentType.MISC.value: PIPELINES.get("LANDING_AI_KV"),
+    # attribute extraction — emits values for configured fields
+    DocumentType.SALES.value: PIPELINES["LANDING_AI_KV"],
+    DocumentType.PAYROLL.value: PIPELINES["LANDING_AI_KV"],
+    DocumentType.MISC.value: PIPELINES["LANDING_AI_KV"],
 }
 
 
