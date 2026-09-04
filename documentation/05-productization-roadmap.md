@@ -79,11 +79,17 @@ That's the more direct read of "sell to any CPA firm.")
    `FileSystemStorage`. Fine for one server; a second app server, a redeploy,
    or a container restart means missing files. This has to be GCS (or S3)
    before there's a second customer, not before there's a hundred.
-5. **No platform operator surface.** Django admin was removed as dead weight
-   for a single-tenant tool, which was the right call then — but a product
-   with paying firms needs *someone* who can see every firm, suspend one,
-   look at a stuck classification queue, or reset a locked-out owner, without
-   `psql`. There is currently no `is_superuser` check anywhere in `v1/`.
+5. ~~**No platform operator surface.**~~ Partly done — a read-only one, at
+   least. `UserProfile.is_platform_staff` plus a `v1.platform` app
+   (`GET /platform/{overview,firms,firms/:id}/`, and the matching `/platform`
+   pages in the React app) let a platform account see every firm, its
+   client/member/failed-document counts, and the fleet split by extraction
+   provider, without `psql` (aicounting-backend@69fa2de,
+   aicounting-frontend@0348ebc). `manage.py create_platform_admin` seeds the
+   login. Still missing, and the harder half: no *action* surface —
+   suspending a firm, looking inside a stuck classification queue, or
+   resetting a locked-out owner all still need `psql` or a Django shell.
+   That's the natural next slice once someone actually needs it.
 6. **No error tracking.** No Sentry, no structured logging config. A
    provider timeout or a bad extraction currently surfaces as a log line on
    whichever server happened to run the Celery worker. At one firm that's
