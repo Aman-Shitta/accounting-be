@@ -10,7 +10,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from v1.common.querysets import accessible_clients
-from v1.configuration.models import DocumentSource, DocumentType
+from v1.configuration.models import DocumentCategory, DocumentSource
 from v1.ledger.models import LedgerAccount
 from v1.tenancy.models import Client, Firm, FirmMembership
 from v1.tests.conftest import make_user
@@ -118,7 +118,9 @@ def test_two_clients_may_name_a_source_the_same(two_firms, configured_client):
     """The old schema made input file names globally unique."""
     other = two_firms["b"]["clients"][0]
     DocumentSource.objects.create(
-        client=other, name="Operating Account", document_type=DocumentType.BANK_STATEMENT
+        client=other,
+        name="Operating Account",
+        category=DocumentCategory.objects.get(firm=None, key="bank_statement"),
     )
     assert DocumentSource.objects.filter(name="Operating Account").count() == 2
 
@@ -128,7 +130,7 @@ def test_one_client_cannot_name_two_sources_the_same(configured_client):
         DocumentSource.objects.create(
             client=configured_client["client"],
             name="Operating Account",
-            document_type=DocumentType.CREDIT_CARD,
+            category=DocumentCategory.objects.get(firm=None, key="credit_card"),
         )
 
 

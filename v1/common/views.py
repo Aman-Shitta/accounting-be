@@ -52,6 +52,35 @@ class TenantScopedView(BaseAPIView):
         return {"request": self.request, "view": self}
 
 
+class FirmScopedView(BaseAPIView):
+    """
+    A view over a model scoped to a firm directly, not through a client.
+
+    Provides the same ``serialize``/``get_object``/context machinery as
+    ``TenantScopedView``, without assuming the queryset is a
+    ``TenantScopedQuerySet`` keyed off ``Client`` — a firm-level resource
+    (document categories, say) has no client to key off.
+    """
+
+    queryset = None
+    serializer_class = None
+
+    def get_queryset(self):
+        assert self.queryset is not None, f"{type(self).__name__} needs a queryset"
+        return self.queryset
+
+    def get_object(self, pk):
+        return get_object_or_404(self.get_queryset(), pk=pk)
+
+    def serialize(self, instance, many=False, **kwargs):
+        return self.serializer_class(
+            instance, many=many, context=self.get_serializer_context(), **kwargs
+        ).data
+
+    def get_serializer_context(self):
+        return {"request": self.request, "view": self}
+
+
 class ClientScopedView(TenantScopedView):
     """
     A view under ``/clients/{client_id}/``.

@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from v1.configuration.models import DocumentSource, DocumentType, ExtractionField
+from v1.configuration.models import DocumentCategory, DocumentSource, ExtractionField
 from v1.configuration.services.publish import publish_config
 from v1.identity.models import UserProfile
 from v1.ledger.models import LedgerAccount
@@ -96,14 +96,16 @@ class Command(BaseCommand):
         DocumentSource.objects.create(
             client=client,
             name="Operating Account 4471",
-            document_type=DocumentType.BANK_STATEMENT,
+            category=DocumentCategory.objects.get(firm=None, key="bank_statement"),
             ledger_account=accounts["1000"],
             default_offset_account=accounts["1000"],
             extraction_notes="Coffee shop. Vendors are mostly food suppliers and utilities.",
         )
 
         payroll = DocumentSource.objects.create(
-            client=client, name="Gusto Payroll", document_type=DocumentType.PAYROLL
+            client=client,
+            name="Gusto Payroll",
+            category=DocumentCategory.objects.get(firm=None, key="payroll"),
         )
         for position, (key, label, hint, direction, account) in enumerate(PAYROLL_FIELDS):
             ExtractionField.objects.create(
@@ -138,14 +140,20 @@ class Command(BaseCommand):
         """
         Remove the demo firm.
 
-        Periods hold a PROTECT reference to their config version, so they have
-        to go before the firm's clients can cascade away.
+        Two PROTECT relationships stand between "delete the firm" and a clean
+        cascade: a period protects its config version, and — the one that
+        bites once the demo has been used interactively — a document source
+        protects the category it's configured against. Deleting a Firm
+        cascades to both a Client's sources and the firm's own categories in
+        the same operation, and PROTECT blocks that even when both sides are
+        being removed together, so the sources have to go first by hand.
         """
         firms = Firm.objects.filter(name="Demo Accounting LLP")
         if not firms.exists():
             return
 
         AccountingPeriod.objects.filter(client__firm__in=firms).delete()
+        DocumentSource.objects.filter(client__firm__in=firms).delete()
         firms.delete()
         User.objects.filter(email__endswith="@demo.aicounting.app").delete()
         self.stdout.write("Removed the previous demo data.")

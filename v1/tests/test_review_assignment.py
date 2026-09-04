@@ -28,7 +28,7 @@ def bank_document(configured_client):
     client.save(update_fields=["allow_review"])
 
     period = open_period(client, 2026, 3)
-    document = period.documents.get(document_type="bank_statement")
+    document = period.documents.get(category_key="bank_statement")
 
     for line, (amount, direction) in enumerate(
         [(Decimal("100.00"), "debit"), (Decimal("40.00"), "credit")], start=1

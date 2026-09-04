@@ -41,7 +41,7 @@ def build_payload(client) -> dict:
     """
     sources = (
         DocumentSource.objects.filter(client=client, is_active=True)
-        .select_related("ledger_account", "default_offset_account")
+        .select_related("category", "ledger_account", "default_offset_account")
         .prefetch_related("fields__ledger_account", "fields__offset_ledger_account")
         .order_by("name")
     )
@@ -86,7 +86,11 @@ def _serialize_source(source: DocumentSource) -> dict:
         "key": str(source.id),
         "id": str(source.id),
         "name": source.name,
-        "document_type": source.document_type,
+        # The category is frozen by value, not by reference: a firm may edit
+        # or retire a category later without rewriting what a past period saw.
+        "category_key": source.category.key,
+        "category_label": source.category.label,
+        "extraction_mode": source.category.extraction_mode,
         "is_transactional": source.is_transactional,
         "ledger_account": _account_ref(source.ledger_account),
         "default_offset_account": _account_ref(source.default_offset_account),
@@ -148,7 +152,9 @@ def validate_configuration(client) -> list[str]:
     problems = []
 
     sources = list(
-        DocumentSource.objects.filter(client=client, is_active=True).prefetch_related("fields")
+        DocumentSource.objects.filter(client=client, is_active=True)
+        .select_related("category")
+        .prefetch_related("fields")
     )
     if not sources:
         problems.append("No document sources are configured.")
@@ -158,7 +164,7 @@ def validate_configuration(client) -> list[str]:
 
         if source.is_field_configured and not fields:
             problems.append(
-                f"'{source.name}' is a {source.get_document_type_display()} and needs "
+                f"'{source.name}' is a {source.category.label} and needs "
                 f"at least one extraction field."
             )
         if source.is_transactional and fields:

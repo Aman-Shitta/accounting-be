@@ -1,12 +1,18 @@
-"""Document sources, extraction fields, journal templates and config versions."""
+"""
+Document categories, sources, extraction fields, journal templates and
+config versions.
+"""
 
 from rest_framework import status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from v1.common.views import ClientScopedView, DetailMixin, ListCreateMixin
+from v1.common.permissions import IsFirmOwner
+from v1.common.querysets import firm_for
+from v1.common.views import ClientScopedView, DetailMixin, FirmScopedView, ListCreateMixin
 from v1.configuration.models import (
     ConfigVersion,
+    DocumentCategory,
     DocumentSource,
     ExtractionField,
     JournalTemplate,
@@ -15,6 +21,7 @@ from v1.configuration.models import (
 from v1.configuration.serializers import (
     ConfigVersionSerializer,
     ConfigVersionSummarySerializer,
+    DocumentCategorySerializer,
     DocumentSourceSerializer,
     ExtractionFieldSerializer,
     JournalTemplateLineSerializer,
@@ -27,17 +34,62 @@ from v1.configuration.services.publish import (
     validate_configuration,
 )
 
+# -------------------------------------------------------- document categories
+
+
+class DocumentCategoryListView(ListCreateMixin, FirmScopedView):
+    """
+    The document kinds the caller's firm can configure a source as: every
+    system default, plus whatever the firm has added of its own.
+
+    This is the whole point of the category model — adding "1099-NEC" here is
+    a POST, not a deploy.
+    """
+
+    serializer_class = DocumentCategorySerializer
+    search_fields = ["label", "key"]
+    default_ordering = "label"
+
+    def get_queryset(self):
+        return DocumentCategory.available_to(firm_for(self.request.user))
+
+    def perform_create(self, serializer):
+        if not IsFirmOwner().has_permission(self.request, self):
+            raise PermissionDenied("Only a firm owner can add a document category.")
+        return serializer.save(firm=firm_for(self.request.user))
+
+
+class DocumentCategoryDetailView(DetailMixin, FirmScopedView):
+    """A firm's own category. System defaults are read-only here."""
+
+    serializer_class = DocumentCategorySerializer
+
+    def get_queryset(self):
+        return DocumentCategory.objects.filter(firm=firm_for(self.request.user))
+
+    def perform_destroy(self, instance):
+        """
+        Retire rather than delete — a source already using this category needs
+        it to keep meaning what it meant.
+        """
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
+
+
 # ---------------------------------------------------------- document sources
 
 
 class DocumentSourceListView(ListCreateMixin, ClientScopedView):
     queryset = DocumentSource.objects.select_related(
-        "ledger_account", "default_offset_account"
+        "category", "ledger_account", "default_offset_account"
     ).prefetch_related("fields")
     serializer_class = DocumentSourceSerializer
     search_fields = ["name"]
-    ordering_fields = ["name", "document_type", "created_at"]
+    ordering_fields = ["name", "created_at"]
     default_ordering = "name"
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "firm": self.client.firm}
 
     def perform_create(self, serializer):
         return serializer.save(client=self.client)
@@ -45,9 +97,12 @@ class DocumentSourceListView(ListCreateMixin, ClientScopedView):
 
 class DocumentSourceDetailView(DetailMixin, ClientScopedView):
     queryset = DocumentSource.objects.select_related(
-        "ledger_account", "default_offset_account"
+        "category", "ledger_account", "default_offset_account"
     ).prefetch_related("fields")
     serializer_class = DocumentSourceSerializer
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "firm": self.client.firm}
 
 
 class DocumentSourceFieldsView(ClientScopedView):
@@ -58,7 +113,7 @@ class DocumentSourceFieldsView(ClientScopedView):
     at once, so a partial update has no meaning.
     """
 
-    queryset = DocumentSource.objects.prefetch_related("fields")
+    queryset = DocumentSource.objects.select_related("category").prefetch_related("fields")
     serializer_class = ExtractionFieldSerializer
 
     def get(self, request, client_id, pk):
@@ -71,8 +126,8 @@ class DocumentSourceFieldsView(ClientScopedView):
         if source.is_transactional:
             raise ValidationError(
                 {
-                    "document_type": (
-                        f"A {source.get_document_type_display()} produces a transaction "
+                    "category": (
+                        f"A {source.category.label} produces a transaction "
                         f"list, so there is nothing to configure per field."
                     )
                 }

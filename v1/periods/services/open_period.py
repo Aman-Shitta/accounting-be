@@ -75,7 +75,9 @@ def create_documents(period: AccountingPeriod) -> list[PeriodDocument]:
                 document_source_id=source["id"],
                 source_key=source["key"],
                 source_name=source["name"],
-                document_type=source["document_type"],
+                category_key=source["category_key"],
+                category_label=source["category_label"],
+                extraction_mode=source["extraction_mode"],
                 status=PeriodDocument.Status.PENDING,
             )
             for source in sources

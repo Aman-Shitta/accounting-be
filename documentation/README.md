@@ -10,6 +10,7 @@ API-only Django project where a CPA firm is a first-class tenant.
 | [02-decisions.md](02-decisions.md) | Every call made and why, including the open ones marked ⚠️. |
 | [03-api-v1-contract.md](03-api-v1-contract.md) | The `/api/v1/` surface. **This is the handoff to the React client.** |
 | [04-execution-plan.md](04-execution-plan.md) | Phase-by-phase plan with verification steps. |
+| [05-productization-roadmap.md](05-productization-roadmap.md) | What's in the way of selling this to any CPA firm, ranked. |
 
 ## Phase status
 

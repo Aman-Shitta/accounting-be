@@ -15,7 +15,7 @@ from django.utils import timezone
 from storage.uploads import upload_to_montly_accounting_folder
 from v1.common.models import SoftDeleteModel, TimeStampedModel
 from v1.common.querysets import tenant_manager
-from v1.configuration.models import ConfigVersion, DocumentSource, DocumentType, ExtractionField
+from v1.configuration.models import ConfigVersion, DocumentSource, ExtractionField
 from v1.ledger.models import LedgerAccount
 from v1.tenancy.models import Client, FirmMembership
 
@@ -115,7 +115,18 @@ class PeriodDocument(TimeStampedModel):
     source_name = models.CharField(
         max_length=255, help_text="Source name as it stood when the period opened"
     )
-    document_type = models.CharField(max_length=32, choices=DocumentType.choices)
+    # Categories are configuration, not a fixed enum (see
+    # DocumentCategory), so these are frozen by value at period-open time —
+    # the same pattern as source_key/source_name — rather than a live FK or a
+    # constrained choices field.
+    category_key = models.CharField(
+        max_length=64, help_text="The document category's key when this period was opened"
+    )
+    category_label = models.CharField(max_length=255)
+    extraction_mode = models.CharField(
+        max_length=16,
+        help_text="'transactional' or 'fields' — which pipeline this document runs through",
+    )
 
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True

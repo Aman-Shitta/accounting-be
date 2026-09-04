@@ -1,15 +1,41 @@
-"""Document sources, extraction fields, journal templates and config versions."""
+"""
+Document categories, sources, extraction fields, journal templates and
+config versions.
+"""
 
 from rest_framework import serializers
 
 from v1.configuration.models import (
     ConfigVersion,
+    DocumentCategory,
     DocumentSource,
-    DocumentType,
     ExtractionField,
     JournalTemplate,
     JournalTemplateLine,
 )
+
+
+class DocumentCategorySerializer(serializers.ModelSerializer):
+    # firm_id is None for a system default, a UUID for a firm's own category;
+    # BooleanField coerces either through Python truthiness, which is exactly
+    # "does a firm own this" inverted.
+    is_system = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentCategory
+        fields = [
+            "id",
+            "key",
+            "label",
+            "description",
+            "extraction_mode",
+            "is_active",
+            "is_system",
+        ]
+        read_only_fields = ["id", "is_system"]
+
+    def get_is_system(self, obj) -> bool:
+        return obj.firm_id is None
 
 
 class ExtractionFieldSerializer(serializers.ModelSerializer):
@@ -37,13 +63,17 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
     fields_ = ExtractionFieldSerializer(source="fields", many=True, read_only=True)
     is_transactional = serializers.BooleanField(read_only=True)
     field_count = serializers.IntegerField(source="fields.count", read_only=True)
+    category_label = serializers.CharField(source="category.label", read_only=True)
+    extraction_mode = serializers.CharField(source="category.extraction_mode", read_only=True)
 
     class Meta:
         model = DocumentSource
         fields = [
             "id",
             "name",
-            "document_type",
+            "category",
+            "category_label",
+            "extraction_mode",
             "is_transactional",
             "ledger_account",
             "default_offset_account",
@@ -54,24 +84,40 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
             "field_count",
             "created_at",
         ]
-        read_only_fields = ["id", "is_transactional", "fields_", "field_count", "created_at"]
+        read_only_fields = [
+            "id",
+            "category_label",
+            "extraction_mode",
+            "is_transactional",
+            "fields_",
+            "field_count",
+            "created_at",
+        ]
+
+    def validate_category(self, category: DocumentCategory) -> DocumentCategory:
+        """
+        A category must belong to the caller's own reach: a system default,
+        or one their own firm added — never another firm's custom category.
+        """
+        allowed = DocumentCategory.available_to(self.context.get("firm"))
+        if not allowed.filter(pk=category.pk).exists():
+            raise serializers.ValidationError("No such document category.")
+        return category
 
     def validate(self, attrs):
         """
         A transactional source has nothing to configure per field, and needs the
         account the statement represents. A field-configured one is the reverse.
         """
-        document_type = attrs.get(
-            "document_type", getattr(self.instance, "document_type", None)
-        )
+        category = attrs.get("category", getattr(self.instance, "category", None))
 
-        if document_type in DocumentType.transactional():
+        if category and category.is_transactional:
             if self.instance and self.instance.fields.exists():
                 raise serializers.ValidationError(
                     {
-                        "document_type": (
+                        "category": (
                             "This source has extraction fields, which a transaction "
-                            "list cannot use. Remove them before changing the type."
+                            "list cannot use. Remove them before changing the category."
                         )
                     }
                 )

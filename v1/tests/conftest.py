@@ -11,7 +11,12 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from v1.configuration.models import ConfigVersion, DocumentSource, DocumentType, ExtractionField
+from v1.configuration.models import (
+    ConfigVersion,
+    DocumentCategory,
+    DocumentSource,
+    ExtractionField,
+)
 from v1.ledger.models import LedgerAccount
 from v1.tenancy.models import Client, ClientAssignment, Firm, FirmMembership
 
@@ -137,13 +142,15 @@ def configured_client(db, two_firms):
     bank = DocumentSource.objects.create(
         client=client,
         name="Operating Account",
-        document_type=DocumentType.BANK_STATEMENT,
+        category=DocumentCategory.objects.get(firm=None, key="bank_statement"),
         ledger_account=cash,
         default_offset_account=cash,
     )
 
     payroll = DocumentSource.objects.create(
-        client=client, name="ADP Payroll", document_type=DocumentType.PAYROLL
+        client=client,
+        name="ADP Payroll",
+        category=DocumentCategory.objects.get(firm=None, key="payroll"),
     )
     ExtractionField.objects.create(
         document_source=payroll,

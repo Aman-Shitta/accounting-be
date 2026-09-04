@@ -2,10 +2,12 @@
 Per-client extraction configuration, and the immutable versions of it that
 accounting periods pin.
 
-The central distinction the old schema could not express: a **transactional**
-document is a list of transactions and has nothing to name in advance, while a
-**field-configured** document yields a fixed set of named values that must be
-declared before extraction can run.
+The central distinction that matters is behavioral, not a fixed list of
+document names: a **transactional** document is a list of transactions and
+has nothing to name in advance, while a **field-configured** document yields a
+fixed set of named values that must be declared before extraction can run.
+Which *category* a document falls into — "bank statement", "1099", "rent
+roll" — is configuration, not code. See :class:`DocumentCategory`.
 """
 
 from django.conf import settings
@@ -16,28 +18,77 @@ from storage.uploads import upload_to_input_files_folder
 from v1.common.models import TimeStampedModel, UUIDPrimaryKeyModel
 from v1.common.querysets import tenant_manager
 from v1.ledger.models import LedgerAccount
-from v1.tenancy.models import Client
+from v1.tenancy.models import Client, Firm
 
 
-class DocumentType(models.TextChoices):
-    """What kind of document a source produces, and therefore how it is read."""
+class DocumentCategory(TimeStampedModel):
+    """
+    A kind of document the platform knows how to read.
 
-    BANK_STATEMENT = "bank_statement", "Bank Statement"
-    CREDIT_CARD = "credit_card", "Credit Card"
-    CHECK_REGISTER = "check_register", "Check Register"
-    PAYROLL = "payroll", "Payroll"
-    SALES = "sales", "Sales"
-    MISC = "misc", "Misc"
+    Deliberately not per-client, and not a code-level enum: a firm picks from
+    the system defaults (``firm`` is null) or adds its own, and a client's
+    :class:`DocumentSource` just points at one. Adding "1099-NEC" or "rent
+    roll" is then a configuration action, not a deploy — the thing standing
+    between this product and any firm whose clients don't send exactly bank
+    statements and payroll.
+
+    ``extraction_mode`` is the one property that is genuinely fixed, because
+    it is a statement about what a pipeline can produce, not about the
+    client's business: a document either yields a transaction list, or it
+    yields values for fields declared in advance. There is no third kind.
+    """
+
+    class ExtractionMode(models.TextChoices):
+        TRANSACTIONAL = "transactional", "A list of transactions"
+        FIELDS = "fields", "Named values you configure"
+
+    firm = models.ForeignKey(
+        Firm,
+        on_delete=models.CASCADE,
+        related_name="document_categories",
+        null=True,
+        blank=True,
+        help_text="Null for a system default, available to every firm",
+    )
+    key = models.SlugField(max_length=64)
+    label = models.CharField(max_length=255)
+    description = models.TextField(
+        blank=True, help_text="Shown to whoever is configuring a source of this kind"
+    )
+    extraction_mode = models.CharField(max_length=16, choices=ExtractionMode.choices)
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Retired categories stay for sources already using them, "
+        "but drop out of the picker for new ones",
+    )
+
+    class Meta:
+        db_table = "document_category"
+        verbose_name = "Document Category"
+        verbose_name_plural = "Document Categories"
+        ordering = ["label"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["firm", "key"], name="uniq_category_key_per_firm"
+            ),
+        ]
+
+    def __str__(self):
+        scope = self.firm.name if self.firm else "system"
+        return f"{self.label} ({scope})"
+
+    @property
+    def is_transactional(self) -> bool:
+        return self.extraction_mode == self.ExtractionMode.TRANSACTIONAL
 
     @classmethod
-    def transactional(cls) -> set[str]:
-        """Types whose output is a transaction list. No fields configurable."""
-        return {cls.BANK_STATEMENT.value, cls.CREDIT_CARD.value, cls.CHECK_REGISTER.value}
-
-    @classmethod
-    def field_configured(cls) -> set[str]:
-        """Types whose output is a set of named values. Fields required."""
-        return {cls.PAYROLL.value, cls.SALES.value, cls.MISC.value}
+    def available_to(cls, firm) -> models.QuerySet:
+        """System defaults plus this firm's own, active ones first."""
+        return (
+            cls.objects.filter(models.Q(firm=firm) | models.Q(firm__isnull=True))
+            .filter(is_active=True)
+            .order_by("-is_active", "label")
+        )
 
 
 class DocumentSource(TimeStampedModel):
@@ -50,7 +101,12 @@ class DocumentSource(TimeStampedModel):
         Client, on_delete=models.CASCADE, related_name="document_sources"
     )
     name = models.CharField(max_length=255)
-    document_type = models.CharField(max_length=32, choices=DocumentType.choices)
+    category = models.ForeignKey(
+        DocumentCategory,
+        on_delete=models.PROTECT,
+        related_name="document_sources",
+        help_text="What kind of document this is, and therefore how it is read",
+    )
 
     ledger_account = models.ForeignKey(
         LedgerAccount,
@@ -98,23 +154,23 @@ class DocumentSource(TimeStampedModel):
         indexes = [models.Index(fields=["client", "is_active"])]
 
     def __str__(self):
-        return f"{self.name} ({self.get_document_type_display()})"
+        return f"{self.name} ({self.category.label})"
 
     @property
     def is_transactional(self) -> bool:
-        return self.document_type in DocumentType.transactional()
+        return self.category.is_transactional
 
     @property
     def is_field_configured(self) -> bool:
-        return self.document_type in DocumentType.field_configured()
+        return not self.category.is_transactional
 
     def clean(self):
-        if self.is_transactional and self.pk and self.fields.exists():
+        if self.category_id and self.is_transactional and self.pk and self.fields.exists():
             raise ValidationError(
                 {
-                    "document_type": (
-                        f"{self.get_document_type_display()} produces a transaction "
-                        f"list, so it cannot have extraction fields. Remove them first."
+                    "category": (
+                        f"{self.category.label} produces a transaction list, so it "
+                        f"cannot have extraction fields. Remove them first."
                     )
                 }
             )

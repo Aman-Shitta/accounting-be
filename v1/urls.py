@@ -16,6 +16,8 @@ from v1.configuration.views import (
     ConfigPublishView,
     ConfigVersionDetailView,
     ConfigVersionListView,
+    DocumentCategoryDetailView,
+    DocumentCategoryListView,
     DocumentSourceDetailView,
     DocumentSourceFieldsView,
     DocumentSourceListView,
@@ -160,6 +162,16 @@ urlpatterns = [
     path("firm/", FirmView.as_view(), name="firm"),
     path("firm/members/", FirmMemberListView.as_view(), name="firm-members"),
     path("firm/members/<uuid:pk>/", FirmMemberDetailView.as_view(), name="firm-member"),
+    path(
+        "firm/document-categories/",
+        DocumentCategoryListView.as_view(),
+        name="document-categories",
+    ),
+    path(
+        "firm/document-categories/<uuid:pk>/",
+        DocumentCategoryDetailView.as_view(),
+        name="document-category",
+    ),
 
     path("clients/", ClientListView.as_view(), name="clients"),
     path("clients/<uuid:pk>/", ClientDetailView.as_view(), name="client"),

@@ -11,7 +11,12 @@ import pytest
 from django.core.files.storage import default_storage
 from django.db.models import ProtectedError
 
-from v1.configuration.models import ConfigVersion, DocumentSource, DocumentType, ExtractionField
+from v1.configuration.models import (
+    ConfigVersion,
+    DocumentCategory,
+    DocumentSource,
+    ExtractionField,
+)
 from v1.configuration.services.publish import (
     ConfigurationIncomplete,
     current_version,
@@ -149,7 +154,9 @@ def test_editing_config_after_opening_leaves_the_period_untouched(configured_cli
         direction=ExtractionField.Direction.DEBIT,
     )
     DocumentSource.objects.create(
-        client=client, name="Amex", document_type=DocumentType.CREDIT_CARD
+        client=client,
+        name="Amex",
+        category=DocumentCategory.objects.get(firm=None, key="credit_card"),
     )
     configured_client["payroll_source"].fields.filter(key="gross_wages").update(
         label="Renamed"
@@ -171,7 +178,7 @@ def test_a_later_period_picks_up_the_new_config(configured_client):
     DocumentSource.objects.create(
         client=client,
         name="Amex",
-        document_type=DocumentType.CREDIT_CARD,
+        category=DocumentCategory.objects.get(firm=None, key="credit_card"),
         ledger_account=configured_client["cash"],
     )
     publish_config(client)
@@ -196,7 +203,7 @@ def test_a_document_resolves_its_frozen_source(configured_client):
     document = period.documents.get(source_name="ADP Payroll")
 
     frozen = resolved_source(document)
-    assert frozen["document_type"] == DocumentType.PAYROLL
+    assert frozen["category_key"] == "payroll"
     assert len(frozen["fields"]) == 2
 
 

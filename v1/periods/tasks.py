@@ -69,7 +69,7 @@ def process_document_task(doc_id) -> dict[str, Any]:
         return _fail(doc, "File not found")
 
     try:
-        pipeline_cls = get_pipeline_class(doc.document_type)
+        pipeline_cls = get_pipeline_class(doc.extraction_mode)
     except UnsupportedDocTypeError as e:
         return _fail(doc, str(e))
 
