@@ -21,6 +21,10 @@ from v1.common.querysets import tenant_manager
 class Firm(TimeStampedModel):
     """A CPA firm. The tenant."""
 
+    class ExtractionProvider(models.TextChoices):
+        GEMINI = "gemini", "Gemini"
+        CLAUDE = "claude", "Claude"
+
     name = models.CharField(max_length=255)
     public_id = models.CharField(
         max_length=9,
@@ -33,6 +37,16 @@ class Firm(TimeStampedModel):
     city = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=2, blank=True)
     postal_code = models.CharField(max_length=16, blank=True)
+
+    extraction_provider = models.CharField(
+        max_length=16,
+        choices=ExtractionProvider.choices,
+        default=ExtractionProvider.GEMINI,
+        help_text="Which LLM reads this firm's bank/credit-card statements. A "
+        "lever for outage response — flip it here rather than waiting on a "
+        "deploy. Field-configured documents (payroll, sales, ...) go through "
+        "LandingAI regardless; there is only one provider for those today.",
+    )
 
     is_active = models.BooleanField(default=True)
 

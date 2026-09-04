@@ -11,8 +11,10 @@ and a shared Pydantic output schema (see :mod:`schemas`):
   returns payee / memo / date per check number.
 
 Each extractor has a Claude variant (tool-use structured output) and a
-Gemini variant (``response_schema`` structured output).  Swap by changing
-the import in ``pipeline.py``.
+Gemini variant (``response_schema`` structured output). Which one runs for a
+given document is resolved per firm — see ``resolve_backends`` and
+``Firm.extraction_provider`` — rather than fixed by which import is
+commented out.
 """
 
 from __future__ import annotations
@@ -340,6 +342,32 @@ class GeminiCheckImageExtractor(ExtractorBackend, GeminiMixin):
             max_output_tokens=32_000,
         )
         return parsed.get("checks", []) or []
+
+
+# ======================================================================
+# Provider selection
+# ======================================================================
+
+#: One triple of backend classes per provider. Every entry takes the same
+#: constructor (``document``), so picking one is a straight substitution —
+#: see ``resolve_backends``.
+BACKEND_SETS: dict[str, tuple[type, type, type]] = {
+    "gemini": (GeminiTransactionExtractor, GeminiSummaryExtractor, GeminiCheckImageExtractor),
+    "claude": (ClaudeTransactionExtractor, ClaudeSummaryExtractor, ClaudeCheckImageExtractor),
+}
+
+
+def resolve_backends(provider: str) -> tuple[type, type, type]:
+    """
+    The (transaction, summary, check-image) extractor classes for a provider.
+
+    Used instead of the commented-out import swap this module's docstring
+    describes: a firm chooses its provider through ``Firm.extraction_provider``
+    (a settings change, not a deploy), and this is where that choice becomes
+    real classes. Falls back to Gemini for a value that isn't recognized —
+    a bad setting should degrade, not take down extraction.
+    """
+    return BACKEND_SETS.get(provider, BACKEND_SETS["gemini"])
 
 
 # ======================================================================

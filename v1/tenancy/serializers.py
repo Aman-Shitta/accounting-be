@@ -25,6 +25,7 @@ class FirmSerializer(serializers.ModelSerializer):
             "city",
             "state",
             "postal_code",
+            "extraction_provider",
             "is_active",
             "client_count",
             "created_at",

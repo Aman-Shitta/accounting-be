@@ -23,18 +23,7 @@ from typing import Any
 
 from extractor.base import BaseDocumentProcessor
 from extractor.persistence.bank_statement_saver import BankStatementSaver
-from extractor.pipelines.datalabs.backends import (
-    # ClaudeCheckImageExtractor as CheckImageExtractor,
-    GeminiCheckImageExtractor as CheckImageExtractor,
-)
-from extractor.pipelines.datalabs.backends import (
-    # ClaudeSummaryExtractor as SummaryExtractor,
-    GeminiSummaryExtractor as SummaryExtractor,
-)
-from extractor.pipelines.datalabs.backends import (
-    # ClaudeTransactionExtractor as TransactionExtractor,
-    GeminiTransactionExtractor as TransactionExtractor,
-)
+from extractor.pipelines.datalabs.backends import resolve_backends
 from extractor.pipelines.datalabs.parser import DatalabsParser
 from extractor.utils import clean_temp_file, generate_temp_pdf
 from v1.periods.models import PeriodDocument
@@ -49,7 +38,11 @@ class ExtractorPipeline(BaseDocumentProcessor):
         super().__init__(doc)
         self.parser = DatalabsParser()
 
-        # Three focused LLM backends
+        # Three focused LLM backends. Which provider reads this document is
+        # the owning firm's choice (Firm.extraction_provider), not a fixed
+        # import — see backends.resolve_backends.
+        provider = doc.client.firm.extraction_provider
+        TransactionExtractor, SummaryExtractor, CheckImageExtractor = resolve_backends(provider)
         self.transaction_extractor = TransactionExtractor(doc)
         self.summary_extractor = SummaryExtractor(doc)
         self.check_image_extractor = CheckImageExtractor(doc)
