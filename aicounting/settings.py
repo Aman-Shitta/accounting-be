@@ -5,6 +5,7 @@ This project serves JSON and nothing else — there is no template layer, no
 Django admin and no static-file pipeline. See ``documentation/02-decisions.md``.
 """
 
+import logging
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -181,6 +182,41 @@ SIMPLE_JWT = {
 }
 
 # ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+# Plain text in dev — a person is reading this directly in a terminal.
+# Structured JSON otherwise, so a real log sink can be queried by field
+# instead of grepped. See aicounting/logging.py.
+LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {"format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s"},
+        "structured": {"()": "aicounting.logging.StructuredFormatter"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console" if DEBUG else "structured",
+        },
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+    "loggers": {
+        # Django's own request log is noisy at INFO (one line per request);
+        # a 4xx/5xx is already visible through the response, and a genuine
+        # server error still reaches here at ERROR.
+        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        "celery": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
+        "v1": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
+        "extractor": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Celery
 # ---------------------------------------------------------------------------
 
@@ -227,3 +263,38 @@ else:
 # ---------------------------------------------------------------------------
 
 from .env_settings import *  # noqa: E402,F401,F403
+
+# ---------------------------------------------------------------------------
+# Error tracking
+# ---------------------------------------------------------------------------
+#
+# The request/task exception handling throughout this codebase is deliberately
+# "catch it, log it, turn it into a response or a failed-status row" — see
+# v1/common/exceptions.py and every `except Exception` in v1/periods/tasks.py.
+# That is right for the caller (nobody gets a 500 for a provider timeout), but
+# it means an exception is almost never left to propagate, so Sentry's usual
+# hook — catching what Django or Celery would otherwise raise — has very
+# little to catch. LoggingIntegration is what actually does the work here: it
+# turns every existing `logger.error(...)` / `logger.exception(...)` call
+# already scattered through v1/ and extractor/ into a Sentry event, with no
+# call site needing to know Sentry exists.
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        release=SENTRY_RELEASE,
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(monitor_beat_tasks=True),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+        ],
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        # Request bodies and user PII stay out of error reports by default —
+        # a captured exception is not a place client financial data belongs.
+        send_default_pii=False,
+    )

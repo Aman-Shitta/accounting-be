@@ -32,3 +32,10 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # Datalabs
 DATALABS_PIPELINE_ID = os.environ.get("DATALABS_PIPELINE_ID")
+
+# Sentry — unset locally, so the dev/test experience is a log line the way it
+# always was, not a nuisance to sign up for a DSN just to run the tests.
+SENTRY_DSN = os.environ.get("SENTRY_DSN")
+SENTRY_ENVIRONMENT = os.environ.get("SENTRY_ENVIRONMENT", "development")
+SENTRY_RELEASE = os.environ.get("SENTRY_RELEASE") or os.environ.get("GIT_SHA")
+SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
