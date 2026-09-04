@@ -38,6 +38,8 @@ from v1.periods.views import (
     PeriodDocumentListView,
     PeriodDocumentUploadView,
     PeriodDocumentVerifyView,
+    PeriodJournalExportCheckView,
+    PeriodJournalExportView,
     PeriodListView,
     PeriodYearsView,
     TransactionDetailView,
@@ -143,6 +145,16 @@ period_patterns = [
         "documents/<uuid:pk>/verify/",
         PeriodDocumentVerifyView.as_view(),
         name="document-verify",
+    ),
+    path(
+        "journal-export/check/",
+        PeriodJournalExportCheckView.as_view(),
+        name="period-journal-export-check",
+    ),
+    path(
+        "journal-export/",
+        PeriodJournalExportView.as_view(),
+        name="period-journal-export",
     ),
 ]
 

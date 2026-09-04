@@ -5,6 +5,7 @@ import logging
 from celery import chain
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
@@ -29,6 +30,7 @@ from v1.periods.serializers import (
     PeriodFieldValueSerializer,
     PeriodTransactionSerializer,
 )
+from v1.periods.services.journal_export import build_journal_lines, render_csv, render_iif
 from v1.periods.services.open_period import PeriodAlreadyOpen, open_period, resolved_source
 from v1.periods.tasks import process_document_task, validate_control_totals_task
 
@@ -214,6 +216,49 @@ class PeriodDocumentVerifyView(PeriodScopedView):
         document.status = PeriodDocument.Status.VERIFIED
         document.save(update_fields=["status", "updated_at"])
         return Response(PeriodDocumentSerializer(document).data)
+
+
+# ------------------------------------------------------------ journal export
+
+
+class PeriodJournalExportCheckView(PeriodScopedView):
+    """What would export, and what would be left out, without downloading anything."""
+
+    def get(self, request, period_id):
+        lines, problems = build_journal_lines(self.period)
+        entry_count = len({line.entry for line in lines})
+        return Response({"entry_count": entry_count, "problems": problems})
+
+
+class PeriodJournalExportView(PeriodScopedView):
+    """
+    This period's classified transactions and extracted field values as a
+    journal, in a format an outside system can take: a plain CSV, or
+    QuickBooks Desktop's IIF import.
+    """
+
+    def get(self, request, period_id):
+        # Not named "format": DRF's own content negotiation reserves that query
+        # parameter for picking a renderer, and 404s when it doesn't recognize
+        # the value — a client asking for our export format collides with it.
+        fmt = request.query_params.get("type", "csv")
+        renderers = {"csv": (render_csv, "text/csv", "csv"), "iif": (render_iif, "application/x-iif", "iif")}
+
+        if fmt not in renderers:
+            raise ValidationError(
+                {"type": [f"Unsupported export format {fmt!r}. Use 'csv' or 'iif'."]}
+            )
+        render, content_type, extension = renderers[fmt]
+
+        lines, _problems = build_journal_lines(self.period)
+        content = render(lines)
+
+        client_slug = self.period.client.external_ref or self.period.client.name
+        filename = f"{client_slug}-{self.period.year}-{self.period.month:02d}-journal.{extension}"
+
+        response = HttpResponse(content, content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 # ----------------------------------------------------------- extracted rows
