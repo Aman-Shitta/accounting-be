@@ -61,12 +61,17 @@ That's the more direct read of "sell to any CPA firm.")
    seeded or tested data actually exercises yet; templates remain the way to
    model a multi-line entry assembled from several fields, and are a
    reasonable next export source once a firm is actually using them.
-3. **The extraction provider is chosen by document type, globally**
-   (`pipeline_registry.py`), not per firm or per client. One firm's Datalabs
-   outage is every firm's outage, and there's no way to say "this client's
-   statements are weird, use the Claude backend for them" without a code
-   change — even though `datalabs/backends.py` already has Claude variants
-   sitting unused for exactly this.
+3. ~~**The extraction provider is chosen globally, not per firm.**~~ Done for
+   the axis that actually had two providers sitting behind an import swap —
+   `Firm.extraction_provider` ("gemini" | "claude") now decides which
+   `datalabs/backends.py` classes read a firm's bank/credit-card statements,
+   settable through the firm page (aicounting-backend@b61f46f,
+   aicounting-frontend@8803e5e). Two things this does *not* cover, both
+   because there is nothing to switch to yet: field-configured documents
+   (payroll, sales, ...) go through LandingAI's KV pipeline with no second
+   provider, and `pipeline_registry.py`'s transactional/fields routing
+   itself is still one Datalabs entry and one LandingAI entry — a real
+   per-category provider override is still a future feature, not this one.
 
 ### Blocks operating it as a hosted product (do second)
 
