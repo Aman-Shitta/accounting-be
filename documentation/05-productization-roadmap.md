@@ -6,7 +6,16 @@ naming, the API surface). None of that is wasted — it's the foundation. But
 still assumes *one kind of client* doing *one kind of close*. This is a survey
 of what's in the way, ranked by how much it actually blocks a sale.
 
-## The core problem: document types are a fixed enum
+## ✅ Done: document types are configurable, not a fixed enum
+
+Shipped in aicounting-backend@a3aa1d7 / aicounting-frontend@ed8bf05.
+`DocumentCategory` (firm-scoped, or `firm=None` for a system default)
+replaces the `DocumentType` enum below; a firm adds its own kind through
+`POST /firm/document-categories/` — no deploy. The frontend's document-source
+picker and a new "Manage document types" UI consume it live. Kept the
+original writeup for context:
+
+## The core problem (as it was): document types were a fixed enum
 
 ```python
 class DocumentType(models.TextChoices):
@@ -29,17 +38,21 @@ exactly bank statements + payroll needs an engineering change to onboard.**
 The fix is smaller than it sounds, because the schema already separates the
 two behaviors that matter (`is_transactional` vs field-configured) — that
 distinction just needs to stop being keyed off a hardcoded string. Concretely:
-a `DocumentCategory` model owned by the platform (not per-firm — the two
-extraction *behaviors* are real, categories within them are not) holding
-`{key, label, extraction_mode: transactional|fields}`, with `DocumentSource`
-referencing it by FK instead of a `TextChoices` value. `MISC` already exists
-as an escape hatch, which tells you the enum was already straining.
+a `DocumentCategory` model holding `{key, label, extraction_mode:
+transactional|fields}`, with `DocumentSource` referencing it by FK instead of
+a `TextChoices` value. `MISC` already exists as an escape hatch, which tells
+you the enum was already straining.
+
+(Shipped firm-scoped rather than platform-owned-only as first sketched here:
+`firm=None` is a system default visible to everyone, but a firm can also add
+its own — "1099-NEC" for one firm doesn't have to mean every firm sees it.
+That's the more direct read of "sell to any CPA firm.")
 
 ## Everything else, ranked by how hard it blocks a sale
 
 ### Blocks selling to more than one firm's worth of documents (do first)
 
-1. **Document types are a fixed enum.** Covered above.
+1. ~~**Document types are a fixed enum.**~~ Done — see above.
 2. **No export to what a firm actually files with.** `JournalTemplate` and
    `JournalTemplateLine` model the entry correctly, but nothing renders one —
    no QBO IIF, no Xero-shaped CSV, not even a plain CSV. Right now the product
