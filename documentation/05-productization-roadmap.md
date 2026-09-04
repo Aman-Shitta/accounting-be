@@ -53,11 +53,14 @@ That's the more direct read of "sell to any CPA firm.")
 ### Blocks selling to more than one firm's worth of documents (do first)
 
 1. ~~**Document types are a fixed enum.**~~ Done — see above.
-2. **No export to what a firm actually files with.** `JournalTemplate` and
-   `JournalTemplateLine` model the entry correctly, but nothing renders one —
-   no QBO IIF, no Xero-shaped CSV, not even a plain CSV. Right now the product
-   extracts and classifies, and then the firm re-keys the entry by hand
-   into whatever they file with. That's the last mile of the actual pitch.
+2. ~~**No export to what a firm actually files with.**~~ Done —
+   `GET /periods/{id}/journal-export/?type=csv|iif` (aicounting-backend@99236f6,
+   aicounting-frontend@b4848c6). Built directly off `PeriodTransaction` and
+   `PeriodFieldValue` — each already carries a resolved account and its
+   offset — rather than `JournalTemplate`/`JournalTemplateLine`, which no
+   seeded or tested data actually exercises yet; templates remain the way to
+   model a multi-line entry assembled from several fields, and are a
+   reasonable next export source once a firm is actually using them.
 3. **The extraction provider is chosen by document type, globally**
    (`pipeline_registry.py`), not per firm or per client. One firm's Datalabs
    outage is every firm's outage, and there's no way to say "this client's
