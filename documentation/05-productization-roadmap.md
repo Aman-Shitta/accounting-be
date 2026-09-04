@@ -90,10 +90,16 @@ That's the more direct read of "sell to any CPA firm.")
    suspending a firm, looking inside a stuck classification queue, or
    resetting a locked-out owner all still need `psql` or a Django shell.
    That's the natural next slice once someone actually needs it.
-6. **No error tracking.** No Sentry, no structured logging config. A
-   provider timeout or a bad extraction currently surfaces as a log line on
-   whichever server happened to run the Celery worker. At one firm that's
-   tolerable; at ten, you find out about outages from angry emails.
+6. ~~**No error tracking.**~~ Done — Sentry (Django + Celery +
+   LoggingIntegration) and a real `LOGGING` config, JSON everywhere but
+   DEBUG (aicounting-backend@ffeba55). The load-bearing detail: this
+   codebase catches its own exceptions almost everywhere rather than letting
+   them propagate (a provider timeout becomes a failed-status row, not a
+   crash), so Sentry's usual "catch what Django/Celery would otherwise
+   raise" hook had nothing to catch — `LoggingIntegration` is what actually
+   surfaces the existing `logger.error(..., exc_info=True)` calls already
+   in `v1/periods/tasks.py` as real events, with no call site touched. Set
+   `SENTRY_DSN` per environment to turn it on; nothing changes with it unset.
 7. **No usage metering.** Whatever the pricing model ends up being — per
    document, per seat, per client — there's no `ClassificationJob`-adjacent
    counter tracking pages processed or documents extracted per firm per
