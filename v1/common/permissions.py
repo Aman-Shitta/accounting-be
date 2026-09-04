@@ -82,6 +82,24 @@ class IsFirmMemberOrReviewer(BasePermission):
         )
 
 
+class IsPlatformStaff(BasePermission):
+    """
+    The user operates the platform itself, not any one firm.
+
+    Unrelated to ``FirmMembership`` — a platform account typically belongs to
+    none — so this checks ``UserProfile.is_platform_staff`` directly rather
+    than going through ``_roles``.
+    """
+
+    message = "This is restricted to platform staff."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return getattr(getattr(user, "profile", None), "is_platform_staff", False)
+
+
 class HasClientAccess(BasePermission):
     """
     The client named in the URL is one the user can see.

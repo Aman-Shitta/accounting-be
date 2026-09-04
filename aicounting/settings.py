@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "v1.periods",
     "v1.review",
     "v1.dashboard",
+    "v1.platform",
 ]
 
 MIDDLEWARE = [

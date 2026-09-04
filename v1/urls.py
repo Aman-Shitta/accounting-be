@@ -194,4 +194,5 @@ urlpatterns = [
 
     path("review/", include(("v1.review.urls", "review"), namespace="review")),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("platform/", include(("v1.platform.urls", "platform"), namespace="platform")),
 ]

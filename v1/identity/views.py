@@ -143,6 +143,7 @@ class WhoAmIView(EnvelopeMixin, APIView):
         memberships = FirmMembership.objects.filter(
             user=user, is_active=True
         ).select_related("firm")
+        profile = getattr(user, "profile", None)
 
         return create_api_response(
             status.HTTP_200_OK,
@@ -152,7 +153,8 @@ class WhoAmIView(EnvelopeMixin, APIView):
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "is_verified": getattr(getattr(user, "profile", None), "is_verified", False),
+                "is_verified": getattr(profile, "is_verified", False),
+                "is_platform_staff": getattr(profile, "is_platform_staff", False),
                 "memberships": MembershipSerializer(memberships, many=True).data,
                 "client_count": accessible_clients(user).count(),
             },

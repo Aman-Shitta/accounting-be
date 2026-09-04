@@ -84,5 +84,6 @@ class WhoAmISerializer(serializers.Serializer):
     first_name = serializers.CharField()
     last_name = serializers.CharField()
     is_verified = serializers.BooleanField()
+    is_platform_staff = serializers.BooleanField()
     memberships = MembershipSerializer(many=True)
     client_count = serializers.IntegerField()

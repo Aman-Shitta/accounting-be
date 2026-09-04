@@ -33,6 +33,12 @@ class UserProfile(TimeStampedModel):
     is_verified = models.BooleanField(
         default=False, help_text="True once the user has set a password"
     )
+    is_platform_staff = models.BooleanField(
+        default=False,
+        help_text="Operates the platform itself, not any one firm — belongs to "
+        "no FirmMembership and sees the cross-firm /platform/ surface instead "
+        "of a firm's own dashboard.",
+    )
     last_login_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
